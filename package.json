@@ -16,7 +16,7 @@
     "migrate": "node backend/src/migrate.js",
     "lint": "node scripts/check-syntax.js",
     "test:browser": "node scripts/browser-check.mjs",
-    "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\"",
+    "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\" \"shared/**/*.js\"",
     "test:browser:enhancements": "node scripts/browser-enhancements.mjs"
   },
   "dependencies": {

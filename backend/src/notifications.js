@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import nodemailer from "nodemailer";
-import { minorToDecimal } from "../../frontend/src/money.js";
+import { minorToDecimal } from "../../shared/money.js";
 const invalid = () =>
   Object.assign(Error("Invalid notification settings"), { status: 400 });
 const email = z

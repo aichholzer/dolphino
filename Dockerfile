@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 COPY frontend/package.json ./frontend/package.json
 RUN npm ci
 COPY frontend ./frontend
+COPY shared ./shared
 RUN npm run build
 
 FROM node:24-alpine AS runtime
@@ -13,6 +14,7 @@ COPY package.json package-lock.json ./
 COPY frontend/package.json ./frontend/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node backend ./backend
+COPY --chown=node:node shared ./shared
 COPY --chown=node:node scripts ./scripts
 COPY --from=build --chown=node:node /app/frontend/dist ./frontend/dist
 USER node
