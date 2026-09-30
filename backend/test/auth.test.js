@@ -1,15 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashPassword, verifyPassword, createAuth } from "../src/auth.js";
+import pg from "pg";
+import { randomUUID, randomBytes } from "node:crypto";
+import {
+  createHouseholdAuth,
+  hashHouseholdPassword,
+  verifyHouseholdPassword,
+} from "../src/household-auth.js";
 import { readConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
-test("password hashes use random salts and reject wrong password", () => {
-  const a = hashPassword("a long fictional password");
-  assert.notEqual(a, hashPassword("a long fictional password"));
-  assert(verifyPassword("a long fictional password", a));
-  assert(!verifyPassword("wrong", a));
+import { Store } from "../src/store.js";
+const connectionString =
+  process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+test("household password hashes use random salts and reject wrong password", async () => {
+  const a = await hashHouseholdPassword("a long fictional password");
+  assert.notEqual(a, await hashHouseholdPassword("a long fictional password"));
+  assert(await verifyHouseholdPassword("a long fictional password", a));
+  assert(!(await verifyHouseholdPassword("wrong", a)));
 });
-test("live mode fails closed without secrets or HTTPS", () => {
+test("live mode fails closed without session protection or HTTPS", () => {
   assert.throws(() =>
     readConfig({
       PROFE_MODE: "live",
@@ -18,74 +27,166 @@ test("live mode fails closed without secrets or HTTPS", () => {
   );
   assert.throws(() => readConfig({ PROFE_MODE: "demo" }));
 });
-test("sessions are signed, Secure, HttpOnly and login attempts throttled", () => {
-  const auth = createAuth({
-    mode: "live",
-    passwordHash: hashPassword("fictional password"),
-    sessionSecret: "x".repeat(32),
-  });
-  const req = { socket: { remoteAddress: "test" }, headers: {} };
-  const success = auth.login(req, "fictional password");
-  assert.match(success.cookie, /Secure/);
-  assert.match(success.cookie, /HttpOnly/);
-  req.headers.cookie = success.cookie;
-  assert(auth.authenticated(req));
-  req.headers.cookie = success.cookie.replace(
-    "profe_session=",
-    "profe_session=1",
-  );
-  assert(!auth.authenticated(req));
-  for (let n = 0; n < 5; n++)
-    assert.equal(auth.login(req, "wrong").status, 401);
-  assert.equal(auth.login(req, "wrong").status, 429);
-});
-test("REST enforces live authentication, origin and validation without returning internal errors", async (t) => {
-  const config = {
-    host: "127.0.0.1",
-    port: 0,
-    mode: "live",
-    origin: "https://profe.test",
-    currency: "AUD",
-    timezone: "Australia/Brisbane",
-    passwordHash: hashPassword("fictional password"),
-    sessionSecret: "s".repeat(32),
-  };
-  const store = {
-    pool: { query: async () => {} },
-    listAccounts: async () => {
-      throw Error("secret db password");
-    },
-  };
-  const app = createApp({ config, store, integration: {} });
-  const server = await new Promise((resolve) => {
-    const s = app.start(() => resolve(s));
-  });
-  t.after(() => new Promise((resolve) => server.close(resolve)));
-  const url = `http://127.0.0.1:${server.address().port}`;
-  assert.equal((await fetch(url + "/api/accounts")).status, 401);
-  assert.equal(
-    (await fetch(url + "/api/login", { method: "POST", body: "{}" })).status,
-    403,
-  );
-  const login = await fetch(url + "/api/login", {
-    method: "POST",
-    headers: { Origin: config.origin },
-    body: JSON.stringify({ password: "fictional password" }),
-  });
-  assert.equal(login.status, 200);
-  const cookie = login.headers.get("set-cookie").split(";")[0];
-  const failure = await fetch(url + "/api/accounts", {
-    headers: { Cookie: cookie },
-  });
-  assert.equal(failure.status, 500);
-  assert(!JSON.stringify(await failure.json()).includes("password"));
-  const invalid = await fetch(url + "/api/transactions/x", {
-    method: "PATCH",
-    headers: { Origin: config.origin, Cookie: cookie },
-    body: JSON.stringify({
-      category: "",
-      splits: [{ category: "X", amountMinor: 1.5 }],
-    }),
-  });
-  assert.equal(invalid.status, 400);
-});
+test(
+  "household HTTP setup, login, server sessions and route guards reject legacy shared access",
+  { skip: !connectionString },
+  async (t) => {
+    const admin = new pg.Pool({ connectionString }),
+      schema = `auth_api_${randomUUID().replaceAll("-", "")}`;
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    const pool = new pg.Pool({
+      connectionString,
+      options: `-c search_path=${schema}`,
+    });
+    t.after(async () => {
+      await pool.end();
+      await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+      await admin.end();
+    });
+    const config = {
+      host: "127.0.0.1",
+      port: 0,
+      mode: "live",
+      origin: "https://profe.test",
+      currency: "AUD",
+      timezone: "Australia/Brisbane",
+      sessionSecret: randomBytes(32).toString("hex"),
+      bootstrapToken: randomBytes(32).toString("base64"),
+      passwordHash: `scrypt:${"0".repeat(32)}:${"0".repeat(128)}`,
+    };
+    const auth = createHouseholdAuth({ pool, config });
+    await auth.init();
+    const store = new Store(pool, { mode: "live" });
+    await store.migrate();
+    const realAccounts = store.listAccounts.bind(store);
+    let failAccounts = true;
+    store.listAccounts = async (...args) => {
+      if (failAccounts) throw Error("secret db password");
+      return realAccounts(...args);
+    };
+    const app = createApp({ config, store, integration: {}, auth });
+    const server = await new Promise((resolve) => {
+      const s = app.start(() => resolve(s));
+    });
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const request = (path, value, headers = {}) =>
+      fetch(base + path, {
+        method: "POST",
+        headers: { Origin: config.origin, ...headers },
+        body: JSON.stringify(value),
+      });
+    assert.equal((await fetch(base + "/api/accounts")).status, 401);
+    assert.equal(
+      (await fetch(base + "/api/login", { method: "POST", body: "{}" })).status,
+      403,
+    );
+    assert.notEqual(
+      (await request("/api/login", { password: "retired shared password" }))
+        .status,
+      200,
+    );
+    // Bootstrap deliberately uses a synthetic setup token; the browser must not infer one.
+    const setup = {
+      email: "admin@example.test",
+      name: "Fictional admin",
+      password: "fictional long test password",
+      bootstrapToken: config.bootstrapToken,
+    };
+    assert.notEqual(
+      (
+        await request("/api/auth/bootstrap", {
+          ...setup,
+          bootstrapToken: "wrong",
+        })
+      ).status,
+      200,
+    );
+    const created = await request("/api/auth/bootstrap", setup);
+    assert.equal(created.status, 200, await created.text());
+    assert.notEqual((await request("/api/auth/bootstrap", setup)).status, 200);
+    const login = await request("/api/login", {
+      email: setup.email,
+      password: setup.password,
+    });
+    assert.equal(login.status, 200);
+    const cookieHeader = login.headers.get("set-cookie");
+    assert.match(cookieHeader, /Secure/);
+    assert.match(cookieHeader, /HttpOnly/);
+    assert.match(cookieHeader, /SameSite=Strict/);
+    const cookie = cookieHeader.split(";")[0];
+    assert.equal(
+      (
+        await fetch(base + "/api/accounts", {
+          headers: { Cookie: cookie + "tampered" },
+        })
+      ).status,
+      401,
+    );
+    const failure = await fetch(base + "/api/accounts", {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(failure.status, 500);
+    assert.ok(!(await failure.text()).includes("password"));
+    failAccounts = false;
+    assert.equal(
+      (
+        await fetch(base + "/api/transactions/x", {
+          method: "PATCH",
+          headers: { Origin: config.origin, Cookie: cookie },
+          body: JSON.stringify({
+            category: "",
+            splits: [{ category: "X", amountMinor: 1.5 }],
+          }),
+        })
+      ).status,
+      400,
+    );
+    await pool.query(
+      "INSERT INTO household_users(email,name,role,password_hash) SELECT 'member@example.test','Fictional member','member',password_hash FROM household_users WHERE email=$1",
+      [setup.email],
+    );
+    const memberLogin = await request("/api/login", {
+      email: "member@example.test",
+      password: setup.password,
+    });
+    assert.equal(memberLogin.status, 200);
+    const memberCookie = memberLogin.headers.get("set-cookie").split(";")[0];
+    for (const path of ["/api/settings/provider", "/api/users"])
+      assert.equal(
+        (await fetch(base + path, { headers: { Cookie: memberCookie } }))
+          .status,
+        403,
+        path,
+      );
+    const memberAccounts = await (
+      await fetch(base + "/api/accounts", { headers: { Cookie: memberCookie } })
+    ).json();
+    assert.deepEqual(memberAccounts.accounts, []);
+    const memberTransactions = await (
+      await fetch(base + "/api/transactions", {
+        headers: { Cookie: memberCookie },
+      })
+    ).json();
+    assert.deepEqual(memberTransactions.transactions, []);
+    const memberReport = await (
+      await fetch(base + "/api/dashboard", {
+        headers: { Cookie: memberCookie },
+      })
+    ).json();
+    assert.equal(memberReport.expensesMinor, "0");
+    const memberSession = await (
+      await fetch(base + "/api/session", { headers: { Cookie: memberCookie } })
+    ).json();
+    assert.equal(memberSession.user.role, "member");
+    assert.equal(
+      (await request("/api/logout", {}, { Cookie: cookie })).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(base + "/api/accounts", { headers: { Cookie: cookie } }))
+        .status,
+      401,
+    );
+  },
+);

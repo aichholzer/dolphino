@@ -64,6 +64,7 @@ test(
       await settings.init();
       await first.init();
       await first.saveSettings({
+        audienceConfirmed: true,
         smtp: {
           enabled: true,
           from: "from@example.com",
@@ -112,6 +113,7 @@ test(
       assert.equal(exhausted.status, "failed");
       assert.match(exhausted.error, /uncertain after restart/);
       await first.saveSettings({
+        audienceConfirmed: true,
         smtp: {
           enabled: false,
           from: "from@example.com",
@@ -183,6 +185,7 @@ test(
         "restart respects provider retry deadline",
       );
       await first.saveSettings({
+        audienceConfirmed: true,
         smtp: {
           enabled: true,
           from: "from@example.com",
@@ -197,6 +200,7 @@ test(
       );
       assert(removed);
       await first.saveSettings({
+        audienceConfirmed: true,
         smtp: {
           enabled: true,
           from: "from@example.com",

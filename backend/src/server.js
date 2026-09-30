@@ -1,4 +1,7 @@
 import pg from "pg";
+import { createHouseholdAuth } from "./household-auth.js";
+import { createUserManagement } from "./users.js";
+import { ensureAccessSchema } from "./access.js";
 import { createNotificationIntegration } from "./notifications.js";
 import { createTelegramPairing, sendTelegram } from "./telegram.js";
 import { createImportHealth } from "./import-health.js";
@@ -50,7 +53,14 @@ await notifications.init();
 const telegram = createTelegramPairing({ pool, settings });
 await telegram.init();
 const importHealth = createImportHealth({ pool, store, config, integration });
+const auth = createHouseholdAuth({ pool, config });
+await auth.init();
+await ensureAccessSchema(pool);
+const users = createUserManagement({ pool, config, settings });
+await users.init();
 const app = createApp({
+  auth,
+  users,
   store,
   integration,
   classification,

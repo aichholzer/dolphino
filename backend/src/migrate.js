@@ -1,4 +1,7 @@
 import pg from "pg";
+import { createHouseholdAuth } from "./household-auth.js";
+import { createUserManagement } from "./users.js";
+import { ensureAccessSchema } from "./access.js";
 import { createNotificationIntegration } from "./notifications.js";
 import { createSettingsStore } from "./settings.js";
 import { createRegistration } from "./registration.js";
@@ -27,6 +30,9 @@ try {
     settings,
     mode: config.mode,
   }).init();
+  await createHouseholdAuth({ pool, config }).init();
+  await ensureAccessSchema(pool);
+  await createUserManagement({ pool, config, settings }).init();
   console.log("Migrations complete");
 } finally {
   await pool.end();

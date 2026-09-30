@@ -14,16 +14,15 @@ chmod 600 .env
 mkdir -p secrets
 chmod 700 secrets
 npm ci
-read -rsp "Profe password: " profe_password; printf "\n"
-printf "%s" "$profe_password" | npm run password --silent
-unset profe_password
+# First live setup only; never print or commit this installation proof.
+(umask 077; openssl rand -hex 32 > secrets/bootstrap_token)
 ```
 
-Run the hidden password prompt above in Bash. The password command creates a salted scrypt hash for `PROFE_PASSWORD_HASH`; use a unique, long password. Generate `SESSION_SECRET` locally with `openssl rand -hex 32`. Do not paste secrets into chat or put them in Git. A password hash is still sensitive. Protect `.env`, backups and your secret files.
+For named household authentication, follow [restricted first-administrator setup and shared-password upgrade](household-auth.md). Configure `PROFE_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token` for first setup, then remove it after the administrator is established. Keep the app private during setup. Existing ledger data and APP_SECRET are preserved on upgrade; old shared-password sessions are invalidated. Do not paste secrets into chat or put them in Git. Protect `.env`, backups and secret files.
 
-Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse the session secret. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
+Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse an account password or bootstrap token. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
 
-Each of `DATABASE_URL`, `PROFE_PASSWORD_HASH`, `SESSION_SECRET`, `APP_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
+Each of `DATABASE_URL`, `PROFE_BOOTSTRAP_TOKEN`, `APP_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
 
 In live mode set:
 
@@ -33,12 +32,12 @@ APP_ORIGIN=https://profe.example.home
 PROFE_CURRENCY=AUD
 PROFE_TIMEZONE=Australia/Brisbane
 DATABASE_URL_FILE=/run/secrets/database_url
-PROFE_PASSWORD_HASH_FILE=/run/secrets/password_hash
-SESSION_SECRET_FILE=/run/secrets/session_secret
+PROFE_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token
+# Remove the bootstrap variable/file after first administrator setup.
 APP_SECRET_FILE=/run/secrets/app_secret
 ```
 
-Configure a trusted HTTPS reverse proxy (for example Caddy or nginx) to forward to `127.0.0.1:3001`, preserving the Host header. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Password rotation and session-secret rotation should be followed by an app restart; rotating the session secret invalidates existing sessions. Keep the service private to your home network or VPN.
+Configure a trusted HTTPS reverse proxy (for example Caddy or nginx) to forward to `127.0.0.1:3001`, preserving the Host header. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Named account passwords and session revocation are managed through the app; legacy shared-password cookies are invalid after upgrading. Keep the service private to your home network or VPN.
 
 ## Default: existing LAN PostgreSQL
 

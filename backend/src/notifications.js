@@ -16,6 +16,7 @@ const secret = z.preprocess(
 const defaultFields = ["category", "period", "amount", "remaining"];
 const schema = z
   .object({
+    audienceConfirmed: z.boolean().optional(),
     summaryFields: z
       .array(z.enum(["category", "period", "amount", "remaining"]))
       .min(1)
@@ -80,10 +81,16 @@ export function smtpOptions(value) {
   }
 }
 export async function sendSmtp(
-  { smtpUrl, from, to, text, messageId },
+  { smtpUrl, from, to, text, messageId, subject = "Profe budget notification" },
   createTransport = nodemailer.createTransport,
 ) {
   if (!email.safeParse(from).success || !email.safeParse(to).success)
+    throw invalid();
+  if (
+    typeof subject !== "string" ||
+    subject.length > 150 ||
+    /[\r\n]/.test(subject)
+  )
     throw invalid();
   const transport = createTransport(smtpOptions(smtpUrl));
   let timer;
@@ -92,7 +99,7 @@ export async function sendSmtp(
       transport.sendMail({
         from,
         to,
-        subject: "Profe budget notification",
+        subject,
         text,
         messageId,
         disableFileAccess: true,
@@ -178,10 +185,14 @@ export function createNotificationIntegration({
         [mode],
       )
     ).rows;
+    const audience = (await settings.getValue("notifications.audience")) || {
+      confirmed: false,
+    };
     const summaryFields =
       (await settings.getValue("notifications.summaryFields"))?.fields ||
       defaultFields;
     return {
+      audienceConfirmed: audience.confirmed === true,
       summaryFields,
       summaryPreview: notificationText(
         {
@@ -194,14 +205,14 @@ export function createNotificationIntegration({
         summaryFields,
       ),
       smtp: {
-        enabled: smtp.enabled,
+        enabled: smtp.enabled && audience.confirmed === true,
         from: smtp.from,
         recipients: smtp.recipients,
         configured: smtpConfigured,
         credentialConfigured: smtpConfigured,
       },
       telegram: {
-        enabled: telegram.enabled,
+        enabled: telegram.enabled && audience.confirmed === true,
         paired: !!telegram.chatId,
         chatConfigured: !!telegram.chatId,
         configured: telegramConfigured,
@@ -220,6 +231,32 @@ export function createNotificationIntegration({
     try {
       await c.query("BEGIN");
       await c.query("SELECT pg_advisory_xact_lock(17092382)");
+      const priorAudience = (await settings.getValue(
+        "notifications.audience",
+        c,
+      )) || { confirmed: false };
+      const audience =
+        parsed.data.audienceConfirmed === undefined
+          ? priorAudience
+          : {
+              confirmed: parsed.data.audienceConfirmed,
+              confirmedAt:
+                priorAudience.confirmed === parsed.data.audienceConfirmed
+                  ? priorAudience.confirmedAt
+                  : new Date().toISOString(),
+            };
+      if (parsed.data.audienceConfirmed !== undefined)
+        await settings.setValue("notifications.audience", audience, c);
+      if (
+        (parsed.data.smtp?.enabled || parsed.data.telegram?.enabled) &&
+        !audience.confirmed
+      )
+        throw Object.assign(
+          Error(
+            "Confirm the whole-household notification audience before enabling delivery",
+          ),
+          { status: 409 },
+        );
       if (parsed.data.summaryFields)
         await settings.setValue(
           "notifications.summaryFields",
@@ -318,6 +355,10 @@ export function createNotificationIntegration({
     const c = await pool.connect();
     try {
       await c.query("BEGIN");
+      const audience = (await settings.getValue(
+        "notifications.audience",
+        c,
+      )) || { confirmed: false };
       const events = (
         await c.query(
           "SELECT * FROM notification_events WHERE scanned_at IS NULL AND mode=$1 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED",
@@ -325,7 +366,11 @@ export function createNotificationIntegration({
         )
       ).rows;
       for (const event of events) {
-        if (event.mode === mode) {
+        if (
+          event.mode === mode &&
+          audience.confirmed &&
+          new Date(event.created_at) >= new Date(audience.confirmedAt || 0)
+        ) {
           for (const channel of ["smtp", "telegram"]) {
             const value = await config(channel, c);
             if (
@@ -405,9 +450,15 @@ export function createNotificationIntegration({
       ).rows;
       for (const job of jobs) {
         const value = await config(job.channel, lock);
+        const audience = (await settings.getValue(
+          "notifications.audience",
+          lock,
+        )) || { confirmed: false };
         const recipients =
           job.channel === "smtp" ? value.recipients : [value.chatId];
         if (
+          !audience.confirmed ||
+          new Date(job.event_at) < new Date(audience.confirmedAt || 0) ||
           !value.enabled ||
           !recipients.includes(job.recipient) ||
           new Date(job.event_at) < new Date(value.enabledAt || 0)

@@ -5,7 +5,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { Store } from "../src/store.js";
 import { createSettingsStore } from "../src/settings.js";
 import { createApp } from "../src/app.js";
-import { hashPassword } from "../src/auth.js";
+import { createHouseholdAuth } from "../src/household-auth.js";
 test(
   "authenticated settings enforce origin, write-only secrets, explicit model cost consent and rate limits",
   { skip: !process.env.DATABASE_URL },
@@ -27,7 +27,7 @@ test(
       origin: "https://profe.test",
       port: 0,
       host: "127.0.0.1",
-      passwordHash: hashPassword("synthetic-password"),
+      bootstrapToken: randomBytes(32).toString("base64"),
       sessionSecret: randomBytes(32).toString("hex"),
       currency: "AUD",
       timezone: "Australia/Brisbane",
@@ -42,7 +42,19 @@ test(
     await settings.init();
     let modelCalls = 0,
       listCalls = 0;
+    const auth = createHouseholdAuth({ pool, config });
+    await auth.init();
+    await auth.bootstrap(
+      { headers: {}, socket: { remoteAddress: "127.0.0.1" } },
+      {
+        email: "admin@example.test",
+        name: "Fictional admin",
+        password: "synthetic-password",
+        bootstrapToken: config.bootstrapToken,
+      },
+    );
     const app = createApp({
+      auth,
       store,
       config,
       settings,
@@ -81,7 +93,10 @@ test(
     const login = await fetch(base + "/api/login", {
       method: "POST",
       headers: { Origin: config.origin },
-      body: JSON.stringify({ password: "synthetic-password" }),
+      body: JSON.stringify({
+        email: "admin@example.test",
+        password: "synthetic-password",
+      }),
     });
     const cookie = login.headers.get("set-cookie").split(";")[0];
     const req = (path, method = "GET", value, origin = config.origin) =>

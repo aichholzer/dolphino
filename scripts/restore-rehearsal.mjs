@@ -7,6 +7,12 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import {
+  createHouseholdAuth,
+  hashHouseholdPassword,
+} from "../backend/src/household-auth.js";
+import { createUserManagement } from "../backend/src/users.js";
+import { ensureAccessSchema } from "../backend/src/access.js";
 import { createSettingsStore } from "../backend/src/settings.js";
 import { createNotificationIntegration } from "../backend/src/notifications.js";
 import { createRegistration } from "../backend/src/registration.js";
@@ -85,6 +91,61 @@ try {
     appSecret: syntheticMasterKey,
   });
   await settings.init();
+  const authConfig = {
+    mode: "live",
+    origin: "https://profe.example.invalid",
+    bootstrapToken: randomBytes(32).toString("base64"),
+  };
+  const householdAuth = createHouseholdAuth({
+    pool: srcPool,
+    config: authConfig,
+  });
+  await householdAuth.init();
+  await createUserManagement({
+    pool: srcPool,
+    config: authConfig,
+    settings,
+    sendMail: async () => {
+      throw Error("Email forbidden in restore rehearsal");
+    },
+  }).init();
+  await ensureAccessSchema(srcPool);
+  const bootstrap = await householdAuth.bootstrap(
+    { headers: {}, socket: { remoteAddress: "127.0.0.1" } },
+    {
+      email: "restore-admin@example.invalid",
+      name: "Fictional administrator",
+      password: "Synthetic recovery fixture password only",
+      bootstrapToken: authConfig.bootstrapToken,
+    },
+  );
+  const authRequest = { headers: { cookie: bootstrap.cookie.split(";")[0] } };
+  const memberId = randomUUID();
+  await srcPool.query(
+    "INSERT INTO household_users(id,email,name,role,password_hash) VALUES($1,'restore-member@example.invalid','Fictional member','member',$2)",
+    [
+      memberId,
+      await hashHouseholdPassword("Synthetic member fixture password only"),
+    ],
+  );
+  const inviteHash = createHash("sha256").update(randomBytes(32)).digest("hex");
+  await srcPool.query(
+    "INSERT INTO household_invitations(email,role,purpose,token_hash,expires_at,delivery_state) VALUES('invite@example.invalid','member','invite',$1,now()+interval '1 day','operator')",
+    [inviteHash],
+  );
+  const grantedAccount = (await store.listAccounts())[0];
+  const grantedBudget = (
+    await srcPool.query("SELECT id FROM budgets ORDER BY id LIMIT 1")
+  ).rows[0];
+  await srcPool.query(
+    "INSERT INTO user_account_grants(user_id,mode,account_id,permission) VALUES($1,'demo',$2,'view')",
+    [memberId, grantedAccount.id],
+  );
+  await srcPool.query(
+    "INSERT INTO user_budget_grants(user_id,mode,budget_id,permission) VALUES($1,'demo',$2,'edit')",
+    [memberId, grantedBudget.id],
+  );
+
   await settings.saveProvider({
     provider: "openai",
     model: "synthetic-rehearsal",
@@ -225,6 +286,39 @@ try {
   );
   const dstPool = connect(target);
   const restored = new Store(dstPool, { mode: "demo" });
+  const restoredAuth = createHouseholdAuth({
+    pool: dstPool,
+    config: { mode: "live" },
+  });
+  assert.equal(
+    (await restoredAuth.session(authRequest)).email,
+    "restore-admin@example.invalid",
+  );
+  assert.equal((await restoredAuth.setupStatus()).setupRequired, false);
+  assert.equal(
+    (await dstPool.query("SELECT token_hash FROM household_invitations"))
+      .rows[0].token_hash,
+    inviteHash,
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT permission FROM user_account_grants WHERE user_id=$1",
+        [memberId],
+      )
+    ).rows[0].permission,
+    "view",
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT permission FROM user_budget_grants WHERE user_id=$1",
+        [memberId],
+      )
+    ).rows[0].permission,
+    "edit",
+  );
+
   const restoredSettings = createSettingsStore({
     pool: dstPool,
     appSecret: syntheticMasterKey,
@@ -317,6 +411,7 @@ try {
           pendingMinor: r.pendingMinor,
         })),
         checks: [
+          "Household users, hashed sessions, hashed invitations, closed bootstrap and independent resource grants survive",
           "Every row in every public table matches exactly",
           "Complete financial reports including budgets/coverage match",
           "Manual correction and audit survive",

@@ -49,6 +49,12 @@ await page.route("**/api/**", async (route) => {
   if (path === "/api/session")
     data = {
       authenticated: true,
+      user: {
+        id: "admin-test",
+        email: "admin@example.com",
+        name: "Admin",
+        role: "admin",
+      },
       demo: false,
       currency: "AUD",
       timeZone: "Australia/Brisbane",

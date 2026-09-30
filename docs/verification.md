@@ -58,3 +58,7 @@ The backup/restore rehearsal preserves all 20 tables, including four encrypted s
 Final packaging inspection moved the shared exact-money formatter into `shared/` and explicitly copies it into both Docker stages, preventing a runtime import of an omitted frontend source file. Docker base-image download remains the only container build blocker.
 
 The final copy clarification removes contradictory legacy Redbark setup instructions. Settings now names both subscribed thin events, explains no sync provisioning or instant bank feed, and confirms independent polling. Transaction history explicitly means all imported records, with navigation to bounded backfill. Production build, both browser suites (including the new registration confirmation and backfill link), formatting and diff checks passed after this change.
+
+## Household authentication and granular grants milestone
+
+72 tests passed with no skips against isolated PostgreSQL, including bootstrap races, invitation lifecycle, session revocation, disjoint grants, aggregate-only budgets, guessed IDs, transfer privacy and scoped exports. Production build/lint/format passed. All three browser suites passed (actual demo, enhanced settings and mocked household roles). Backup/restore matched all 29 tables and financial totals. Independent security findings and exact limitations are documented in household-security-review.md. The requested read-only AI assistant is a subsequent milestone and is not included in this authentication commit.

@@ -122,6 +122,7 @@ test(
       await settings.init();
       await n.init();
       const config = {
+        audienceConfirmed: true,
         smtp: {
           enabled: true,
           from: "from@example.com",
@@ -130,6 +131,10 @@ test(
             "smtps://synthetic:synthetic-password@smtp-relay.brevo.com:465",
         },
       };
+      await assert.rejects(
+        n.saveSettings({ ...config, audienceConfirmed: false }),
+        /audience/,
+      );
       await n.saveSettings(config);
       const publicState = await n.getPublicSettings();
       assert.ok(!JSON.stringify(publicState).includes("synthetic-password"));
@@ -268,6 +273,28 @@ test(
       );
       assert.ok(
         !JSON.stringify(await telegram.deliveries()).includes("token-private"),
+      );
+      await n.saveSettings({ audienceConfirmed: false });
+      assert.equal((await n.getPublicSettings()).telegram.enabled, false);
+      await pool.query(
+        "UPDATE notification_outbox SET next_attempt_at=now(),updated_at=now()-interval '10 seconds'",
+      );
+      const beforeConsentRevocation = telegramSends;
+      await telegram.processPending();
+      assert.equal(
+        telegramSends,
+        beforeConsentRevocation,
+        "revoked audience consent prevents queued financial delivery",
+      );
+      await event(7);
+      await telegram.scan();
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT count(*)::int n FROM notification_outbox o JOIN notification_events e ON e.id=o.event_id WHERE e.revision=7",
+          )
+        ).rows[0].n,
+        0,
       );
       await telegram.stop();
     } finally {

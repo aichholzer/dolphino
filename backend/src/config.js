@@ -13,8 +13,7 @@ export function readConfig(env = process.env) {
     port: Number(env.PORT || 3001),
     host: env.HOST || "0.0.0.0",
     databaseUrl: secret(env, "DATABASE_URL"),
-    passwordHash: secret(env, "PROFE_PASSWORD_HASH"),
-    sessionSecret: secret(env, "SESSION_SECRET"),
+    bootstrapToken: secret(env, "PROFE_BOOTSTRAP_TOKEN"),
     appSecret: secret(env, "APP_SECRET"),
     origin: env.APP_ORIGIN || "http://localhost:3001",
     currency: env.PROFE_CURRENCY || "AUD",
@@ -45,15 +44,23 @@ export function readConfig(env = process.env) {
     throw Error(
       "DATABASE_URL or DATABASE_URL_FILE is required; no database fallback exists",
     );
+  let origin;
+  try {
+    origin = new URL(config.origin);
+  } catch {
+    throw Error("APP_ORIGIN must be a valid origin");
+  }
   if (
-    mode === "live" &&
-    (!/^scrypt:[a-f0-9]{32}:[a-f0-9]{128}$/.test(config.passwordHash) ||
-      config.sessionSecret.length < 32 ||
-      !config.origin.startsWith("https://"))
+    origin.username ||
+    origin.password ||
+    origin.search ||
+    origin.hash ||
+    origin.pathname !== "/" ||
+    (mode === "live" && origin.protocol !== "https:") ||
+    !["http:", "https:"].includes(origin.protocol)
   )
-    throw Error(
-      "Live mode requires a scrypt password hash, SESSION_SECRET of at least 32 characters, and HTTPS APP_ORIGIN",
-    );
+    throw Error("APP_ORIGIN must be an origin; live mode requires HTTPS");
+  config.origin = origin.origin;
   new Intl.DateTimeFormat("en", { timeZone: config.timezone });
   if (!/^[A-Z]{3}$/.test(config.currency)) throw Error("Invalid currency");
   return config;

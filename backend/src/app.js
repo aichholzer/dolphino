@@ -4,10 +4,35 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { z } from "zod";
 import { testProviderConnection, testProviderModel } from "./llm.js";
-import { createAuth } from "./auth.js";
+import { createAccessStore } from "./access.js";
+import { createHouseholdAuth } from "./household-auth.js";
 const minor = z.string().regex(/^-?\d{1,18}$/);
 const category = z.string().trim().min(1).max(100);
 const kind = z.enum(["expense", "income", "transfer", "refund"]);
+const grants = z
+  .object({
+    accounts: z
+      .array(
+        z
+          .object({
+            accountId: z.string().min(1).max(200),
+            access: z.enum(["view", "edit"]),
+          })
+          .strict(),
+      )
+      .max(1000),
+    budgets: z
+      .array(
+        z
+          .object({
+            budgetId: z.string().uuid(),
+            access: z.enum(["view", "edit"]),
+          })
+          .strict(),
+      )
+      .max(1000),
+  })
+  .strict();
 const correction = z
   .object({
     category: category.optional(),
@@ -68,19 +93,35 @@ export function createApp({
   notifications,
   telegram,
   importHealth,
+  auth = createHouseholdAuth({ pool: store.pool, config }),
+  users,
 }) {
-  const auth = createAuth(config);
   const app = rayo({
     host: config.host,
     port: config.port,
     notFound: (req, res) => staticFile(req, res),
     onError: (_e, _req, res) => send(res, { error: "Request failed" }, 500),
   });
+  const financialRoutes = new Set([
+    "/api/dashboard",
+    "/api/accounts",
+    "/api/accounts/:id",
+    "/api/transactions",
+    "/api/transactions/:id",
+    "/api/categories",
+    "/api/budgets",
+    "/api/budgets/:id",
+    "/api/reviews",
+    "/api/reviews/:id",
+    "/api/transactions/:id/audit",
+    "/api/export",
+  ]);
+  const ledger = (req) => req.accessStore || store;
   function route(
     method,
     path,
     handler,
-    { publicRoute = false, webhook = false } = {},
+    { publicRoute = false, webhook = false, allowMember = false } = {},
   ) {
     app[method](path, (req, res) => {
       Promise.resolve()
@@ -88,8 +129,18 @@ export function createApp({
           res.setHeader("X-Content-Type-Options", "nosniff");
           res.setHeader("Referrer-Policy", "no-referrer");
           res.setHeader("X-Frame-Options", "DENY");
-          if (!publicRoute && !auth.authenticated(req))
-            return send(res, { error: "Sign in required" }, 401);
+          if (!publicRoute) {
+            req.user = await auth.session(req);
+            if (!req.user) return send(res, { error: "Sign in required" }, 401);
+            if (
+              !allowMember &&
+              !financialRoutes.has(path) &&
+              req.user.role !== "admin"
+            )
+              return send(res, { error: "Administrator access required" }, 403);
+            if (financialRoutes.has(path))
+              req.accessStore = await createAccessStore(store, req.user);
+          }
           if (
             !webhook &&
             !["GET", "HEAD"].includes(req.method) &&
@@ -136,32 +187,156 @@ export function createApp({
   route(
     "get",
     "/api/session",
-    (req) => ({
-      authenticated: auth.authenticated(req),
-      demo: config.mode === "demo",
-      currency: config.currency,
-      timeZone: config.timezone,
-    }),
+    async (req) => {
+      const user = await auth.session(req);
+      const setup = await auth.setupStatus();
+      const permissions = user
+        ? await (await createAccessStore(store, user)).permissions()
+        : { financialAccess: false, manageSettings: false };
+      return {
+        authenticated: !!user,
+        user,
+        setupRequired: setup.setupRequired,
+        permissions,
+        demo: config.mode === "demo",
+        currency: config.currency,
+        timeZone: config.timezone,
+      };
+    },
+    { publicRoute: true },
+  );
+  route(
+    "post",
+    "/api/auth/bootstrap",
+    async (req, res) => {
+      const result = await auth.bootstrap(
+        req,
+        z
+          .object({
+            email: z.string().max(254),
+            name: z.string().max(100),
+            password: z.string().max(1024),
+            bootstrapToken: z.string().max(1024),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
+      res.setHeader("Set-Cookie", result.cookie);
+      return { ok: true, user: result.user };
+    },
     { publicRoute: true },
   );
   route(
     "post",
     "/api/login",
     async (req, res) => {
-      const { password } = z
-        .object({ password: z.string().max(1024) })
-        .parse(await body(req));
-      const result = auth.login(req, password);
-      if (result.error)
-        return send(res, { error: result.error }, result.status);
+      const result = await auth.login(
+        req,
+        z
+          .object({
+            email: z.string().max(254),
+            password: z.string().max(1024),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
       res.setHeader("Set-Cookie", result.cookie);
-      return { ok: true };
+      return { ok: true, user: result.user };
     },
     { publicRoute: true },
   );
-  route("post", "/api/logout", (_req, res) => {
-    res.setHeader("Set-Cookie", auth.logoutCookie);
-    return { ok: true };
+  route(
+    "post",
+    "/api/logout",
+    async (req, res) => {
+      const result = await auth.logout(req);
+      res.setHeader("Set-Cookie", result.cookie);
+      return { ok: true };
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/auth/change-password",
+    async (req, res) => {
+      sensitive("change-password");
+      const result = await auth.changePassword(
+        req,
+        z
+          .object({
+            currentPassword: z.string().max(1024),
+            newPassword: z.string().max(1024),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
+      res.setHeader("Set-Cookie", result.cookie);
+      return { ok: true };
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/auth/activate",
+    async (req) => {
+      await auth.rate(req, "activation");
+      return users.activate(
+        z
+          .object({
+            token: z.string().max(1024),
+            password: z.string().max(1024),
+            name: z.string().max(100).optional(),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
+    },
+    { publicRoute: true },
+  );
+  route("get", "/api/users/grant-options", (req) =>
+    users.grantOptions({ actorId: req.user.id }),
+  );
+  route("get", "/api/users", (req) => users.list({ actorId: req.user.id }));
+  route("post", "/api/users/invitations", async (req) => {
+    sensitive("invite-user");
+    return users.invite({
+      ...z
+        .object({
+          email: z.string().max(254),
+          role: z.enum(["admin", "member"]),
+          grants: grants.optional(),
+        })
+        .strict()
+        .parse(await body(req)),
+      actorId: req.user.id,
+    });
+  });
+  route("post", "/api/users/invitations/:id/resend", (req) => {
+    sensitive("resend-invite");
+    return users.resend({ actorId: req.user.id, invitationId: req.params.id });
+  });
+  route("post", "/api/users/invitations/:id/revoke", (req) => {
+    sensitive("revoke-invite");
+    return users.revoke({ actorId: req.user.id, invitationId: req.params.id });
+  });
+  route("patch", "/api/users/:id", async (req) => {
+    sensitive("change-role");
+    return users.updateUser({
+      ...z
+        .object({
+          role: z.enum(["admin", "member"]).optional(),
+          disabled: z.boolean().optional(),
+          grants: grants.optional(),
+        })
+        .strict()
+        .parse(await body(req)),
+      actorId: req.user.id,
+      userId: req.params.id,
+    });
+  });
+  route("post", "/api/users/:id/reset-password", (req) => {
+    sensitive("reset-password");
+    return users.resetPassword({ actorId: req.user.id, userId: req.params.id });
   });
   const filters = (req) => {
     const q = { ...req.query };
@@ -206,7 +381,7 @@ export function createApp({
       throw Object.assign(Error("Overview uses a month and period"), {
         status: 400,
       });
-    const r = await store.report(filters(req));
+    const r = await ledger(req).report(filters(req));
     return {
       ...r,
       trend: r.daily?.map((d) => ({ ...d, label: d.date })),
@@ -217,11 +392,11 @@ export function createApp({
     };
   };
   route("get", "/api/dashboard", report);
-  route("get", "/api/accounts", async () => ({
-    accounts: await store.listAccounts(),
+  route("get", "/api/accounts", async (req) => ({
+    accounts: await ledger(req).listAccounts(),
   }));
   route("patch", "/api/accounts/:id", async (req) =>
-    store.updateAccountSettings(
+    ledger(req).updateAccountSettings(
       req.params.id,
       z
         .object({
@@ -233,13 +408,16 @@ export function createApp({
     ),
   );
   route("get", "/api/transactions", async (req) =>
-    store.transactionPage(filters(req)),
+    ledger(req).transactionPage(filters(req)),
   );
   route("patch", "/api/transactions/:id", async (req) =>
-    store.correctTransaction(req.params.id, correction.parse(await body(req))),
+    ledger(req).correctTransaction(
+      req.params.id,
+      correction.parse(await body(req)),
+    ),
   );
-  route("get", "/api/categories", async () => ({
-    categories: await store.listCategories(),
+  route("get", "/api/categories", async (req) => ({
+    categories: await ledger(req).listCategories(),
   }));
   route("get", "/api/budgets", async (req) => {
     const r = await report(req);
@@ -253,7 +431,7 @@ export function createApp({
     };
   });
   route("put", "/api/budgets", async (req) =>
-    store.saveBudget(budget.parse(await body(req))),
+    ledger(req).saveBudget(budget.parse(await body(req))),
   );
   route("get", "/api/rules", async () => ({ rules: await store.listRules() }));
   route("post", "/api/rules", async (req) =>
@@ -269,8 +447,8 @@ export function createApp({
         .parse(await body(req)),
     ),
   );
-  route("get", "/api/reviews", async () => ({
-    reviews: await store.listReviews(),
+  route("get", "/api/reviews", async (req) => ({
+    reviews: await ledger(req).listReviews(),
   }));
   route("post", "/api/reviews/:id", async (req) => {
     const value = z
@@ -281,17 +459,17 @@ export function createApp({
       })
       .strict()
       .parse(await body(req));
-    return store.resolveReview(req.params.id, {
+    return ledger(req).resolveReview(req.params.id, {
       action: value.action === "dismiss" ? "keep" : value.action,
       pendingId: value.pendingId || value.transactionId,
     });
   });
   route("get", "/api/transactions/:id/audit", async (req) => ({
-    audit: await store.audit(req.params.id),
+    audit: await ledger(req).audit(req.params.id),
   }));
   route("delete", "/api/rules/:id", (req) => store.deleteRule(req.params.id));
   route("delete", "/api/budgets/:id", (req) =>
-    store.deleteBudget(req.params.id),
+    ledger(req).deleteBudget(req.params.id),
   );
   route("get", "/api/settings", async () => ({
     mode: config.mode,
@@ -470,12 +648,15 @@ export function createApp({
       integration.receiveWebhook(await body(req, true), req.headers),
     { publicRoute: true, webhook: true },
   );
-  route("post", "/api/transactions/:id/suggest", async (req) =>
-    classification.suggest(req.params.id),
-  );
+  route("post", "/api/transactions/:id/suggest", async (req) => {
+    await (
+      await createAccessStore(store, req.user)
+    ).assertTransaction(req.params.id, "edit");
+    return classification.suggest(req.params.id);
+  });
   route("get", "/api/export", async (req, res) => {
     const f = filters(req);
-    const snapshot = await store.exportSnapshot(f);
+    const snapshot = await ledger(req).exportSnapshot(f);
     res.setHeader(
       "Content-Disposition",
       'attachment; filename="profe-export.json"',

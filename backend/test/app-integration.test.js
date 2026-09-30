@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import { Store } from "../src/store.js";
 import { createApp } from "../src/app.js";
-import { hashPassword } from "../src/auth.js";
+import { createHouseholdAuth } from "../src/household-auth.js";
 test(
   "live provider outage leaves imported data, corrections, budgets and exports usable",
   { skip: !process.env.DATABASE_URL },
@@ -41,7 +41,7 @@ test(
       host: "127.0.0.1",
       currency: "AUD",
       timezone: "Australia/Brisbane",
-      passwordHash: hashPassword("fictional password"),
+      bootstrapToken: randomBytes(32).toString("base64"),
       sessionSecret: "s".repeat(32),
     };
     const integration = {
@@ -54,7 +54,18 @@ test(
         lastError: "provider_unreachable",
       }),
     };
-    const app = createApp({ store, integration, config });
+    const auth = createHouseholdAuth({ pool, config });
+    await auth.init();
+    await auth.bootstrap(
+      { headers: {}, socket: { remoteAddress: "127.0.0.1" } },
+      {
+        email: "admin@example.test",
+        name: "Fictional admin",
+        password: "fictional password",
+        bootstrapToken: config.bootstrapToken,
+      },
+    );
+    const app = createApp({ store, integration, config, auth });
     const server = await new Promise((resolve) => {
       const s = app.start(() => resolve(s));
     });
@@ -63,7 +74,10 @@ test(
     const login = await fetch(url + "/api/login", {
       method: "POST",
       headers: { Origin: config.origin },
-      body: JSON.stringify({ password: "fictional password" }),
+      body: JSON.stringify({
+        email: "admin@example.test",
+        password: "fictional password",
+      }),
     });
     const cookie = login.headers.get("set-cookie").split(";")[0];
     const request = (path, method = "GET", value) =>

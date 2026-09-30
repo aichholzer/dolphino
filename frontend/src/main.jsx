@@ -29,6 +29,8 @@ import {
 import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
 import "./style.css";
+import { AuthScreen, AccessPending, PasswordForm } from "./components/auth";
+import { UsersSettings } from "./components/users-settings";
 import { ImportHealth } from "./components/import-health";
 import { NotificationSettings } from "./components/notification-settings";
 import { IntegrationSettings } from "./components/integration-settings";
@@ -73,6 +75,13 @@ async function api(path, options = {}) {
 }
 function App() {
   const requestId = useRef(0);
+  const [activationToken, setActivationToken] = useState(
+    () => new URLSearchParams(location.hash.slice(1)).get("token") || "",
+  );
+  useEffect(() => {
+    if (location.hash.includes("token="))
+      history.replaceState(null, "", location.pathname + location.search);
+  }, []);
   const [session, setSession] = useState(null),
     [page, setPage] = useState("Overview"),
     [month, setMonth] = useState(new Date().toISOString().slice(0, 7)),
@@ -96,9 +105,38 @@ function App() {
     [to, setTo] = useState(""),
     [txPage, setTxPage] = useState(1),
     [accountEdit, setAccountEdit] = useState(null),
+    [changePassword, setChangePassword] = useState(false),
     [budget, setBudget] = useState(null),
     [rule, setRule] = useState(null),
     [busy, setBusy] = useState(false);
+  const isAdmin = !!session?.demo || session?.user?.role === "admin";
+  const hasAccountAccess =
+    isAdmin ||
+    !!session?.permissions?.accountAccess ||
+    !!session?.permissions?.accounts?.length;
+  const hasBudgetAccess =
+    isAdmin ||
+    !!session?.permissions?.budgetAccess ||
+    !!session?.permissions?.budgets?.length;
+  const hasFinancialAccess = isAdmin || hasAccountAccess || hasBudgetAccess;
+  const canEditAccount = (id) =>
+    isAdmin ||
+    session?.permissions?.accounts?.some(
+      (g) => g.accountId === id && g.access === "edit",
+    );
+  const canNavigate = (name) =>
+    isAdmin ||
+    (["Overview", "Transactions", "Accounts"].includes(name)
+      ? hasAccountAccess
+      : name === "Budgets"
+        ? hasBudgetAccess
+        : name === "Review"
+          ? session?.permissions?.accounts?.some((g) => g.access === "edit")
+          : false);
+  useEffect(() => {
+    if (session?.authenticated && !isAdmin && !canNavigate(page))
+      setPage(hasAccountAccess ? "Overview" : "Budgets");
+  }, [session, page, isAdmin, hasAccountAccess, hasBudgetAccess]);
   const query = new URLSearchParams({
     ...(page === "Transactions" && (allHistory || from || to || ids !== null)
       ? {}
@@ -149,7 +187,12 @@ function App() {
       }
       return;
     }
-    if (!session.authenticated && !session.demo) return;
+    if (
+      !session.demo &&
+      (!session.authenticated || !hasFinancialAccess || activationToken)
+    )
+      return;
+    if (!canNavigate(page)) return;
     const activeRequest = ++requestId.current;
     setLoading(true);
     setError("");
@@ -175,12 +218,13 @@ function App() {
     } finally {
       if (activeRequest === requestId.current) setLoading(false);
     }
-  }, [session, page, query]);
+  }, [session, page, query, activationToken]);
   useEffect(() => {
     const timer = setTimeout(load, search ? 220 : 0);
     return () => clearTimeout(timer);
   }, [load]);
   function navigate(next) {
+    if (!canNavigate(next)) next = hasAccountAccess ? "Overview" : "Budgets";
     if (next === page) {
       load();
       setMenu(false);
@@ -248,8 +292,20 @@ function App() {
     }
     navigate("Transactions");
   }
-  if (session && !session.authenticated && !session.demo)
-    return <Login onLogin={setSession} />;
+  if (session && !session.demo && (activationToken || !session.authenticated))
+    return (
+      <AuthScreen
+        api={api}
+        session={session}
+        activationToken={activationToken}
+        onAuthenticated={(s) => {
+          setActivationToken("");
+          setSession(s);
+        }}
+      />
+    );
+  if (session?.authenticated && !session.demo && !hasFinancialAccess)
+    return <AccessPending api={api} session={session} onSession={setSession} />;
   const transactions = data.transactions || [],
     accounts = data.accounts || [],
     budgets = data.budgets || [],
@@ -282,17 +338,19 @@ function App() {
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav>
-          {Object.entries(icons).map(([name, Icon]) => (
-            <button
-              key={name}
-              className={`nav-item ${page === name ? "active" : ""}`}
-              onClick={() => navigate(name)}
-            >
-              <Icon size={19} />
-              <span>{name}</span>
-              {name === "Overview" && <span className="nav-active-dot" />}
-            </button>
-          ))}
+          {Object.entries(icons)
+            .filter(([name]) => canNavigate(name))
+            .map(([name, Icon]) => (
+              <button
+                key={name}
+                className={`nav-item ${page === name ? "active" : ""}`}
+                onClick={() => navigate(name)}
+              >
+                <Icon size={19} />
+                <span>{name}</span>
+                {name === "Overview" && <span className="nav-active-dot" />}
+              </button>
+            ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="privacy">
@@ -309,11 +367,20 @@ function App() {
           <div className="profile">
             <div className="profile-avatar">S</div>
             <div>
-              <strong>Personal workspace</strong>
+              <strong>{session?.user?.name || "Personal workspace"}</strong>
               <small>
                 {session?.demo ? "Demo environment" : "Self-hosted"}
               </small>
             </div>
+            {!session?.demo && (
+              <button
+                aria-label="Change password"
+                title="Change password"
+                onClick={() => setChangePassword(true)}
+              >
+                <ShieldCheck size={17} />
+              </button>
+            )}
             {!session?.demo && (
               <button
                 aria-label="Sign out"
@@ -505,6 +572,12 @@ function App() {
                         </button>
                       ))}
                     </div>
+                  )}
+                  {!isAdmin && (
+                    <p className="setup-note">
+                      Overview totals include only accounts shared with you.
+                      Budget access is separate.
+                    </p>
                   )}
                   <p className="period-caption">
                     {data.startDate || data.monthly?.[0]?.month || month} —{" "}
@@ -711,8 +784,10 @@ function App() {
                   <p className="footnote" style={{ padding: "16px 20px 0" }}>
                     History includes records already imported into Profe. For
                     older provider records, use{" "}
-                    <button type="button" onClick={() => setPage("Settings")}>
-                      Settings → Import health &amp; history → backfill
+                    <button type="button" onClick={() => navigate("Settings")}>
+                      {isAdmin
+                        ? "Settings → Import health & history → backfill"
+                        : "Ask your administrator to import more history"}
                     </button>
                     .
                   </p>
@@ -868,14 +943,16 @@ function App() {
                               {money(t.amountMinor, t.currency)}
                             </td>
                             <td>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                aria-label={`Edit ${t.description}`}
-                                onClick={() => setEdit(t)}
-                              >
-                                Edit
-                              </Button>
+                              {(t.canEdit || canEditAccount(t.accountId)) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={`Edit ${t.description}`}
+                                  onClick={() => setEdit(t)}
+                                >
+                                  Edit
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -945,14 +1022,16 @@ function App() {
                             <Landmark size={24} />
                           </div>
                           <div className="account-controls">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={`Edit account ${a.name}`}
-                              onClick={() => setAccountEdit(a)}
-                            >
-                              Edit
-                            </Button>
+                            {(a.canEdit || canEditAccount(a.id)) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Edit account ${a.name}`}
+                                onClick={() => setAccountEdit(a)}
+                              >
+                                Edit
+                              </Button>
+                            )}
                           </div>
                         </div>
                         <button
@@ -1019,8 +1098,8 @@ function App() {
                   <p className="footnote">
                     Bank balances are provider snapshots. They do not prove the
                     accuracy of imported transaction totals. Account discovery
-                    runs every four hours. All linked accounts remain included
-                    in your financial picture.
+                    runs every four hours. Your financial picture includes the
+                    accounts you are permitted to view.
                   </p>
                 </>
               )}
@@ -1032,22 +1111,30 @@ function App() {
                       {a.message} · {money(a.amountMinor, currency)}
                     </div>
                   ))}
+                  {!isAdmin && (
+                    <p className="setup-note">
+                      Shared budgets show full household category totals. This
+                      does not grant access to their underlying transactions.
+                    </p>
+                  )}
                   <div className="section-toolbar">
                     <p>
                       Category caps · {month} · {currency}
                     </p>
-                    <Button
-                      onClick={() =>
-                        setBudget({
-                          category: "Groceries",
-                          capMinor: "50000",
-                          rolloverEnabled: false,
-                        })
-                      }
-                    >
-                      <Plus size={16} />
-                      Add budget
-                    </Button>
+                    {isAdmin && (
+                      <Button
+                        onClick={() =>
+                          setBudget({
+                            category: "Groceries",
+                            capMinor: "50000",
+                            rolloverEnabled: false,
+                          })
+                        }
+                      >
+                        <Plus size={16} />
+                        Add budget
+                      </Button>
+                    )}
                   </div>
                   <div className="budget-grid">
                     {budgets.map((b) => {
@@ -1065,13 +1152,15 @@ function App() {
                         <section className="card budget-card" key={b.category}>
                           <div className="card-heading">
                             <h2>{b.category}</h2>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setBudget(b)}
-                            >
-                              Edit
-                            </Button>
+                            {(isAdmin || b.canEdit || b.access === "edit") && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setBudget(b)}
+                              >
+                                Edit
+                              </Button>
+                            )}
                           </div>
                           <div className="budget-amount">
                             {money(b.spentMinor, currency)}
@@ -1104,16 +1193,18 @@ function App() {
                             <span>
                               Rollover: {money(b.rolloverMinor, currency)}
                             </span>
-                            <button
-                              onClick={() =>
-                                drill({
-                                  category: b.category,
-                                  ids: b.transactionIds,
-                                })
-                              }
-                            >
-                              View spending <ArrowRight size={13} />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() =>
+                                  drill({
+                                    category: b.category,
+                                    ids: b.transactionIds,
+                                  })
+                                }
+                              >
+                                View spending <ArrowRight size={13} />
+                              </button>
+                            )}
                           </div>
                         </section>
                       );
@@ -1321,6 +1412,11 @@ function App() {
                       </p>
                     )}
                   </section>
+                  <UsersSettings
+                    api={api}
+                    session={session}
+                    onSession={setSession}
+                  />
                   <IntegrationSettings api={api} demo={session?.demo} />
                   <NotificationSettings api={api} demo={session?.demo} />
                   <ImportHealth api={api} demo={session?.demo} />
@@ -1357,6 +1453,20 @@ function App() {
           </footer>
         </main>
       </div>
+      <Dialog
+        open={changePassword}
+        onOpenChange={setChangePassword}
+        title="Your account"
+        description={session?.user?.email}
+      >
+        <PasswordForm
+          api={api}
+          onChanged={() => {
+            setChangePassword(false);
+            setSession({ authenticated: false });
+          }}
+        />
+      </Dialog>
       <AccountDialog
         account={accountEdit}
         close={() => setAccountEdit(null)}
@@ -1368,6 +1478,7 @@ function App() {
         }}
       />
       <EditTransaction
+        canSuggest={isAdmin}
         transaction={edit}
         open={!!edit}
         close={() => setEdit(null)}
@@ -1379,6 +1490,7 @@ function App() {
         }}
       />
       <BudgetDialog
+        canChangeCategory={isAdmin}
         currency={currency}
         budget={budget}
         close={() => setBudget(null)}
@@ -1596,63 +1708,8 @@ function Empty({ title, detail, icon: Icon = Inbox }) {
     </div>
   );
 }
-function Login({ onLogin }) {
-  const [password, setPassword] = useState(""),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  return (
-    <div className="login-screen">
-      <form
-        className="card login-card"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          try {
-            await api("/login", {
-              method: "POST",
-              body: JSON.stringify({ password }),
-            });
-            onLogin(await api("/session"));
-          } catch (e) {
-            setError(e.message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <div className="brand">
-          profe<span className="brand-dot">.</span>
-        </div>
-        <h1>Welcome home.</h1>
-        <p className="muted">Sign in to your private financial workspace.</p>
-        <label>
-          Your password
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        {error && (
-          <p role="alert" className="negative">
-            {error}
-          </p>
-        )}
-        <Button disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-          <ArrowRight size={16} />
-        </Button>
-        <p className="footnote">
-          First time? Configure your single-user password on the server using
-          the deployment guide.
-        </p>
-      </form>
-    </div>
-  );
-}
 function EditTransaction({
+  canSuggest,
   transaction,
   open,
   close,
@@ -1664,13 +1721,18 @@ function EditTransaction({
     [suggesting, setSuggesting] = useState(false),
     [suggestion, setSuggestion] = useState(null);
   useEffect(() => {
+    if (!canSuggest) {
+      setLlmEnabled(false);
+      setSuggestion(null);
+      return;
+    }
     if (transaction) {
       setSuggestion(null);
       api("/settings")
         .then((s) => setLlmEnabled(!!s.llm?.enabled))
         .catch(() => setLlmEnabled(false));
     }
-  }, [transaction]);
+  }, [transaction, canSuggest]);
   const [category, setCategory] = useState(""),
     [kind, setKind] = useState("expense"),
     [splits, setSplits] = useState([]),
@@ -1744,7 +1806,7 @@ function EditTransaction({
             ))}
           </select>
         </label>
-        {llmEnabled && (
+        {canSuggest && llmEnabled && (
           <div className="ai-suggestion">
             <Button
               type="button"
@@ -1869,7 +1931,15 @@ function EditTransaction({
     </Dialog>
   );
 }
-function BudgetDialog({ budget, close, busy, save, serverError, currency }) {
+function BudgetDialog({
+  budget,
+  close,
+  busy,
+  save,
+  serverError,
+  currency,
+  canChangeCategory,
+}) {
   const [category, setCategory] = useState(""),
     [cap, setCap] = useState(""),
     [allocation, setAllocation] = useState("0.00"),
@@ -1916,6 +1986,7 @@ function BudgetDialog({ budget, close, busy, save, serverError, currency }) {
           Category
           <input
             required
+            disabled={!canChangeCategory}
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           />

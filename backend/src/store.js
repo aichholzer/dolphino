@@ -44,6 +44,7 @@ const txRow = (r) => ({
     r.provider_category ||
     "Uncategorized",
   kind: r.override_kind || r.kind,
+  internalTransfer: r.kind === "transfer" || r.override_kind === "transfer",
   splits: r.splits || [],
   note: r.note || "",
   reviewReason: r.review_reason,
@@ -84,6 +85,7 @@ export class Store {
       "004_accounts.sql",
       "005_settings.sql",
       "006_alert_notifications.sql",
+      "010_grants.sql",
     ])
       await this.pool.query(
         await readFile(
@@ -383,16 +385,26 @@ export class Store {
     if (filters.currency) add("t.currency=?", filters.currency);
     if (filters.accountId || filters.account)
       add("t.account_id=?", filters.accountId || filters.account);
+    if (filters.accountIds !== undefined)
+      add("t.account_id=ANY(?::text[])", filters.accountIds);
     if (filters.status) add("t.status=?", filters.status);
     if (filters.kind) add("COALESCE(o.kind,t.kind)=?", filters.kind);
     if (filters.category) {
       values.push(filters.category);
+      const categoryCondition = `((COALESCE(jsonb_array_length(o.splits),0)=0 AND COALESCE(o.category,NULLIF(t.classification_category,'Uncategorized'),t.ai_category,t.provider_category,'Uncategorized')=$${values.length}) OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(o.splits,'[]'::jsonb)) split WHERE split->>'category'=$${values.length}))`;
       clauses.push(
-        `((COALESCE(jsonb_array_length(o.splits),0)=0 AND COALESCE(o.category,NULLIF(t.classification_category,'Uncategorized'),t.ai_category,t.provider_category,'Uncategorized')=$${values.length}) OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(o.splits,'[]'::jsonb)) split WHERE split->>'category'=$${values.length}))`,
+        filters.redactTransfers
+          ? `((COALESCE(o.kind='transfer',false) OR t.kind='transfer') AND $${values.length}='Transfers' OR (NOT(COALESCE(o.kind='transfer',false) OR t.kind='transfer') AND ${categoryCondition}))`
+          : categoryCondition,
       );
     }
     if (filters.q || filters.search)
-      add("t.description ILIKE ?", `%${filters.q || filters.search}%`);
+      add(
+        filters.redactTransfers
+          ? "(CASE WHEN (o.kind='transfer' OR t.kind='transfer') THEN 'Internal transfer' ELSE t.description END) ILIKE ?"
+          : "t.description ILIKE ?",
+        `%${filters.q || filters.search}%`,
+      );
     if (filters.review)
       (add("t.review_reason IS NOT NULL", null), values.pop());
     if (filters.ids !== undefined) {
