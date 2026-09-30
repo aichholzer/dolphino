@@ -21,7 +21,9 @@ unset profe_password
 
 Run the hidden password prompt above in Bash. The password command creates a salted scrypt hash for `PROFE_PASSWORD_HASH`; use a unique, long password. Generate `SESSION_SECRET` locally with `openssl rand -hex 32`. Do not paste secrets into chat or put them in Git. A password hash is still sensitive. Protect `.env`, backups and your secret files.
 
-Each of `DATABASE_URL`, `PROFE_PASSWORD_HASH`, `SESSION_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
+Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse the session secret. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
+
+Each of `DATABASE_URL`, `PROFE_PASSWORD_HASH`, `SESSION_SECRET`, `APP_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
 
 In live mode set:
 
@@ -33,6 +35,7 @@ PROFE_TIMEZONE=Australia/Brisbane
 DATABASE_URL_FILE=/run/secrets/database_url
 PROFE_PASSWORD_HASH_FILE=/run/secrets/password_hash
 SESSION_SECRET_FILE=/run/secrets/session_secret
+APP_SECRET_FILE=/run/secrets/app_secret
 ```
 
 Configure a trusted HTTPS reverse proxy (for example Caddy or nginx) to forward to `127.0.0.1:3001`, preserving the Host header. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Password rotation and session-secret rotation should be followed by an app restart; rotating the session secret invalidates existing sessions. Keep the service private to your home network or VPN.
@@ -74,7 +77,7 @@ The override explicitly replaces the database URL with `db:5432` and clears `DAT
 5. A failed connection test pauses integration ingestion only. Imported live data, corrections, budgets and exports remain available during provider downtime.
 6. Review accounts, coverage and freshness. Set an explicit bounded backfill duration before importing history. A sync event or queued refresh does not imply fresh bank activity.
 
-Optional LLM assistance remains disabled unless its provider URL, model and key are configured. Choose an inexpensive compatible provider yourself. Treat the remote provider as a recipient of the minimal context (a truncated description with long digit sequences redacted, and the permitted category names; no amounts, account IDs or credentials); no financial credentials should ever be sent. Rule/manual categories remain usable without it.
+Optional LLM assistance remains disabled until a provider is configured and enabled in Settings. Select OpenAI with a manually entered model and API key, or Bedrock with region, model/inference profile, permanent access key ID and secret key (temporary session credentials are unsupported). Values are encrypted in PostgreSQL with `APP_SECRET`. Choose an inexpensive supported model yourself. Connection checks and synthetic model checks are separate; model tests disclose possible tiny inference costs. Treat the remote provider as a recipient of the minimal context (a truncated description with long digit sequences redacted, and the permitted category names; no amounts, account IDs or credentials); no financial credentials should ever be sent. Rule/manual categories remain usable without it.
 
 ## Export, backup and restore
 
@@ -86,7 +89,7 @@ For an external database, install PostgreSQL client tools at least as new as you
 PGHOST=your-db PGPORT=5432 PGUSER=profe PGDATABASE=profe scripts/backup.sh ./backups
 ```
 
-The script produces a custom-format consistent database snapshot with restrictive file permissions. Encrypt backups at rest, copy them off the application host, and record the application commit/version and non-secret configuration separately. Keep a separate encrypted backup of required secrets. Adopt a retention policy suitable for your finances. Stop ingestion during planned upgrades and take a backup first.
+The script produces a custom-format consistent database snapshot with restrictive file permissions. Encrypt backups at rest, copy them off the application host, and record the application commit/version and non-secret configuration separately. Keep a separate encrypted backup of required secrets, especially `APP_SECRET`, matched to the database backup version. A database dump alone cannot recover Settings credentials. Adopt a retention policy suitable for your finances. Stop ingestion during planned upgrades and take a backup first.
 
 For bundled PostgreSQL:
 
@@ -111,6 +114,10 @@ AUD and Australia/Brisbane are defaults, configurable server-side. Keep currenci
 
 Positive category rollover is opt-in and applies only across consecutive configured budget months. Negative overspend does not silently roll forward. Allocations are planning entries and do not affect bank spending. Historical import or correction recomputes the affected rollovers deterministically. Provider balance snapshots are not proof transaction coverage is complete; incompatible type, time or coverage remains unreconciled with a reason.
 
-Alerts are persisted and deduplicated in-app. Their state is recalculated in the same transaction as ingestion, corrections, accepted classifications and budget/rule changes, including affected rollover months. Dashboard visits are not required; external deliveries are not configured. Email, push, Slack delivery, multi-user roles, FX conversion, investment accounting, and audited disaster recovery automation are future work. Four-hour discovery and event-driven sync cannot promise instant bank freshness. Review source freshness and coverage before relying on totals.
+Alerts are persisted and deduplicated in-app. Their state is recalculated in the same transaction as ingestion, corrections, accepted classifications and budget/rule changes, including affected rollover months. Dashboard visits are not required; optional Telegram and SMTP delivery use an encrypted configuration and durable outbox; see [notification setup](notifications.md). Push, Slack delivery, multi-user roles, FX conversion, investment accounting, and audited disaster recovery automation are future work. Four-hour discovery and event-driven sync cannot promise instant bank freshness. Review source freshness and coverage before relying on totals.
 
 Configured AI processes unresolved posted imports automatically using durable jobs, after manual overrides, rules and useful provider categories. `LLM_AUTO_CLASSIFY=false` disables automatic processing while keeping on-demand suggestions. `LLM_AUTO_APPLY=false` is the default: automatic category application requires explicit opt-in. `LLM_DAILY_REQUEST_LIMIT=20` and `LLM_BATCH_SIZE=5` bound request volume; see [classification behavior and limits](classification.md).
+
+Account labels and descriptions in Profe are local overrides, retained across provider refreshes. Every connected account remains included in synchronization, classification, the overview and budgets; account disabling is not supported. Clicking an account opens its paginated transaction history, with adjustable dates and an all-history option. Confirmed internal transfers and card repayments remain excluded from spending, including in an account-scoped list. The overview offers 1, 2, 3, 4 or 6 calendar months ending in the selected month, a monthly comparison and aggregate drilldowns; the current month is marked partial. Monthly budget caps remain scoped to the selected final month.
+
+JSON exports include the complete selection, irrespective of the transaction table's current page. For a month/period export, `summary` uses the same full-period report as the overview and `selectionSummary` applies optional transaction filters; both scopes are labeled. Date-range and all-history exports summarize exactly the exported records. Monetary values remain integer minor-unit strings throughout.

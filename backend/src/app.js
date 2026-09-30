@@ -1,7 +1,9 @@
 import rayo from "rayo";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { z } from "zod";
+import { testProviderConnection, testProviderModel } from "./llm.js";
 import { createAuth } from "./auth.js";
 const minor = z.string().regex(/^-?\d{1,18}$/);
 const category = z.string().trim().min(1).max(100);
@@ -55,7 +57,18 @@ function send(res, data, status = 200) {
   });
   res.end(JSON.stringify(data));
 }
-export function createApp({ store, integration, classification, config }) {
+export function createApp({
+  store,
+  integration,
+  classification,
+  config,
+  settings,
+  registration,
+  providerDependencies,
+  notifications,
+  telegram,
+  importHealth,
+}) {
   const auth = createAuth(config);
   const app = rayo({
     host: config.host,
@@ -152,7 +165,13 @@ export function createApp({ store, integration, classification, config }) {
   });
   const filters = (req) => {
     const q = { ...req.query };
-    if (!q.month) {
+    if (
+      !q.month &&
+      q.ids === undefined &&
+      q.allHistory !== "true" &&
+      !q.from &&
+      !q.to
+    ) {
       const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: config.timezone,
         year: "numeric",
@@ -164,9 +183,29 @@ export function createApp({ store, integration, classification, config }) {
       throw Object.assign(Error("Invalid month"), { status: 400 });
     if (q.currency && !/^[A-Z]{3}$/.test(q.currency))
       throw Object.assign(Error("Invalid currency"), { status: 400 });
-    return { ...q, currency: q.currency || config.currency };
+    if (q.months && ![1, 2, 3, 4, 6].includes(Number(q.months)))
+      throw Object.assign(Error("Invalid overview period"), { status: 400 });
+    for (const field of ["from", "to"])
+      if (
+        q[field] &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(q[field]) ||
+          !Number.isFinite(Date.parse(q[field])) ||
+          new Date(q[field]).toISOString().slice(0, 10) !== q[field])
+      )
+        throw Object.assign(Error("Invalid date"), { status: 400 });
+    if (q.from && q.to && q.from > q.to)
+      throw Object.assign(Error("Invalid date range"), { status: 400 });
+    return {
+      ...q,
+      months: Number(q.months || 1),
+      currency: q.currency || config.currency,
+    };
   };
   const report = async (req) => {
+    if (req.query.allHistory || req.query.from || req.query.to)
+      throw Object.assign(Error("Overview uses a month and period"), {
+        status: 400,
+      });
     const r = await store.report(filters(req));
     return {
       ...r,
@@ -181,9 +220,21 @@ export function createApp({ store, integration, classification, config }) {
   route("get", "/api/accounts", async () => ({
     accounts: await store.listAccounts(),
   }));
-  route("get", "/api/transactions", async (req) => ({
-    transactions: await store.listTransactions(filters(req)),
-  }));
+  route("patch", "/api/accounts/:id", async (req) =>
+    store.updateAccountSettings(
+      req.params.id,
+      z
+        .object({
+          label: z.string().trim().max(100).optional(),
+          description: z.string().trim().max(500).optional(),
+        })
+        .strict()
+        .parse(await body(req)),
+    ),
+  );
+  route("get", "/api/transactions", async (req) =>
+    store.transactionPage(filters(req)),
+  );
   route("patch", "/api/transactions/:id", async (req) =>
     store.correctTransaction(req.params.id, correction.parse(await body(req))),
   );
@@ -247,16 +298,170 @@ export function createApp({ store, integration, classification, config }) {
     currency: config.currency,
     timeZone: config.timezone,
     redbark: await integration.status(),
-    llm: {
-      enabled: !!(config.llmApiKey && config.llmBaseUrl && config.llmModel),
-      configured: !!(config.llmApiKey && config.llmBaseUrl && config.llmModel),
-      automaticClassification:
-        !!(config.llmApiKey && config.llmBaseUrl && config.llmModel) &&
-        config.llmAutoClassify !== false,
-      automaticApplication: config.llmAutoApply === true,
-      dailyRequestLimit: config.llmDailyRequestLimit ?? 20,
-    },
+    llm: settings
+      ? await settings.getPublicProvider()
+      : {
+          enabled: !!(config.llmApiKey && config.llmBaseUrl && config.llmModel),
+          configured: !!(
+            config.llmApiKey &&
+            config.llmBaseUrl &&
+            config.llmModel
+          ),
+          automaticClassification:
+            !!(config.llmApiKey && config.llmBaseUrl && config.llmModel) &&
+            config.llmAutoClassify !== false,
+          automaticApplication: config.llmAutoApply === true,
+          dailyRequestLimit: config.llmDailyRequestLimit ?? 20,
+        },
   }));
+  // Demo is intentionally unauthenticated: credential storage and external actions require live auth.
+  const sensitiveCalls = new Map();
+  function sensitive(action) {
+    if (config.mode !== "live")
+      throw Object.assign(
+        Error(
+          "Credential settings and external actions require authenticated live mode",
+        ),
+        { status: 409 },
+      );
+    const now = Date.now();
+    const prior = sensitiveCalls.get(action) || [];
+    const recent = prior.filter((t) => now - t < 60000);
+    if (recent.length >= 5)
+      throw Object.assign(
+        Error("Too many settings requests; retry in one minute"),
+        { status: 429 },
+      );
+    recent.push(now);
+    sensitiveCalls.set(action, recent);
+  }
+  route("get", "/api/settings/provider", () => settings.getPublicProvider());
+  route("put", "/api/settings/provider", async (req) => {
+    sensitive("save-provider");
+    return settings.saveProvider(await body(req));
+  });
+  route("post", "/api/settings/provider/test-connection", async () => {
+    sensitive("provider-test");
+    return testProviderConnection(
+      await settings.getProviderConfig(),
+      providerDependencies,
+    );
+  });
+  route("post", "/api/settings/provider/test-model", async (req) => {
+    sensitive("model-test");
+    z.object({ acknowledgeCost: z.literal(true) })
+      .strict()
+      .parse(await body(req));
+    return testProviderModel(
+      await settings.getProviderConfig(),
+      providerDependencies,
+    );
+  });
+  route("get", "/api/settings/webhook", () => registration.status());
+  route("post", "/api/settings/webhook/register", async (req) => {
+    sensitive("webhook-register");
+    if (!(await integration.status()).verified)
+      throw Object.assign(
+        Error("Test the Redbark connection successfully before registering"),
+        { status: 409 },
+      );
+    return registration.register(
+      z
+        .object({
+          publicBaseUrl: z.string().max(2048),
+          recoverSigningSecret: z.boolean().default(false),
+        })
+        .strict()
+        .parse(await body(req)),
+    );
+  });
+  route("post", "/api/settings/webhook/test", () => {
+    sensitive("webhook-test");
+    return registration.test();
+  });
+  route("get", "/api/import-health", () => importHealth.status());
+  route("post", "/api/import-health/backfill", async (req) => {
+    sensitive("backfill");
+    return importHealth.backfill(
+      z
+        .object({
+          accountId: z.string().min(1).max(200),
+          from: z.string().max(10),
+          to: z.string().max(10),
+        })
+        .strict()
+        .parse(await body(req)),
+    );
+  });
+  route("post", "/api/import-health/retry", async (req) => {
+    sensitive("import-retry");
+    return importHealth.retry(
+      z
+        .object({
+          jobId: z.union([
+            z.string().regex(/^\d+$/),
+            z.number().int().positive(),
+          ]),
+        })
+        .strict()
+        .parse(await body(req)),
+    );
+  });
+  route("get", "/api/settings/notifications", () =>
+    notifications.getPublicSettings(),
+  );
+  route("put", "/api/settings/notifications", async (req) => {
+    sensitive("notification-save");
+    return notifications.saveSettings(await body(req));
+  });
+  route("post", "/api/notifications/test", async (req) => {
+    sensitive("notification-test");
+    const { channel } = z
+      .object({ channel: z.enum(["smtp", "telegram"]) })
+      .strict()
+      .parse(await body(req));
+    return notifications.testChannel(channel);
+  });
+  route("get", "/api/notifications/deliveries", () =>
+    notifications.deliveries(),
+  );
+  route("post", "/api/notifications/:id/retry", (req) => {
+    sensitive("notification-retry");
+    return notifications.retry(req.params.id);
+  });
+  const pairingSession = (req) =>
+    createHash("sha256")
+      .update(
+        (req.headers.cookie || "")
+          .split(";")
+          .map((s) => s.trim())
+          .find((s) => s.startsWith("profe_session=")) || "",
+      )
+      .digest("hex");
+  route("get", "/api/settings/telegram/pair", (req) =>
+    telegram.status({ sessionId: pairingSession(req) }),
+  );
+  route("post", "/api/settings/telegram/pair", (req) => {
+    sensitive("telegram-pair");
+    return telegram.start({ sessionId: pairingSession(req) });
+  });
+  route("post", "/api/settings/telegram/poll", (req) => {
+    sensitive("telegram-poll");
+    return telegram.poll({ sessionId: pairingSession(req) });
+  });
+  route("post", "/api/settings/telegram/confirm", async (req) => {
+    sensitive("telegram-confirm");
+    return telegram.confirm({
+      ...z
+        .object({
+          pairingId: z.string().regex(/^[a-f0-9]{32}$/),
+          chatId: z.string().regex(/^-\d{1,19}$/),
+        })
+        .strict()
+        .parse(await body(req)),
+      sessionId: pairingSession(req),
+    });
+  });
   route("post", "/api/connection/test", () => integration.testConnection());
   route(
     "post",

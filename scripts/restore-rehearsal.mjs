@@ -2,11 +2,14 @@
 // Never accepts an existing source or target database name.
 import pg from "pg";
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { createSettingsStore } from "../backend/src/settings.js";
+import { createNotificationIntegration } from "../backend/src/notifications.js";
+import { createRegistration } from "../backend/src/registration.js";
 import { Store } from "../backend/src/store.js";
 import { ensureRedbarkSchema } from "../backend/src/worker.js";
 import { createClassificationIntegration } from "../backend/src/classification.js";
@@ -76,6 +79,89 @@ try {
     "INSERT INTO classification_usage(mode,day,requests) VALUES('demo',(now() AT TIME ZONE 'UTC')::date,3)",
   );
   await store.seedDemo();
+  const syntheticMasterKey = randomBytes(32).toString("base64");
+  const settings = createSettingsStore({
+    pool: srcPool,
+    appSecret: syntheticMasterKey,
+  });
+  await settings.init();
+  await settings.saveProvider({
+    provider: "openai",
+    model: "synthetic-rehearsal",
+    enabled: false,
+    apiKey: "synthetic-backup-key",
+  });
+  await settings.setSecret(
+    "redbark.webhook.signingSecret",
+    "redbark",
+    "synthetic-signing-key",
+  );
+  await createNotificationIntegration({
+    pool: srcPool,
+    settings,
+    mode: "demo",
+    sendTelegram: async () => {
+      throw Error("Network calls forbidden in restore rehearsal");
+    },
+    sendSmtpImpl: async () => {
+      throw Error("Network calls forbidden in restore rehearsal");
+    },
+  }).init();
+  await createRegistration({
+    pool: srcPool,
+    settings,
+    config: { mode: "demo" },
+    client: {},
+  }).init();
+  const extraCredentials = [
+    [
+      "notifications.smtp.url",
+      "smtp",
+      "smtps://fictional:synthetic-password@smtp.example.invalid:465",
+    ],
+    [
+      "notifications.telegram.botToken",
+      "telegram",
+      "123456789:synthetic_rehearsal_token_no_network",
+    ],
+  ];
+  for (const [setting, provider, value] of extraCredentials)
+    await settings.setSecret(setting, provider, value);
+  await srcPool.query(
+    "INSERT INTO webhook_registration(singleton,callback_url,destination_id,state,ping_event_id) VALUES(true,'https://profe.example.invalid/api/webhooks/redbark','ed_fictionalbackup','registered','evt_fictionalbackup')",
+  );
+  const notificationEvent = (
+    await srcPool.query(
+      "SELECT id FROM notification_events ORDER BY id LIMIT 1",
+    )
+  ).rows[0];
+  assert.ok(
+    notificationEvent,
+    "Financial writes must have produced durable notification events",
+  );
+  await srcPool.query(
+    "INSERT INTO notification_outbox(event_id,channel,recipient,status,attempts) VALUES($1,'smtp','fictional@example.invalid','pending',0),($1,'telegram','123456789','sent',1)",
+    [notificationEvent.id],
+  );
+  await srcPool.query(
+    "UPDATE notification_events SET scanned_at=now() WHERE id=$1",
+    [notificationEvent.id],
+  );
+  await srcPool.query(
+    "INSERT INTO redbark_jobs(dedupe_key,params,status,attempts,last_error) VALUES('backfill:synthetic-rehearsal',$1,'queued',1,'provider_http_429')",
+    [
+      {
+        accountId: "acct_fictionalbackup",
+        from: "2026-08-01",
+        to: "2026-08-31",
+      },
+    ],
+  );
+  const firstAccount = (await store.listAccounts())[0];
+  await store.updateAccountSettings(firstAccount.id, {
+    label: "Fictional local label",
+    description: "Retained during restore",
+  });
   const transaction = (await store.listTransactions()).find(
     (t) => t.status === "posted" && t.kind === "expense",
   );
@@ -139,6 +225,48 @@ try {
   );
   const dstPool = connect(target);
   const restored = new Store(dstPool, { mode: "demo" });
+  const restoredSettings = createSettingsStore({
+    pool: dstPool,
+    appSecret: syntheticMasterKey,
+  });
+  assert.equal(
+    (await restoredSettings.getProviderConfig()).llmApiKey,
+    "synthetic-backup-key",
+  );
+  assert.equal(
+    await restoredSettings.getSecret(
+      "redbark.webhook.signingSecret",
+      "redbark",
+    ),
+    "synthetic-signing-key",
+  );
+  for (const [setting, provider, value] of extraCredentials)
+    assert.equal(await restoredSettings.getSecret(setting, provider), value);
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT count(*)::int count FROM notification_outbox WHERE status='pending'",
+      )
+    ).rows[0].count,
+    1,
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT count(*)::int count FROM notification_outbox WHERE status='sent'",
+      )
+    ).rows[0].count,
+    1,
+  );
+  assert.equal(
+    (await restored.listAccounts()).find((a) => a.id === firstAccount.id).name,
+    "Fictional local label",
+  );
+  const noKeySettings = createSettingsStore({ pool: dstPool });
+  assert.equal(
+    (await noKeySettings.getProviderConfig()).llmCredentialsUnavailable,
+    true,
+  );
   assert.deepEqual(
     await snapshot(dstPool),
     before,
@@ -194,6 +322,11 @@ try {
           "Manual correction and audit survive",
           "Immutable observation trigger survives",
           "Job sequence advances after restore",
+          "Pending/sent notification outbox, durable transitions and registration state match",
+          "Backfill job parameters/retry state and account local labels survive",
+          "Synthetic SMTP and Telegram encrypted credentials restore without sending",
+          "Encrypted provider and signing credentials restore with separately retained master key",
+          "Missing master key fails credential access closed after restore",
         ],
       },
       null,

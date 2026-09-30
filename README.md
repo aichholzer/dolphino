@@ -44,3 +44,5 @@ The service is an MVP for a trusted single-user homelab. Put live mode behind HT
 Browser checks against the running demo: `node scripts/browser-check.mjs` (set `CHROMIUM_PATH` if Chromium is elsewhere). See [verification evidence](docs/verification.md).
 
 Follow-up evidence: [independent review](docs/review.md), [backup/restore rehearsal](docs/restore-evidence.md), and [automatic classification policy](docs/classification.md).
+
+See [enhancements and verified boundaries](docs/enhancements.md), [encrypted settings](docs/settings-security.md), [provider configuration](docs/providers.md), [Telegram/SMTP notifications](docs/notifications.md), and [import health](docs/import-health.md).

@@ -1667,3 +1667,195 @@ label select {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.period-caption {
+  font-size: 12px;
+  color: #827b90;
+  margin: 0 0 16px;
+}
+.monthly-comparison {
+  margin-bottom: 22px;
+}
+.total-drill {
+  color: #7061d8;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.transaction-scope {
+  flex-basis: 100%;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.transaction-scope label {
+  font-size: 11px;
+  margin: 0;
+}
+.transaction-scope input[type="date"] {
+  padding: 7px;
+  font-size: 12px;
+}
+.transaction-scope strong {
+  font-size: 13px;
+}
+.transaction-scope strong button {
+  font-size: 11px;
+  color: #7061d8;
+}
+.pagination {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.table-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.account-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.account-open {
+  text-align: left;
+  width: 100%;
+  position: static;
+}
+.account-open-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #7061d8;
+  margin: 10px 0;
+}
+.account-card {
+  position: relative;
+}
+.account-open:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.account-controls {
+  position: relative;
+  z-index: 1;
+}
+.account-open:focus-visible:after {
+  outline: 2px solid #7061d8;
+  outline-offset: 3px;
+}
+.integration-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  margin: 16px 0;
+}
+.integration-settings label.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+}
+.integration-settings input:not([type="checkbox"]),
+.integration-settings select {
+  width: 100%;
+  min-width: 0;
+}
+.integration-settings input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+}
+.secret-state {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+  color: #827b90;
+}
+.secret-state .checkbox-label {
+  margin: 0;
+}
+.settings-row {
+  display: flex;
+  gap: 14px;
+}
+.settings-row label {
+  flex: 1;
+  min-width: 0;
+}
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.integration-settings dl dd {
+  overflow-wrap: anywhere;
+}
+.integration-settings .footnote {
+  line-height: 1.6;
+}
+.integration-settings .alert {
+  font-size: 12px;
+}
+.period-controls {
+  flex-wrap: wrap;
+}
+@media (max-width: 680px) {
+  .transaction-scope {
+    gap: 10px;
+  }
+  .transaction-scope > label:not(.checkbox-label) {
+    flex: 1;
+    min-width: 110px;
+  }
+  .settings-row {
+    flex-wrap: wrap;
+  }
+  .settings-actions > * {
+    flex: 1;
+  }
+  .period-controls {
+    justify-content: flex-start;
+  }
+  .secret-state {
+    flex-wrap: wrap;
+  }
+  .monthly-comparison .card-heading {
+    padding: 18px;
+  }
+  .monthly-comparison table {
+    min-width: 610px;
+  }
+}
+.integration-settings h3 {
+  font-size: 14px;
+  margin: 25px 0 12px;
+}
+.health-account {
+  border-top: 1px solid #ece9f2;
+  padding-top: 14px;
+  margin-top: 16px;
+}
+.health-account > strong {
+  font-size: 12px;
+}
+.notification-settings code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.notification-settings .setup-note > div {
+  min-width: 0;
+}
+.notification-settings .setup-note a {
+  color: #7061d8;
+  text-decoration: underline;
+}
+.monthly-comparison > .card-heading {
+  padding: 24px;
+}

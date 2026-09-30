@@ -1,4 +1,7 @@
 import pg from "pg";
+import { createNotificationIntegration } from "./notifications.js";
+import { createSettingsStore } from "./settings.js";
+import { createRegistration } from "./registration.js";
 import { readConfig } from "./config.js";
 import { createClassificationIntegration } from "./classification.js";
 import { Store } from "./store.js";
@@ -12,6 +15,18 @@ try {
   }).migrate();
   await ensureRedbarkSchema(pool);
   await createClassificationIntegration({ pool, store: null, config }).init();
+  const settings = createSettingsStore({
+    pool,
+    appSecret: config.appSecret,
+    envConfig: config,
+  });
+  await settings.init();
+  await createRegistration({ pool, settings, config }).init();
+  await createNotificationIntegration({
+    pool,
+    settings,
+    mode: config.mode,
+  }).init();
   console.log("Migrations complete");
 } finally {
   await pool.end();

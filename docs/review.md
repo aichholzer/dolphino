@@ -32,3 +32,9 @@ Compose parsing, PostgreSQL tests, backup/restore rehearsal, screenshot artifact
 ## Final automatic-classification and reactive-alert review
 
 The final scoped review passed with nine focused real-PostgreSQL tests and no remaining material issue identified. Automatic classification honors precedence and revalidates source evidence under the ledger lock; daily request reservations and provider-call serialization work across concurrent workers. Substantive source changes permit fresh classification, disabling automation pauses automatic jobs, and unresolved results stay in review. Financial writes refresh alert state atomically, including classification acceptance and affected rollover months; reads are not needed to create or resolve alerts.
+
+## Enhancement review
+
+Independent reviewers inspected financial period selection/export, settings auth/CSRF/redaction, encryption, provider invocation, Telegram session-bound pairing, SMTP TLS/header handling and delivery durability. Fixed material findings: current-month filtering accidentally truncating multi-month drilldowns; exports selecting only one month; pairing-ID schema mismatch; missing Telegram activation timestamp; notification worker single-connection deadlock; demo/live delivery isolation; durable pre-send attempt reservation and provider Retry-After handling. Reconfirmed all-account synchronization after removing the superseded disable feature.
+
+Notification deliveries have durable transition/recipient/channel identities and bounded retries, but a lost provider acknowledgment can result in duplicate external delivery; docs state this limit. Pairing refuses an existing Telegram webhook and requires fresh explicit confirmation on group migration. Provider models/regions and remote delivery remain unverified with real credentials by design.

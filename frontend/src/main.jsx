@@ -29,6 +29,9 @@ import {
 import { Button } from "./components/ui/button";
 import { Dialog } from "./components/ui/dialog";
 import "./style.css";
+import { ImportHealth } from "./components/import-health";
+import { NotificationSettings } from "./components/notification-settings";
+import { IntegrationSettings } from "./components/integration-settings";
 import { money, decimalToMinor, minorToDecimal } from "./money.js";
 const CATEGORIES = [
   "Uncategorized",
@@ -85,12 +88,33 @@ function App() {
     [kind, setKind] = useState(""),
     [ids, setIds] = useState(null),
     [edit, setEdit] = useState(null),
+    [period, setPeriod] = useState(1),
+    [accountId, setAccountId] = useState(""),
+    [accountName, setAccountName] = useState(""),
+    [allHistory, setAllHistory] = useState(false),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [txPage, setTxPage] = useState(1),
+    [accountEdit, setAccountEdit] = useState(null),
     [budget, setBudget] = useState(null),
     [rule, setRule] = useState(null),
     [busy, setBusy] = useState(false);
   const query = new URLSearchParams({
-    month,
+    ...(page === "Transactions" && (allHistory || from || to || ids !== null)
+      ? {}
+      : { month }),
     currency,
+    ...(page === "Overview" ? { months: String(period) } : {}),
+    ...(page === "Transactions"
+      ? {
+          page: String(txPage),
+          pageSize: "50",
+          ...(accountId ? { accountId } : {}),
+          ...(allHistory ? { allHistory: "true" } : {}),
+          ...(from ? { from } : {}),
+          ...(to ? { to } : {}),
+        }
+      : {}),
     ...(search ? { search } : {}),
     ...(category ? { category } : {}),
     ...(status ? { status } : {}),
@@ -185,12 +209,43 @@ function App() {
       setBusy(false);
     }
   }
+  useEffect(() => {
+    setTxPage(1);
+  }, [
+    search,
+    category,
+    status,
+    kind,
+    ids,
+    month,
+    accountId,
+    allHistory,
+    from,
+    to,
+    currency,
+  ]);
   function drill(filters = {}) {
+    setAccountId("");
+    setAccountName("");
+    setAllHistory(false);
+    setFrom("");
+    setTo("");
+    setTxPage(1);
     setSearch("");
     setIds(filters.ids ?? null);
     setCategory(filters.category || "");
     setKind(filters.kind || "");
     setStatus(filters.status || "posted");
+    if (filters.month) setMonth(filters.month);
+    else if (
+      page === "Overview" &&
+      filters.ids == null &&
+      data.startDate &&
+      data.endDate
+    ) {
+      setFrom(data.startDate);
+      setTo(data.endDate);
+    }
     navigate("Transactions");
   }
   if (session && !session.authenticated && !session.demo)
@@ -346,11 +401,30 @@ function App() {
                 <label className="sr-only" htmlFor="month">
                   Reporting month
                 </label>
+                {page === "Overview" && (
+                  <select
+                    aria-label="Overview period"
+                    value={period}
+                    onChange={(e) => setPeriod(Number(e.target.value))}
+                  >
+                    {[1, 2, 3, 4, 6].map((n) => (
+                      <option key={n} value={n}>
+                        {n} {n === 1 ? "month" : "months"}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <input
                   id="month"
                   type="month"
                   value={month}
-                  onChange={(e) => (setMonth(e.target.value), setIds(null))}
+                  onChange={(e) => {
+                    setMonth(e.target.value);
+                    setIds(null);
+                    setAllHistory(false);
+                    setFrom("");
+                    setTo("");
+                  }}
                 />
                 <select
                   aria-label="Reporting currency"
@@ -432,11 +506,16 @@ function App() {
                       ))}
                     </div>
                   )}
+                  <p className="period-caption">
+                    {data.startDate || data.monthly?.[0]?.month || month} —{" "}
+                    {data.endDate || month} · {period}{" "}
+                    {period === 1 ? "month" : "months"}
+                  </p>
                   <div className="metric-grid">
                     <Metric
                       title="Total income"
                       value={money(data.incomeMinor, currency)}
-                      subtitle="Posted income this month"
+                      subtitle="Posted income in selected period"
                       icon={ArrowDownLeft}
                       color="green"
                       onClick={() =>
@@ -469,6 +548,83 @@ function App() {
                       }
                     />
                   </div>
+                  {data.monthly?.length > 0 && (
+                    <section className="card monthly-comparison">
+                      <div className="card-heading">
+                        <div>
+                          <h2>Month by month</h2>
+                          <p>
+                            Compare posted activity. Select a total to see its
+                            transactions.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Month</th>
+                              <th>Income</th>
+                              <th>Spending</th>
+                              <th>Net cash flow</th>
+                              <th>Spending change</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.monthly.map((r, i, rows) => (
+                              <tr key={r.month}>
+                                <td>
+                                  {r.month}{" "}
+                                  {r.partial && (
+                                    <span className="category-tag">
+                                      Partial month
+                                    </span>
+                                  )}
+                                </td>
+                                {["income", "expenses", "net"].map((k) => (
+                                  <td key={k}>
+                                    <button
+                                      className="total-drill"
+                                      onClick={() =>
+                                        drill({
+                                          month: r.month,
+                                          ids:
+                                            k === "net"
+                                              ? [
+                                                  ...(r.transactionIds
+                                                    ?.income || []),
+                                                  ...(r.transactionIds
+                                                    ?.expenses || []),
+                                                ]
+                                              : r.transactionIds?.[k],
+                                        })
+                                      }
+                                    >
+                                      {money(r[`${k}Minor`], currency)}
+                                    </button>
+                                  </td>
+                                ))}
+                                <td>
+                                  {i
+                                    ? money(
+                                        (
+                                          BigInt(r.expensesMinor || 0) -
+                                          BigInt(rows[i - 1].expensesMinor || 0)
+                                        ).toString(),
+                                        currency,
+                                      )
+                                    : "—"}
+                                  {i > 0 && (r.partial || rows[i - 1].partial)
+                                    ? " · partial comparison"
+                                    : ""}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
                   <div className="chart-grid">
                     <section className="card">
                       <div className="card-heading">
@@ -553,6 +709,60 @@ function App() {
               {page === "Transactions" && (
                 <section className="card transactions-card">
                   <div className="table-toolbar">
+                    <div className="transaction-scope">
+                      {accountId && (
+                        <strong>
+                          {accountName}{" "}
+                          <button
+                            onClick={() => {
+                              setAccountId("");
+                              setAccountName("");
+                            }}
+                          >
+                            Clear account
+                          </button>
+                        </strong>
+                      )}
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={allHistory}
+                          onChange={(e) => {
+                            setAllHistory(e.target.checked);
+                            setFrom("");
+                            setTo("");
+                            setIds(null);
+                          }}
+                        />
+                        All history
+                      </label>
+                      <label>
+                        From
+                        <input
+                          type="date"
+                          aria-label="Transactions from"
+                          value={from}
+                          onChange={(e) => {
+                            setFrom(e.target.value);
+                            setAllHistory(false);
+                            setIds(null);
+                          }}
+                        />
+                      </label>
+                      <label>
+                        To
+                        <input
+                          type="date"
+                          aria-label="Transactions to"
+                          value={to}
+                          onChange={(e) => {
+                            setTo(e.target.value);
+                            setAllHistory(false);
+                            setIds(null);
+                          }}
+                        />
+                      </label>
+                    </div>
                     <div className="search-input">
                       <Search size={17} />
                       <input
@@ -686,8 +896,34 @@ function App() {
                     />
                   )}
                   <div className="table-footer">
-                    {transactions.length} transactions · {currency} · Posted
-                    actuals use transaction date
+                    <span>
+                      {data.total ?? transactions.length} transactions ·{" "}
+                      {currency} · Posted actuals use transaction date
+                    </span>
+                    <div className="pagination">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={txPage <= 1}
+                        onClick={() => setTxPage(txPage - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <span>Page {txPage}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          data.hasMore === false ||
+                          (data.total != null
+                            ? txPage * 50 >= data.total
+                            : transactions.length < 50)
+                        }
+                        onClick={() => setTxPage(txPage + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 </section>
               )}
@@ -700,10 +936,46 @@ function App() {
                           <div className="bank-icon">
                             <Landmark size={24} />
                           </div>
-                          <span className="category-tag">{a.currency}</span>
+                          <div className="account-controls">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Edit account ${a.name}`}
+                              onClick={() => setAccountEdit(a)}
+                            >
+                              Edit
+                            </Button>
+                          </div>
                         </div>
-                        <h2>{a.name}</h2>
-                        <p>{a.institution || "Connected account"}</p>
+                        <button
+                          className="account-open"
+                          aria-label={`View transactions for ${a.name}`}
+                          onClick={() => {
+                            setAccountId(a.id);
+                            setAccountName(a.name);
+                            setCurrency(a.currency);
+                            setAllHistory(true);
+                            setFrom("");
+                            setTo("");
+                            setSearch("");
+                            setIds(null);
+                            setCategory("");
+                            setKind("");
+                            setStatus("");
+                            setTxPage(1);
+                            navigate("Transactions");
+                          }}
+                        >
+                          <h2>{a.name}</h2>
+                          <p>
+                            {a.description ||
+                              a.institution ||
+                              "Connected account"}
+                          </p>
+                          <span className="account-open-label">
+                            View transactions <ArrowRight size={14} />
+                          </span>
+                        </button>
                         <div className="account-balance">
                           {a.balanceMinor == null
                             ? "—"
@@ -739,7 +1011,8 @@ function App() {
                   <p className="footnote">
                     Bank balances are provider snapshots. They do not prove the
                     accuracy of imported transaction totals. Account discovery
-                    runs every four hours.
+                    runs every four hours. All linked accounts remain included
+                    in your financial picture.
                   </p>
                 </>
               )}
@@ -1018,10 +1291,11 @@ function App() {
                       <div>
                         <strong>Connect from your server</strong>
                         <p>
-                          Set REDBARK_API_KEY (or its Docker secret file),
-                          REDBARK_WEBHOOK_SECRET, and the API version in your
-                          server configuration. Restart Profe, then test your
-                          connection. Never enter credentials into chat.
+                          Set REDBARK_API_KEY (or its Docker secret file) and
+                          the API version in your server configuration. Restart
+                          Profe, then test your connection. Register your signed
+                          event destination below after its public callback is
+                          reachable. Never enter credentials into chat.
                         </p>
                       </div>
                     </div>
@@ -1039,58 +1313,9 @@ function App() {
                       </p>
                     )}
                   </section>
-                  <section className="card settings-card">
-                    <h2>Classification & preferences</h2>
-                    <dl>
-                      <div>
-                        <dt>Currency</dt>
-                        <dd>{data.currency || currency}</dd>
-                      </div>
-                      <div>
-                        <dt>Time zone</dt>
-                        <dd>
-                          {data.timeZone ||
-                            session?.timeZone ||
-                            "Australia/Brisbane"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Optional AI classification</dt>
-                        <dd>{data.llm?.enabled ? "Enabled" : "Disabled"}</dd>
-                      </div>
-                      <div>
-                        <dt>Unresolved imports</dt>
-                        <dd>
-                          {data.llm?.automaticClassification
-                            ? "Automatic suggestions"
-                            : "AI processing off"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Apply AI suggestions</dt>
-                        <dd>
-                          {data.llm?.automaticApplication
-                            ? "Automatic · opted in"
-                            : "Manual review required"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>AI request limit</dt>
-                        <dd>{data.llm?.dailyRequestLimit ?? 20} per UTC day</dd>
-                      </div>
-                      <div>
-                        <dt>Actual spending</dt>
-                        <dd>Posted only · refunds on refund date</dd>
-                      </div>
-                    </dl>
-                    <p className="muted">
-                      Useful provider categories, your rules, and manual
-                      corrections work without AI. A configured provider can
-                      suggest categories for unresolved posted imports.
-                      Automatic application requires a separate server-side
-                      opt-in.
-                    </p>
-                  </section>
+                  <IntegrationSettings api={api} demo={session?.demo} />
+                  <NotificationSettings api={api} demo={session?.demo} />
+                  <ImportHealth api={api} demo={session?.demo} />
                   <section className="card settings-card">
                     <h2>Your data, always yours</h2>
                     <p className="muted">
@@ -1124,6 +1349,16 @@ function App() {
           </footer>
         </main>
       </div>
+      <AccountDialog
+        account={accountEdit}
+        close={() => setAccountEdit(null)}
+        busy={busy}
+        error={error}
+        save={async (values) => {
+          if (await mutate(`/accounts/${accountEdit.id}`, values, "PATCH"))
+            setAccountEdit(null);
+        }}
+      />
       <EditTransaction
         transaction={edit}
         open={!!edit}
@@ -1156,6 +1391,58 @@ function App() {
         }}
       />
     </div>
+  );
+}
+function AccountDialog({ account, close, busy, error, save }) {
+  const [label, setLabel] = useState(""),
+    [description, setDescription] = useState("");
+  useEffect(() => {
+    setLabel(account?.label || account?.name || "");
+    setDescription(account?.description || "");
+  }, [account]);
+  return (
+    <Dialog
+      open={!!account}
+      onOpenChange={(v) => !v && close()}
+      title="Your account details"
+      description="Local details remain unchanged when your bank updates."
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          save({ label, description });
+        }}
+      >
+        <label>
+          Account label
+          <input
+            maxLength={120}
+            required
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </label>
+        <label>
+          Description
+          <input
+            maxLength={500}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+        {error && (
+          <p role="alert" className="negative">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button disabled={busy}>Save account</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 function ReviewLink({ review, busy, onLink }) {

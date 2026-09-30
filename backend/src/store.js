@@ -2,6 +2,8 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   calculateReport,
+  calculatePeriodReport,
+  calculateSelectionReport,
   classify,
   minor,
   validateSplits,
@@ -49,7 +51,7 @@ const txRow = (r) => ({
   fetchedAt: r.fetched_at,
   manuallyCorrected: !!r.override_id,
 });
-const txSelect = `SELECT t.*,a.name account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,o.splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id`;
+const txSelect = `SELECT t.*,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,o.splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id`;
 const budgetRow = (r) => ({
   id: r.id,
   category: r.category,
@@ -79,6 +81,9 @@ export class Store {
       "001_core.sql",
       "002_alerts.sql",
       "003_automatic_classification.sql",
+      "004_accounts.sql",
+      "005_settings.sql",
+      "006_alert_notifications.sql",
     ])
       await this.pool.query(
         await readFile(
@@ -353,11 +358,28 @@ export class Store {
       values.push(value);
       clauses.push(sql.replace("?", `$${values.length}`));
     };
-    if (filters.month) {
+    if (
+      filters.month &&
+      filters.allHistory !== true &&
+      filters.allHistory !== "true"
+    ) {
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(filters.month))
         throw domainError("Invalid month");
       add("to_char(t.date,'YYYY-MM')=?", filters.month);
     }
+    for (const key of ["from", "to"]) {
+      if (filters[key]) {
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(filters[key]) ||
+          !Number.isFinite(Date.parse(filters[key])) ||
+          new Date(filters[key]).toISOString().slice(0, 10) !== filters[key]
+        )
+          throw domainError("Invalid date");
+        add(`t.date${key === "from" ? ">=" : "<="}?::date`, filters[key]);
+      }
+    }
+    if (filters.from && filters.to && filters.from > filters.to)
+      throw domainError("Date range is reversed");
     if (filters.currency) add("t.currency=?", filters.currency);
     if (filters.accountId || filters.account)
       add("t.account_id=?", filters.accountId || filters.account);
@@ -381,13 +403,55 @@ export class Store {
           : String(filters.ids).split(",");
       add("t.id=ANY(?::uuid[])", ids);
     }
+    const where = clauses.join(" AND ");
+    if (filters.paginated) {
+      const page = Number(filters.page || 1),
+        pageSize = Number(filters.pageSize || 50);
+      if (
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        page > 1000000 ||
+        !Number.isInteger(pageSize) ||
+        pageSize < 1 ||
+        pageSize > 100
+      )
+        throw domainError("Invalid pagination");
+      const total = Number(
+        (
+          await c.query(
+            `SELECT count(*) total FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id WHERE ${where}`,
+            values,
+          )
+        ).rows[0].total,
+      );
+      const rows = (
+        await c.query(
+          `${txSelect} WHERE ${where} ORDER BY t.date DESC,t.id LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+          [...values, pageSize, (page - 1) * pageSize],
+        )
+      ).rows;
+      return {
+        transactions: rows.map(txRow),
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      };
+    }
     return (
       await c.query(
-        `${txSelect} WHERE ${clauses.join(" AND ")} ORDER BY t.date DESC,t.id`,
+        `${txSelect} WHERE ${where} ORDER BY t.date DESC,t.id`,
         values,
       )
     ).rows.map(txRow);
   }
+  async transactionPage(filters = {}) {
+    return this.atomic(
+      (c) => this.listTransactions({ ...filters, paginated: true }, c),
+      { refresh: false },
+    );
+  }
+
   async getTransaction(id, c = this.pool) {
     const r = (
       await c.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2`, [this.mode, id])
@@ -455,6 +519,64 @@ export class Store {
     });
     return this.getTransaction(id);
   }
+  async updateAccountSettings(id, patch) {
+    if (
+      !patch ||
+      typeof patch !== "object" ||
+      Array.isArray(patch) ||
+      Object.keys(patch).some((k) => !["label", "description"].includes(k))
+    )
+      throw domainError("Invalid account settings");
+    for (const key of ["label", "description"])
+      if (
+        patch[key] !== undefined &&
+        (typeof patch[key] !== "string" ||
+          patch[key].length > (key === "label" ? 100 : 1000))
+      )
+        throw domainError("Invalid account " + key);
+    return this.atomic(async (c) => {
+      const before = (
+        await c.query(
+          "SELECT * FROM accounts WHERE mode=$1 AND id=$2 FOR UPDATE",
+          [this.mode, id],
+        )
+      ).rows[0];
+      if (!before) throw domainError("Account not found");
+      await c.query(
+        "UPDATE accounts SET local_label=$3,description=$4 WHERE mode=$1 AND id=$2",
+        [
+          this.mode,
+          id,
+          patch.label === undefined
+            ? before.local_label
+            : patch.label.trim() || null,
+          patch.description ?? before.description,
+        ],
+      );
+      const after = (await this.listAccounts(c)).find((a) => a.id === id);
+      if (
+        before.local_label !== (after.label || null) ||
+        before.description !== after.description
+      )
+        await c.query(
+          "INSERT INTO audit_history(mode,action,before_value,after_value) VALUES($1,'account-settings',$2,$3)",
+          [
+            this.mode,
+            {
+              accountId: id,
+              label: before.local_label,
+              description: before.description,
+            },
+            {
+              accountId: id,
+              label: after.label,
+              description: after.description,
+            },
+          ],
+        );
+      return after;
+    });
+  }
   async listAccounts(c = this.pool) {
     return (
       await c.query("SELECT * FROM accounts WHERE mode=$1 ORDER BY name", [
@@ -462,7 +584,10 @@ export class Store {
       ])
     ).rows.map((r) => ({
       id: r.id,
-      name: r.name,
+      name: r.local_label || r.name,
+      providerName: r.name,
+      label: r.local_label || "",
+      description: r.description,
       currency: r.currency,
       balanceMinor: r.balance_minor == null ? null : String(r.balance_minor),
       balanceType: r.balance_type,
@@ -474,14 +599,21 @@ export class Store {
         "Not reconciled: no verified opening balance with matching type, time and complete transaction coverage.",
     }));
   }
-  async report({ month, currency = "AUD" }, client) {
+  async report({ month, currency = "AUD", months = 1 }, client) {
     const calculate = async (c) => {
       const transactions = await this.listTransactions({ currency }, c),
         budgets = await this.listBudgets(c),
         accounts = await this.listAccounts(c);
-      const report = calculateReport(transactions, budgets, {
+      const report = calculatePeriodReport(transactions, budgets, {
         month,
         currency,
+        months,
+        today: new Intl.DateTimeFormat("en-CA", {
+          timeZone: this.timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date()),
       });
       return {
         ...report,
@@ -534,21 +666,44 @@ export class Store {
   // Reconcile durable alert state with the same atomic snapshot used by reports.
   // A stable natural key prevents concurrent/repeated mutations from generating duplicates.
   async persistAlerts(report, c) {
+    const emit = async (row, state) => {
+      await c.query(
+        `INSERT INTO notification_events(alert_id,revision,mode,payload) VALUES($1,$2,$3,$4) ON CONFLICT(alert_id,revision) DO NOTHING`,
+        [
+          row.id,
+          row.revision,
+          this.mode,
+          {
+            category: row.category,
+            month: row.month,
+            currency: row.currency,
+            amountMinor: String(row.amount_minor),
+            state,
+          },
+        ],
+      );
+    };
     const categories = report.alerts.map((alert) => alert.category);
-    await c.query(
-      `UPDATE budget_alerts SET resolved_at=now(),updated_at=now()
-       WHERE mode=$1 AND currency=$2 AND month=$3 AND type='overspend'
-       AND resolved_at IS NULL AND NOT(category=ANY($4::text[]))`,
+    const resolved = await c.query(
+      `UPDATE budget_alerts SET resolved_at=now(),updated_at=now(),revision=revision+1 WHERE mode=$1 AND currency=$2 AND month=$3 AND type='overspend' AND resolved_at IS NULL AND NOT(category=ANY($4::text[])) RETURNING *`,
       [this.mode, report.currency, report.month, categories],
     );
-    for (const alert of report.alerts)
-      await c.query(
-        `INSERT INTO budget_alerts(id,mode,currency,month,category,type,amount_minor,message)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT(mode,currency,month,category,type) DO UPDATE
-         SET amount_minor=excluded.amount_minor,message=excluded.message,resolved_at=NULL,updated_at=now()
-         WHERE budget_alerts.amount_minor IS DISTINCT FROM excluded.amount_minor
-         OR budget_alerts.message IS DISTINCT FROM excluded.message OR budget_alerts.resolved_at IS NOT NULL`,
+    for (const row of resolved.rows) await emit(row, "resolved");
+    for (const alert of report.alerts) {
+      const prior = (
+        await c.query(
+          `SELECT * FROM budget_alerts WHERE mode=$1 AND currency=$2 AND month=$3 AND category=$4 AND type=$5 FOR UPDATE`,
+          [
+            this.mode,
+            report.currency,
+            report.month,
+            alert.category,
+            alert.type,
+          ],
+        )
+      ).rows[0];
+      const updated = await c.query(
+        `INSERT INTO budget_alerts(id,mode,currency,month,category,type,amount_minor,message) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(mode,currency,month,category,type) DO UPDATE SET amount_minor=excluded.amount_minor,message=excluded.message,resolved_at=NULL,updated_at=now(),revision=budget_alerts.revision+CASE WHEN budget_alerts.resolved_at IS NOT NULL THEN 1 ELSE 0 END WHERE budget_alerts.amount_minor IS DISTINCT FROM excluded.amount_minor OR budget_alerts.message IS DISTINCT FROM excluded.message OR budget_alerts.resolved_at IS NOT NULL RETURNING *`,
         [
           randomUUID(),
           this.mode,
@@ -560,17 +715,39 @@ export class Store {
           alert.message,
         ],
       );
+      if (updated.rows[0] && (!prior || prior.resolved_at))
+        await emit(updated.rows[0], prior ? "reopened" : "opened");
+    }
   }
   async exportSnapshot(filters) {
     return this.atomic(
       async (c) => {
-        const transactions = await this.listTransactions(filters, c);
+        const ranged =
+          filters.allHistory === true ||
+          filters.allHistory === "true" ||
+          filters.from ||
+          filters.to;
+        const summary = ranged ? null : await this.report(filters, c);
+        // Pagination is a presentation concern; exports contain the complete selection.
+        const selection = { ...filters, paginated: false };
+        if (summary) {
+          delete selection.month;
+          selection.from = summary.startDate;
+          selection.to = summary.endDate;
+        } else if (filters.allHistory === true || filters.allHistory === "true")
+          delete selection.month;
+        const transactions = await this.listTransactions(selection, c);
+        const selectionSummary = calculateSelectionReport(transactions, {
+          ...selection,
+          month: filters.month,
+        });
         return {
           filters,
-          summaryScope:
-            "All imported transactions in the selected month and currency",
-          summary: await this.report(filters, c),
-          selectionSummary: calculateReport(transactions, [], filters),
+          summaryScope: summary
+            ? "All imported transactions in the selected calendar period and currency; selectionSummary applies optional transaction filters"
+            : "Exactly the exported transaction selection and currency",
+          summary: summary || selectionSummary,
+          selectionSummary,
           transactions,
         };
       },

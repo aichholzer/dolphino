@@ -160,3 +160,80 @@ test(
     }
   },
 );
+
+test(
+  "runtime settings load outside held clients and credential changes get fresh fingerprints",
+  { skip: !connectionString },
+  async () => {
+    const admin = new pg.Pool({ connectionString });
+    const schema = `runtime_classification_${randomUUID().replaceAll("-", "")}`;
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    const pool = new pg.Pool({
+      connectionString,
+      options: `-c search_path=${schema}`,
+      max: 1,
+      connectionTimeoutMillis: 1000,
+    });
+    const store = new Store(pool, { mode: "demo" });
+    let current = {
+      llmProvider: "openai",
+      llmApiKey: "synthetic",
+      llmModel: "small",
+      llmEnabled: true,
+      llmAutoClassify: false,
+    };
+    let calls = 0;
+    const integration = createClassificationIntegration({
+      pool,
+      store,
+      config: { mode: "demo" },
+      getProviderConfig: async () => {
+        await pool.query("SELECT 1");
+        return { ...current };
+      },
+      fetchImpl: async () => {
+        calls++;
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  category: "Groceries",
+                  reason: "Synthetic",
+                }),
+              },
+            },
+          ],
+        });
+      },
+    });
+    try {
+      await store.migrate();
+      await store.seedDemo();
+      await integration.init();
+      const tx = (await store.listTransactions())[0];
+      await integration.suggest(tx.id);
+      assert.equal(calls, 1);
+      await integration.suggest(tx.id);
+      assert.equal(calls, 1);
+      current.llmApiKey = "rotated-synthetic";
+      await integration.suggest(tx.id);
+      assert.equal(calls, 2);
+      assert.equal(
+        (await pool.query("SELECT count(*)::int n FROM classification_jobs"))
+          .rows[0].n,
+        2,
+      );
+      await integration.suggest(tx.id);
+      assert.equal(calls, 2);
+      current.llmEnabled = false;
+      await integration.tick();
+      await assert.rejects(integration.suggest(tx.id), /disabled/);
+      assert.equal(calls, 2);
+    } finally {
+      await pool.end();
+      await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+      await admin.end();
+    }
+  },
+);

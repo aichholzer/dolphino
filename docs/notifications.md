@@ -1,0 +1,33 @@
+# Budget notifications
+
+In-app alerts remain the primary durable record. Optional Telegram and SMTP email delivery use the same persisted opened, resolved and reopened budget-alert transitions. Amount changes within an already open alert do not generate repeated messages. Configure channels explicitly in Settings; all are off by default. External automatic delivery runs only in live mode. Explicit test buttons send synthetic messages to the configured destination, never transactions.
+
+Select summary fields (category, period, overspend amount, remaining budget) and inspect the synthetic preview before enabling. No bank account names, transaction descriptions, merchant details or credentials are included. Category names and selected financial summary fields are still personal information; select recipients accordingly. Resolved means spending is no longer over the cap; the notification does not claim an exact positive remaining amount. Currency exponents are respected using exact integer arithmetic.
+
+## Email / Brevo
+
+Enter an SMTP URL, a verified sender email address and up to ten recipient email addresses. Example structure (placeholders only):
+
+```
+smtps://SMTP_LOGIN:SMTP_KEY@smtp-relay.brevo.com:465
+```
+
+URL-encode special characters in the login and password. For Brevo use your SMTP login and **SMTP key**, not a Brevo API key. The verified From address need not equal the SMTP login. [Brevo's SMTP setup guide](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP) describes credentials and sender setup. Profe makes no external account changes.
+
+Implicit TLS (`smtps`, port 465) or required STARTTLS (`smtp`, ports 587/2525) is supported. Certificate verification remains enabled, TLS 1.2 is the minimum, and downgrade/query-string transport options are refused. SMTP connection/greeting/socket/DNS timeouts are bounded, with a twenty-second overall send deadline. No attachments, remote content fetching or protocol logging are enabled. Transport behavior follows [Nodemailer's official SMTP documentation](https://nodemailer.com/smtp).
+
+SMTP URLs and Telegram bot tokens are encrypted with APP_SECRET and never returned by the API. Empty/omitted secret fields preserve saved values; explicit clear removes them. Missing/wrong encryption keys fail delivery closed and do not prevent financial-data access. Clearing a token also clears its pairing. See [key backup and rotation](settings-security.md).
+
+## Telegram private-group pairing
+
+Create a dedicated bot yourself and add it to the intended private family group. Keep bot privacy mode on; administrator privileges are not required. Save its token in Settings, then start pairing. Use the generated `/pair@Bot nonce` command or group deep link. The nonce expires after ten minutes and is tied to your authenticated session and current bot. Poll, inspect the detected group title and ID, then explicitly confirm the group to enable delivery. Profe never adds participants or changes group permissions.
+
+A bot with an existing Telegram webhook is refused without changing/deleting the webhook. Another application polling the same bot can conflict with pairing; use a dedicated bot. Group migrations are not silently followed; failures remain visible and require new confirmation. No Telegram messages were sent during development; mocked tests exercise these contracts.
+
+## Delivery reliability
+
+Alert transitions are inserted atomically with the financial write, so closed dashboards do not suppress notifications. A fifteen-second worker scans durable events and creates one outbox identity per event/channel/recipient. Only events after channel enablement are eligible; enabling does not replay old alerts. Disabling a channel cancels queued delivery when the worker next sees it. Re-enabling requires a new alert transition. Unchanged settings saves preserve queued eligibility. Removed recipients are not sent pending notifications.
+
+At most five messages are processed per tick. Telegram deliveries are separated by at least 3.1 seconds per chat, respecting the documented group limit; rate-limit retry-after responses extend the durable retry time. Attempts are reserved before network calls and bounded to five, with exponential backoff. Failure state is visible in Settings and supports explicit retry after configuration is corrected. Provider errors are replaced by generic safe messages.
+
+Delivery is not exactly once: a crash after remote acceptance but before the local acknowledgement can cause a duplicate on retry. SMTP messages reuse a stable Message-ID, but recipient systems need not deduplicate it. A reserved last attempt with an unknown outcome becomes failed for review rather than retrying indefinitely. A send already in flight may finish when a channel is disabled. Test messages are explicitly initiated and bypass enablement; they do not contain financial data. No external deliveries have been performed during development.

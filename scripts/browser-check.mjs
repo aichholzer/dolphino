@@ -14,7 +14,7 @@ page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(base);
   await page.getByText("Total income", { exact: true }).waitFor();
-  await page.getByText("$6,650.00", { exact: true }).waitFor();
+  await page.getByText("$6,650.00", { exact: true }).first().waitFor();
   assert.equal(
     await page.locator("body").evaluate((e) => e.scrollWidth <= innerWidth),
     true,
@@ -119,7 +119,7 @@ try {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await page.getByRole("button", { name: "Overview", exact: true }).click();
   await page.getByText("Total income", { exact: true }).waitFor();
-  await page.getByText("$6,650.00", { exact: true }).waitFor();
+  await page.getByText("$6,650.00", { exact: true }).first().waitFor();
   await page.waitForTimeout(400);
   assert.equal(
     await page.locator("body").evaluate((e) => e.scrollWidth <= innerWidth),

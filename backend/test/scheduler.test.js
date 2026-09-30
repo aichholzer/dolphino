@@ -126,13 +126,13 @@ test(
         (await pool.query("SELECT count(*)::int n FROM provider_observations"))
           .rows[0].n >= 3,
       );
-      integration.stop();
+      await integration.stop();
       const stopped = fetches;
       clock += 4 * 3600000;
       await sleep(50);
       assert.equal(fetches, stopped, "stop cancels timer");
     } finally {
-      integration.stop();
+      await integration.stop();
       await pool.end();
       await admin.query(`DROP SCHEMA ${schema} CASCADE`);
       await admin.end();

@@ -170,7 +170,10 @@ export class RedbarkClient {
     this.minInterval = fetchImpl ? 0 : 2100;
     this.lastRequestAt = 0;
   }
-  async request(path) {
+  async request(
+    path,
+    { method = "GET", body: requestBody, idempotencyKey } = {},
+  ) {
     const url = new URL(path, BASE);
     // Never send credentials to a URL supplied by event payloads or cross-origin pagination.
     if (
@@ -186,7 +189,14 @@ export class RedbarkClient {
     let response;
     try {
       response = await this.fetch(url.href, {
+        method,
+        body:
+          requestBody === undefined ? undefined : JSON.stringify(requestBody),
         headers: {
+          ...(requestBody === undefined
+            ? {}
+            : { "Content-Type": "application/json" }),
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
           Authorization: `Bearer ${this.apiKey}`,
           "Redbark-Version": this.version,
         },

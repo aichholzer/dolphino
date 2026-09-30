@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { suggestCategory } from "./llm.js";
+import { suggestCategory, isProviderConfigured } from "./llm.js";
 
 const error = (message, status) =>
   Object.assign(Error(message), { status, expose: true });
@@ -9,27 +9,28 @@ const maxAttempts = 5;
 export function createClassificationIntegration({
   pool,
   store,
-  config,
+  config: baseConfig,
+  getProviderConfig = async () => baseConfig,
   fetchImpl = fetch,
 }) {
   let timer;
   let ticking = false;
-  function enabled() {
-    if (!config.llmApiKey || !config.llmBaseUrl || !config.llmModel)
-      throw error("LLM is disabled until a provider is configured", 409);
-    let url;
-    try {
-      url = new URL(config.llmBaseUrl);
-    } catch {
-      throw error("Invalid LLM endpoint", 400);
-    }
-    if (url.protocol !== "https:" || url.username || url.password)
+  function enabled(config) {
+    if (config.llmEnabled === false || !isProviderConfigured(config))
       throw error(
-        "LLM endpoint must use HTTPS without embedded credentials",
-        400,
+        "LLM is disabled until a provider is configured and enabled",
+        409,
       );
   }
-  async function input(id, client) {
+  async function runtimeConfig() {
+    // Resolve encrypted settings before taking a dedicated pool connection.
+    return {
+      ...baseConfig,
+      ...(await getProviderConfig()),
+      mode: baseConfig.mode,
+    };
+  }
+  async function input(id, client, config) {
     const tx = await store.getTransaction(id, client);
     if (!tx) throw error("Transaction not found", 404);
     const categories = (await store.listCategories(client)).slice().sort();
@@ -44,10 +45,18 @@ export function createClassificationIntegration({
           providerCategory: tx.providerCategory,
           kind: tx.kind,
           categories,
+          provider: config.llmProvider,
+          region: config.llmRegion,
           endpoint: config.llmBaseUrl,
           model: config.llmModel,
           credentialFingerprint: createHash("sha256")
-            .update(config.llmApiKey || "")
+            .update(
+              JSON.stringify([
+                config.llmApiKey || "",
+                config.llmAccessKeyId || "",
+                config.llmSecretAccessKey || "",
+              ]),
+            )
             .digest("hex"),
         }),
       )
@@ -55,6 +64,8 @@ export function createClassificationIntegration({
     return { tx, categories, fingerprint };
   }
   async function processJob(id) {
+    const config = await runtimeConfig();
+    enabled(config);
     const c = await pool.connect();
     let locked = false;
     try {
@@ -77,10 +88,10 @@ export function createClassificationIntegration({
         new Date(job.next_attempt_at) > new Date()
       )
         return;
-      enabled();
+      enabled(config);
       if (job.origin === "automatic" && config.llmAutoClassify === false)
         return;
-      const current = await input(job.transaction_id, c);
+      const current = await input(job.transaction_id, c, config);
       if (
         current.fingerprint !== job.fingerprint ||
         (job.origin === "automatic" &&
@@ -192,12 +203,15 @@ export function createClassificationIntegration({
   }
   async function tick() {
     if (ticking) return;
+    let config;
+    ticking = true;
     try {
-      enabled();
+      config = await runtimeConfig();
+      enabled(config);
     } catch {
+      ticking = false;
       return;
     }
-    ticking = true;
     try {
       if (config.llmAutoClassify !== false) {
         const c = await pool.connect();
@@ -205,7 +219,7 @@ export function createClassificationIntegration({
           const candidates = await store.automaticClassificationCandidates(c);
           let queued = 0;
           for (const tx of candidates) {
-            const { fingerprint } = await input(tx.id, c);
+            const { fingerprint } = await input(tx.id, c, config);
             const inserted = await c.query(
               "INSERT INTO classification_jobs(mode,transaction_id,fingerprint,origin) VALUES($1,$2,$3,'automatic') ON CONFLICT(mode,transaction_id,fingerprint) DO NOTHING RETURNING id",
               [config.mode, tx.id, fingerprint],
@@ -250,8 +264,9 @@ export function createClassificationIntegration({
       )`);
     },
     async suggest(id) {
-      enabled();
-      const { fingerprint } = await input(id);
+      const config = await runtimeConfig();
+      enabled(config);
+      const { fingerprint } = await input(id, undefined, config);
       const { rows } = await pool.query(
         "INSERT INTO classification_jobs(mode,transaction_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT(mode,transaction_id,fingerprint) DO UPDATE SET origin=CASE WHEN classification_jobs.status <> 'succeeded' THEN 'manual' ELSE classification_jobs.origin END, status=CASE WHEN classification_jobs.status='failed' THEN 'pending' ELSE classification_jobs.status END, attempts=CASE WHEN classification_jobs.status='failed' THEN 0 ELSE classification_jobs.attempts END,next_attempt_at=CASE WHEN classification_jobs.status='failed' THEN now() ELSE classification_jobs.next_attempt_at END RETURNING id",
         [config.mode, id, fingerprint],

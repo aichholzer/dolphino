@@ -15,34 +15,41 @@ REHEARSAL_ADMIN_URL=postgresql://profe@127.0.0.1:54329/profe_test \
 node scripts/restore-rehearsal.mjs
 ```
 
-The reusable script rejects non-loopback hosts and never accepts an existing database name as a source or restore target. It seeds fictional demo records, then adds an actual correction, classification rule, audit event, queued classification job, webhook receipt, sync job and fetch evidence. Budget and financial mutations create overspend alerts before any report is opened; a fictional daily classification-request counter is also seeded. Exact JSON row content was compared across **all 15 public tables**, including timestamps and raw evidence; complete backend reports for both fixture months matched. Corrections/audit history, immutable observation trigger and sequence continuation were checked separately.
+The reusable script rejects non-loopback hosts and never accepts an existing database name as a source or restore target. It seeds fictional demo records, then adds an actual correction, classification rule, audit event, queued classification job, webhook receipt, sync job and fetch evidence. Budget and financial mutations create overspend alerts before any report is opened; a fictional daily classification-request counter is also seeded. Exact JSON row content was compared across **all 20 public tables**, including timestamps and raw evidence; complete backend reports for both fixture months matched. Corrections/audit history, immutable observation trigger and sequence continuation were checked separately. Four encrypted synthetic credentials (provider API key, Redbark signing key, SMTP URL and Telegram bot token) and the provider settings document also survived exactly. All decrypted only with the separately retained synthetic master key; missing-key credential access failed closed without affecting restored financial reports.
+
+The extended rehearsal also seeds pending and sent notification outbox rows without sending, durable notification events with revisions, remote webhook registration metadata, a backfill job with retry state, and local account label/description overrides. All rows and states survive byte-for-byte. Notification send functions are injected to throw if accidentally called; no provider or notification network call runs.
 
 Observed output (monetary amounts are exact integer AUD cents):
 
 ```text
-Backup written to /tmp/profe-restore-rehearsal-kXfgvz/profe-20260930T105923Z.dump
-Restored to profe_restore_test_262fc40cd36c43b68bcdba335790a8e0. Verify totals and settings before switching the app.
+Backup written to /tmp/profe-restore-rehearsal-3KTzwi/profe-20260930T115309Z.dump
+Restored to profe_restore_test_224e8a4125144298bc4816a5db6aec41. Verify totals and settings before switching the app.
 {
   "result": "PASS",
   "server": "18.4",
-  "source": "profe_backup_test_262fc40cd36c43b68bcdba335790a8e0",
-  "target": "profe_restore_test_262fc40cd36c43b68bcdba335790a8e0",
+  "source": "profe_backup_test_224e8a4125144298bc4816a5db6aec41",
+  "target": "profe_restore_test_224e8a4125144298bc4816a5db6aec41",
   "counts": {
     "accounts": 3,
-    "audit_history": 1,
+    "app_settings": 1,
+    "audit_history": 2,
     "budget_alerts": 2,
     "budgets": 7,
     "classification_jobs": 1,
     "classification_usage": 1,
+    "encrypted_credentials": 4,
+    "notification_events": 3,
+    "notification_outbox": 2,
     "provider_observations": 28,
     "redbark_fetches": 1,
-    "redbark_jobs": 1,
+    "redbark_jobs": 2,
     "redbark_receipts": 1,
     "redbark_state": 1,
     "rules": 3,
     "source_aliases": 28,
     "transaction_overrides": 1,
-    "transactions": 28
+    "transactions": 28,
+    "webhook_registration": 1
   },
   "financialTotals": [
     {
@@ -67,7 +74,12 @@ Restored to profe_restore_test_262fc40cd36c43b68bcdba335790a8e0. Verify totals a
     "Complete financial reports including budgets/coverage match",
     "Manual correction and audit survive",
     "Immutable observation trigger survives",
-    "Job sequence advances after restore"
+    "Job sequence advances after restore",
+    "Pending/sent notification outbox, durable transitions and registration state match",
+    "Backfill job parameters/retry state and account local labels survive",
+    "Synthetic SMTP and Telegram encrypted credentials restore without sending",
+    "Encrypted provider and signing credentials restore with separately retained master key",
+    "Missing master key fails credential access closed after restore"
   ]
 }
 ```

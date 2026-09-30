@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "node --watch backend/src/server.js",
     "start": "node backend/src/server.js",
-    "test": "node --test backend/test/*.test.js",
+    "test": "node --test --test-concurrency=1 backend/test/*.test.js",
     "build": "npm run build --workspace frontend",
     "seed": "node backend/src/seed.js",
     "password": "node scripts/hash-password.js",
@@ -16,9 +16,14 @@
     "migrate": "node backend/src/migrate.js",
     "lint": "node scripts/check-syntax.js",
     "test:browser": "node scripts/browser-check.mjs",
-    "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\""
+    "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\"",
+    "test:browser:enhancements": "node scripts/browser-enhancements.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.1143.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1143.0",
+    "@aws-sdk/client-sts": "^3.1143.0",
+    "nodemailer": "^10.0.13",
     "pg": "^8.16.3",
     "rayo": "1.4.0",
     "zod": "^4.1.11"

@@ -15,6 +15,7 @@ export async function ensureRedbarkSchema(pool) {
     INSERT INTO redbark_state(id) VALUES(1) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS redbark_receipts (event_id text PRIMARY KEY, body bytea NOT NULL, body_hash text NOT NULL, received_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS redbark_jobs (id bigserial PRIMARY KEY, dedupe_key text UNIQUE NOT NULL, status text NOT NULL DEFAULT 'queued', attempts integer NOT NULL DEFAULT 0, available_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz, last_error text);
+    ALTER TABLE redbark_jobs ADD COLUMN IF NOT EXISTS params jsonb NOT NULL DEFAULT '{}';
     CREATE TABLE IF NOT EXISTS redbark_fetches (id bigserial PRIMARY KEY, account_id text NOT NULL, fetched_at timestamptz NOT NULL, raw jsonb NOT NULL);
     CREATE OR REPLACE FUNCTION reject_redbark_evidence_changes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Redbark evidence is immutable'; END; $$;
     DROP TRIGGER IF EXISTS immutable_redbark_fetches ON redbark_fetches;
@@ -28,6 +29,7 @@ export function createRedbarkIntegration({
   store,
   config,
   fetchImpl,
+  getWebhookSecret = async () => config.redbarkWebhookSecret,
   now = Date.now,
   timerIntervalMs = 15000,
 }) {
@@ -39,6 +41,7 @@ export function createRedbarkIntegration({
   const fingerprint = configurationFingerprint(config);
   let timer;
   let busy = false;
+  const idleWaiters = [];
   const configured = () =>
     config.mode === "live" && Boolean(config.redbarkApiKey);
   async function status() {
@@ -50,11 +53,17 @@ export function createRedbarkIntegration({
     } = await pool.query(
       "SELECT count(*)::integer AS pending FROM redbark_jobs WHERE status='queued'",
     );
+    let webhookConfigured = false;
+    try {
+      webhookConfigured = Boolean(await getWebhookSecret());
+    } catch {
+      /* Credential failure must not block stored-data/status access. */
+    }
     return {
       configured: configured(),
       verified: configured() && state?.fingerprint === fingerprint,
       version: config.redbarkVersion || REDBARK_VERSION,
-      webhookConfigured: Boolean(config.redbarkWebhookSecret),
+      webhookConfigured,
       testedAt: state?.tested_at,
       lastSuccess: state?.last_success,
       lastPollAt: state?.last_success,
@@ -84,13 +93,19 @@ export function createRedbarkIntegration({
     }
   }
   async function receiveWebhook(rawBody, headers) {
-    if (!configured() || !config.redbarkWebhookSecret)
+    let webhookSecret;
+    try {
+      webhookSecret = await getWebhookSecret();
+    } catch {
+      throw new RedbarkError("webhook_credentials_unavailable", 503);
+    }
+    if (!configured() || !webhookSecret)
       throw new RedbarkError("webhook_not_configured", 503);
     if (
       !verifyRedbarkSignature(
         headers["redbark-signature"],
         rawBody,
-        config.redbarkWebhookSecret,
+        webhookSecret,
       )
     )
       throw new RedbarkError("invalid_signature", 401);
@@ -127,22 +142,34 @@ export function createRedbarkIntegration({
       db.release();
     }
   }
-  async function sync() {
+  async function sync(params = {}) {
     const accounts = await client.accounts();
     const timezone = config.timezone || "Australia/Brisbane";
-    const to = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
+    const to =
+      params.to ||
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
     const days = Number(config.redbarkBackfillDays || 90);
     if (!Number.isInteger(days) || days < 1 || days > 2555)
       throw new RedbarkError("invalid_backfill_days");
-    const from = new Date(Date.parse(to) - days * 86400000)
-      .toISOString()
-      .slice(0, 10);
+    const from =
+      params.from ||
+      new Date(Date.parse(to) - days * 86400000).toISOString().slice(0, 10);
+    if (
+      params.accountId &&
+      !accounts.some(
+        (a) =>
+          a.id === params.accountId &&
+          (a.category === "banking" || a.provider === "documents"),
+      )
+    )
+      throw new RedbarkError("backfill_account_unavailable", 409);
     for (const rawAccount of accounts) {
+      if (params.accountId && rawAccount.id !== params.accountId) continue;
       if (
         rawAccount.category !== "banking" &&
         rawAccount.provider !== "documents"
@@ -219,7 +246,7 @@ export function createRedbarkIntegration({
       db = await pool.connect();
       // Session lock serializes poll/webhook work across processes. Disconnect releases it.
       const lock = await db.query(
-        "SELECT pg_try_advisory_lock(73426712) AS acquired",
+        "SELECT pg_try_advisory_lock(73426712, hashtext(current_schema())) AS acquired",
       );
       locked = lock.rows[0].acquired;
       if (!locked) return;
@@ -246,7 +273,7 @@ export function createRedbarkIntegration({
       );
       if (!job) return;
       try {
-        await sync();
+        await sync(job.params || {});
         await db.query(
           "UPDATE redbark_jobs SET status='completed', completed_at=now(),attempts=attempts+1,last_error=NULL WHERE id=$1",
           [job.id],
@@ -270,9 +297,13 @@ export function createRedbarkIntegration({
         );
       }
     } finally {
-      if (locked) await db.query("SELECT pg_advisory_unlock(73426712)");
+      if (locked)
+        await db.query(
+          "SELECT pg_advisory_unlock(73426712, hashtext(current_schema()))",
+        );
       db?.release();
       busy = false;
+      for (const resolve of idleWaiters.splice(0)) resolve();
     }
   }
   return {
@@ -289,9 +320,10 @@ export function createRedbarkIntegration({
         timer.unref();
       }
     },
-    stop() {
+    async stop() {
       clearInterval(timer);
       timer = undefined;
+      if (busy) await new Promise((resolve) => idleWaiters.push(resolve));
     },
   };
 }

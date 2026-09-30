@@ -211,3 +211,112 @@ export function calculateReport(
     },
   };
 }
+
+/** Inclusive calendar months; money never passes through floating point. */
+export function calculatePeriodReport(
+  transactions,
+  budgets,
+  {
+    month,
+    currency = "AUD",
+    months = 1,
+    today = new Date().toISOString().slice(0, 10),
+  },
+) {
+  months = Number(months);
+  if (![1, 2, 3, 4, 6].includes(months))
+    throw domainError("months must be 1, 2, 3, 4 or 6");
+  const last = calculateReport(transactions, budgets, { month, currency });
+  const monthly = [];
+  for (let offset = months - 1; offset >= 0; offset--) {
+    const date = new Date(`${month}-01T00:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() - offset);
+    const key = date.toISOString().slice(0, 7);
+    monthly.push({
+      ...calculateReport(transactions, budgets, { month: key, currency }),
+      partial: key === today.slice(0, 7),
+    });
+  }
+  const next = new Date(`${month}-01T00:00:00Z`);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  next.setUTCDate(0);
+  const report = {
+    ...last,
+    months,
+    startDate: `${monthly[0].month}-01`,
+    endDate: next.toISOString().slice(0, 10),
+    monthly,
+  };
+  return aggregateMonthly(report);
+}
+function aggregateMonthly(report) {
+  const { monthly } = report;
+  const last = monthly.at(-1);
+  for (const key of [
+    "incomeMinor",
+    "expensesMinor",
+    "netMinor",
+    "pendingMinor",
+    "transfersMinor",
+  ])
+    report[key] = String(
+      monthly.reduce((sum, row) => sum + BigInt(row[key]), 0n),
+    );
+  report.transactionIds = Object.fromEntries(
+    Object.keys(last.transactionIds).map((key) => [
+      key,
+      monthly.flatMap((row) => row.transactionIds[key]),
+    ]),
+  );
+  const categories = new Map();
+  for (const row of monthly)
+    for (const category of row.categories)
+      add(categories, category.category, BigInt(category.spentMinor), null);
+  report.categories = [...categories.values()]
+    .map((c) => ({
+      category: c.category,
+      spentMinor: String(c.spent),
+      transactionIds: monthly.flatMap(
+        (row) =>
+          row.categories.find((item) => item.category === c.category)
+            ?.transactionIds || [],
+      ),
+    }))
+    .sort((a, b) =>
+      BigInt(a.spentMinor) > BigInt(b.spentMinor)
+        ? -1
+        : BigInt(a.spentMinor) < BigInt(b.spentMinor)
+          ? 1
+          : a.category.localeCompare(b.category),
+    );
+  report.daily = monthly.flatMap((row) => row.daily);
+  report.budgetMonth = report.month;
+  return report;
+}
+
+/** Summarize exactly an export selection, including arbitrary ranges/all history. */
+export function calculateSelectionReport(
+  transactions,
+  { currency = "AUD", month, from, to } = {},
+) {
+  const selected = transactions.filter((t) => t.currency === currency);
+  const keys = [...new Set(selected.map((t) => t.date.slice(0, 7)))].sort();
+  if (!keys.length)
+    keys.push(month || (from || to || new Date().toISOString()).slice(0, 7));
+  const monthly = keys.map((month) =>
+    calculateReport(selected, [], { month, currency }),
+  );
+  return aggregateMonthly({
+    ...monthly.at(-1),
+    months: keys.length,
+    monthly,
+    startDate: from || selected.map((t) => t.date).sort()[0] || null,
+    endDate:
+      to ||
+      selected
+        .map((t) => t.date)
+        .sort()
+        .at(-1) ||
+      null,
+  });
+}

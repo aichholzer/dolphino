@@ -3,6 +3,7 @@ services:
   app:
     build: .
     restart: unless-stopped
+    # APP_SECRET or APP_SECRET_FILE comes from .env; no fixed key or DB fallback.
     env_file: .env
     ports:
       - "127.0.0.1:3001:3001"

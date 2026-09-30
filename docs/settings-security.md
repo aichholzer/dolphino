@@ -1,0 +1,19 @@
+# Encrypted settings and recoverability
+
+Provider credentials and registered Redbark signing secrets are encrypted in PostgreSQL using AES-256-GCM, a new random 96-bit nonce for every write, versioned envelopes and authenticated associated data binding each ciphertext to its setting name and provider. Version 2 envelopes include a fresh random 32-byte salt, 12-byte nonce, ciphertext and 16-byte authentication tag. HKDF-SHA256 derives a separate 256-bit encryption key from `APP_SECRET` and that salt with a Profe-specific versioned context. Existing version 1 ciphertext remains readable; any new credential write or explicit key rotation produces version 2. Nonce, salt, tag and encoding lengths are validated before decryption. This is reversible encryption, not password hashing. The running server must decrypt credentials to contact the selected provider.
+
+Generate a random 32-byte master secret outside the database and repository, for example `openssl rand -base64 32`, then configure `APP_SECRET` or `APP_SECRET_FILE`. Input must be at least 43 characters and not a low-diversity placeholder. Never use an example/default value. Keep this key separate from PostgreSQL backups and retain it for as long as matching backups may need restoring. Losing the key permanently loses access to encrypted credentials; imported transactions and corrections remain usable. A changed, absent or incorrect key fails credentials closed and does not fall back to environment credentials when database settings exist.
+
+Secret writes are write-only: omit a field or send an empty string to retain its ciphertext; send `null` to clear it; send a new nonempty value to replace it. Public settings report only configured state and a constant mask, never last characters or plaintext. Invalid writes and enabling with absent/unreadable required credentials roll back the whole provider settings transaction. Saving database provider settings makes that document authoritative over legacy `LLM_*` environment configuration. Environment credentials are never copied into PostgreSQL implicitly. Disabled settings retain encrypted credentials for later reuse. Different provider credentials remain isolated so switching providers does not accidentally overwrite another provider's key.
+
+Ordinary provider settings may be read and disabled even with a missing key. Credential writes and external registration must pass encryption readiness first. Authentication, CSRF/origin validation and endpoint rate limiting are applied by the API layer, not the credential store. Decryption errors intentionally omit underlying crypto details and values.
+
+## Explicit offline key rotation
+
+Changing `APP_SECRET` alone does **not** rotate existing ciphertext. Stop every Profe server/worker before rotation and keep it stopped throughout. Back up the database and the old key separately. Create a new random key in a separately protected file. Provide a database URL for the intended installation and run:
+
+```sh
+APP_SECRET_FILE=/run/secrets/old-app-secret NEW_APP_SECRET_FILE=/run/secrets/new-app-secret node scripts/rotate-settings-key.js
+```
+
+The script decrypts and re-encrypts every stored credential under an exclusive table lock in one transaction; an authentication failure rolls back all changes. It prints only the row count. After success, install the new key as the application's `APP_SECRET`/`APP_SECRET_FILE` and restart the app. Verify settings status and perform an explicitly requested provider test. Keep the old key with pre-rotation backup records and the new key with post-rotation records, separately from the database dumps. If interrupted before commit the old key works; after commit the new key works. Restore the matching backup and key together to roll back. Do not run rotation concurrently with the application; there is no dual-key deployment mode.

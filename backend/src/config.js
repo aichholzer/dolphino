@@ -15,6 +15,7 @@ export function readConfig(env = process.env) {
     databaseUrl: secret(env, "DATABASE_URL"),
     passwordHash: secret(env, "PROFE_PASSWORD_HASH"),
     sessionSecret: secret(env, "SESSION_SECRET"),
+    appSecret: secret(env, "APP_SECRET"),
     origin: env.APP_ORIGIN || "http://localhost:3001",
     currency: env.PROFE_CURRENCY || "AUD",
     timezone: env.PROFE_TIMEZONE || "Australia/Brisbane",
