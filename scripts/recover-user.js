@@ -1,3 +1,4 @@
+import { ensureDeploymentMode } from "../backend/src/deployment-mode.js";
 import { createPool } from "../backend/src/db.js";
 import { readConfig } from "../backend/src/config.js";
 import { createUserManagement } from "../backend/src/users.js";
@@ -12,6 +13,7 @@ if (args.length !== 2 || args[0] !== "--email") {
     const config = readConfig();
     if (config.mode !== "live") throw Error("Recovery requires live mode");
     pool = await createPool();
+    await ensureDeploymentMode(pool, config.mode);
     const users = createUserManagement({ pool, config, settings: null });
     const link = await users.createRecoveryLink({ email: args[1] });
     console.log(

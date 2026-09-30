@@ -1,0 +1,26 @@
+# Assistant configuration and data sharing
+
+The assistant has its own administrator-managed provider, model, credentials, enable switch and cost limits. Configuring classification does not enable the assistant. The assistant never inherits classification credentials or legacy `LLM_*` environment values. Its document and encrypted credentials use the `assistant.llm` namespace; authenticated encryption binds each secret to that exact setting/provider. Key backup and offline rotation use the same independently stored APP_SECRET as other settings.
+
+Select OpenAI or Bedrock, enter a supported model manually, and configure separate credentials. Bedrock uses a catalogued commercial region and permanent access key/secret; temporary credentials and session tokens are not supported. As with classification, no app code grants provider permissions, accepts model agreements or subscribes to a model. See [provider access restrictions](providers.md). Secret inputs are write-only: omitted or empty values preserve, explicit null clears. Enabling with missing/unreadable credentials rolls back the entire settings change. Missing/wrong APP_SECRET disables credential use without blocking imported data or manual work.
+
+Administrators must explicitly acknowledge data sharing before enabling the assistant. The user-facing disclosure explains that questions and permitted account/budget summaries may leave the homelab for the selected provider. Do not enter passwords, API keys or other secrets in questions. The assistant is read-only: no mutation tool for transactions, classifications, budgets, users, grants, integrations, notifications or settings is exposed. Local resource grants remain authoritative; a model request does not grant extra access. A budget grant may explicitly authorize a household category aggregate without transaction access, as documented in [household permissions](household-auth.md).
+
+Limits are independent of classification:
+
+| Setting | Default | Allowed range |
+| --- | --- | --- |
+| Provider requests per user per UTC day | 10 | 1–100 |
+| Tool calls per question | 4 | 1–8 |
+| Provider rounds per question | 3 | 1–4 |
+| Maximum output tokens per provider call | 1,024 | 128–2,048 |
+
+Multiple provider rounds consume multiple requests. Limits bound activity rather than guaranteeing a currency-denominated price; provider pricing, context size and model behavior affect cost. Configuring a model does not prove availability or tool-calling compatibility. Development uses mocked providers and synthetic settings exclusively. The explicitly requested **Test model** action exercises the actual assistant tool-calling contract: one fixed fictional summary tool and one follow-up response, at most two provider calls with at most 256 output tokens each (or the lower configured token cap). It reads no household finance data, can incur a small inference charge, and requires explicit cost acknowledgement. It does not enable the assistant.
+
+## Provider retention and logging
+
+OpenAI requests set `store:false`; that setting is **not a zero-retention guarantee**. Abuse-monitoring logs and organization/project data controls have separate policies and eligibility. Review the selected endpoint's current [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) before enabling; Profe does not enroll an account in special retention programs or change provider policies.
+
+For Bedrock, administrators must check the selected model's data handling, AWS region and any cross-region inference profile. Account-level invocation logging can record request/response data in CloudWatch Logs or S3 when configured; Profe does not enable, disable or delete that logging. Review [Bedrock invocation logging](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html) and [Bedrock data protection](https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html), as well as applicable model terms. Do not infer that an encrypted local credential means a provider receives no financial content.
+
+The admin settings response contains masks/configured state, disclosure and limits, never plaintext credentials. The ordinary-user status omits secret masks, credential metadata and limits; it exposes only provider/model, configured/enabled state and a safe disabled reason. Application conversation storage/deletion behavior is documented by the assistant feature; provider-side retention remains separate from deleting local records.

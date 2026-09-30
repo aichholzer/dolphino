@@ -63,6 +63,22 @@ export async function validateGrants(c, input, { mode = "live" } = {}) {
     throw domainError("Grant target not found");
   return grants;
 }
+export async function bumpAccessRevision(c, userId, { mode = "live" } = {}) {
+  await c.query(
+    `INSERT INTO user_access_revisions(user_id,mode,revision) VALUES($1,$2,1) ON CONFLICT(user_id,mode) DO UPDATE SET revision=user_access_revisions.revision+1`,
+    [userId, mode],
+  );
+}
+async function accessRevision(c, userId, mode) {
+  return String(
+    (
+      await c.query(
+        "SELECT revision FROM user_access_revisions WHERE user_id=$1 AND mode=$2",
+        [userId, mode],
+      )
+    ).rows[0]?.revision || "0",
+  );
+}
 export async function validateAndSetGrants(c, userId, input, options = {}) {
   const grants = await validateGrants(c, input, options),
     mode = options.mode || "live";
@@ -84,6 +100,7 @@ export async function validateAndSetGrants(c, userId, input, options = {}) {
       "INSERT INTO user_budget_grants(user_id,mode,budget_id,permission) VALUES($1,$2,$3,$4)",
       [userId, mode, g.budgetId, g.access],
     );
+  await bumpAccessRevision(c, userId, { mode });
   return grants;
 }
 export async function listGrants(c, userId, { mode = "live" } = {}) {
@@ -129,6 +146,7 @@ export async function createAccessStore(store, user) {
     return Object.assign(Object.create(store), {
       assertTransaction: async (id) => store.getTransaction(id),
       permissions: async () => ({
+        accessRevision: await accessRevision(store.pool, user.id, store.mode),
         financialAccess: true,
         manageSettings: true,
         admin: true,
@@ -252,6 +270,7 @@ export async function createAccessStore(store, user) {
     permissions: async () => {
       const g = await grants();
       return {
+        accessRevision: await accessRevision(store.pool, user.id, store.mode),
         financialAccess: !!(g.accounts.length || g.budgets.length),
         manageSettings: false,
         admin: false,

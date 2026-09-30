@@ -38,6 +38,7 @@ test("SMTP enforces TLS and blocks option/header injection, redacts failure", as
       },
       close() {},
     }),
+    async () => [{ address: "8.8.8.8", family: 4 }],
   );
   assert.equal(received.opts.debug, false);
   await assert.rejects(
@@ -62,6 +63,7 @@ test("SMTP enforces TLS and blocks option/header injection, redacts failure", as
         },
         close() {},
       }),
+      async () => [{ address: "8.8.8.8", family: 4 }],
     ),
     (e) => !e.message.includes("synthetic-password"),
   );

@@ -1,6 +1,7 @@
 // Destructive only to new, randomly named databases created by this script.
 // Never accepts an existing source or target database name.
 import pg from "pg";
+import { ensureDeploymentMode } from "../backend/src/deployment-mode.js";
 import assert from "node:assert/strict";
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
@@ -13,6 +14,8 @@ import {
 } from "../backend/src/household-auth.js";
 import { createUserManagement } from "../backend/src/users.js";
 import { ensureAccessSchema } from "../backend/src/access.js";
+import { createAssistantSettings } from "../backend/src/assistant-settings.js";
+import { createAssistantUsage } from "../backend/src/assistant-usage.js";
 import { createSettingsStore } from "../backend/src/settings.js";
 import { createNotificationIntegration } from "../backend/src/notifications.js";
 import { createRegistration } from "../backend/src/registration.js";
@@ -73,6 +76,7 @@ try {
     created.push(name);
   }
   const srcPool = connect(source);
+  await ensureDeploymentMode(srcPool, "demo");
   const store = new Store(srcPool, { mode: "demo" });
   await store.migrate();
   await ensureRedbarkSchema(srcPool);
@@ -120,6 +124,24 @@ try {
     },
   );
   const authRequest = { headers: { cookie: bootstrap.cookie.split(";")[0] } };
+  const assistantSettings = createAssistantSettings({
+    pool: srcPool,
+    appSecret: syntheticMasterKey,
+  });
+  await assistantSettings.init();
+  await assistantSettings.save({
+    provider: "openai",
+    model: "synthetic-assistant-model",
+    enabled: false,
+    dataSharingAcknowledged: false,
+    apiKey: "synthetic-assistant-rehearsal-key",
+    dailyRequestsPerUser: 3,
+  });
+  const assistantUsage = createAssistantUsage({ pool: srcPool });
+  await assistantUsage.init();
+  await assistantUsage.reserveRequest({ userId: bootstrap.user.id, limit: 3 });
+  await assistantUsage.reserveRequest({ userId: bootstrap.user.id, limit: 3 });
+
   const memberId = randomUUID();
   await srcPool.query(
     "INSERT INTO household_users(id,email,name,role,password_hash) VALUES($1,'restore-member@example.invalid','Fictional member','member',$2)",
@@ -286,6 +308,40 @@ try {
   );
   const dstPool = connect(target);
   const restored = new Store(dstPool, { mode: "demo" });
+
+  const restoredAssistantSettings = createAssistantSettings({
+    pool: dstPool,
+    appSecret: syntheticMasterKey,
+  });
+  assert.equal(
+    (await restoredAssistantSettings.getRuntimeConfig()).llmApiKey,
+    "synthetic-assistant-rehearsal-key",
+  );
+  assert.equal(
+    (await restoredAssistantSettings.getRuntimeConfig()).assistantEnabled,
+    false,
+  );
+  assert.equal(
+    (await createAssistantSettings({ pool: dstPool }).getRuntimeConfig())
+      .llmApiKey,
+    "",
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT requests FROM assistant_usage WHERE user_id=$1",
+        [bootstrap.user.id],
+      )
+    ).rows[0].requests,
+    2,
+  );
+  await assert.rejects(
+    createAssistantUsage({ pool: dstPool }).reserveRequest({
+      userId: bootstrap.user.id,
+      limit: 2,
+    }),
+    (error) => error.status === 429,
+  );
   const restoredAuth = createHouseholdAuth({
     pool: dstPool,
     config: { mode: "live" },
@@ -411,6 +467,7 @@ try {
           pendingMinor: r.pendingMinor,
         })),
         checks: [
+          "Independent encrypted assistant credentials and durable per-user quota restore without any provider request",
           "Household users, hashed sessions, hashed invitations, closed bootstrap and independent resource grants survive",
           "Every row in every public table matches exactly",
           "Complete financial reports including budgets/coverage match",

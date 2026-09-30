@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { publicSmtpAddress } from "./smtp-network.js";
 import { readFile } from "node:fs/promises";
 import nodemailer from "nodemailer";
 import { minorToDecimal } from "../../shared/money.js";
@@ -46,6 +49,14 @@ export function smtpOptions(value) {
       url.hash ||
       (url.pathname && url.pathname !== "/") ||
       !url.hostname ||
+      isIP(url.hostname) ||
+      url.hostname.includes(":") ||
+      !/^[a-z0-9.-]+$/i.test(url.hostname) ||
+      !url.hostname.includes(".") ||
+      /(^|\.)(localhost|local|internal|lan|home|test|invalid|example)$/i.test(
+        url.hostname,
+      ) ||
+      url.hostname.endsWith(".") ||
       !url.username ||
       !url.password ||
       /[\r\n]/.test(value)
@@ -83,6 +94,7 @@ export function smtpOptions(value) {
 export async function sendSmtp(
   { smtpUrl, from, to, text, messageId, subject = "Profe budget notification" },
   createTransport = nodemailer.createTransport,
+  lookupImpl = lookup,
 ) {
   if (!email.safeParse(from).success || !email.safeParse(to).success)
     throw invalid();
@@ -92,9 +104,30 @@ export async function sendSmtp(
     /[\r\n]/.test(subject)
   )
     throw invalid();
-  const transport = createTransport(smtpOptions(smtpUrl));
+  const options = smtpOptions(smtpUrl);
+  let transport;
   let timer;
   try {
+    const addresses = await Promise.race([
+      lookupImpl(options.host, { all: true, verbatim: true }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error("DNS timeout")), 10000);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (
+      !addresses.length ||
+      addresses.some(({ address }) => !publicSmtpAddress(address))
+    )
+      throw invalid();
+    // Pin the checked IP; a second DNS lookup cannot redirect SMTP into the LAN.
+    // Keep the original DNS name for SNI and certificate hostname verification.
+    transport = createTransport({
+      ...options,
+      host: addresses[0].address,
+      servername: options.host,
+      tls: { ...options.tls, servername: options.host },
+    });
     await Promise.race([
       transport.sendMail({
         from,
@@ -121,7 +154,7 @@ export async function sendSmtp(
     );
   } finally {
     clearTimeout(timer);
-    transport.close();
+    transport?.close();
   }
 }
 export function notificationText(payload, fields = defaultFields) {

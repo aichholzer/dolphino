@@ -18,7 +18,8 @@
     "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\" \"shared/**/*.js\"",
     "test:browser:enhancements": "node scripts/browser-enhancements.mjs",
     "test:browser:auth": "node scripts/browser-auth.mjs",
-    "recover-user": "node scripts/recover-user.js"
+    "recover-user": "node scripts/recover-user.js",
+    "test:browser:assistant": "node scripts/browser-assistant.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",

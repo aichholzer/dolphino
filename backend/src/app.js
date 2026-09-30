@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { z } from "zod";
 import { testProviderConnection, testProviderModel } from "./llm.js";
+import { testAssistantModel } from "./assistant-provider-test.js";
+import { FINANCE_TOOLS, invokeFinanceTool } from "./assistant-tools.js";
 import { createAccessStore } from "./access.js";
 import { createHouseholdAuth } from "./household-auth.js";
 const minor = z.string().regex(/^-?\d{1,18}$/);
@@ -95,12 +97,28 @@ export function createApp({
   importHealth,
   auth = createHouseholdAuth({ pool: store.pool, config }),
   users,
+  assistant,
+  assistantSettings,
 }) {
+  function securityHeaders(res) {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=()",
+    );
+    if (config.mode === "live")
+      res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
   const app = rayo({
     host: config.host,
     port: config.port,
     notFound: (req, res) => staticFile(req, res),
-    onError: (_e, _req, res) => send(res, { error: "Request failed" }, 500),
+    onError: (_e, _req, res) => {
+      securityHeaders(res);
+      send(res, { error: "Request failed" }, 500);
+    },
   });
   const financialRoutes = new Set([
     "/api/dashboard",
@@ -126,9 +144,7 @@ export function createApp({
     app[method](path, (req, res) => {
       Promise.resolve()
         .then(async () => {
-          res.setHeader("X-Content-Type-Options", "nosniff");
-          res.setHeader("Referrer-Policy", "no-referrer");
-          res.setHeader("X-Frame-Options", "DENY");
+          securityHeaders(res);
           if (!publicRoute) {
             req.user = await auth.session(req);
             if (!req.user) return send(res, { error: "Sign in required" }, 401);
@@ -151,10 +167,11 @@ export function createApp({
             new URL(req.url, "http://localhost").searchParams,
           );
           const result = await handler(req, res);
-          if (!res.writableEnded) send(res, result ?? { ok: true });
+          if (!res.writableEnded && !res.destroyed)
+            send(res, result ?? { ok: true });
         })
         .catch((e) => {
-          if (res.writableEnded) return;
+          if (res.writableEnded || res.destroyed) return;
           const status =
             e instanceof z.ZodError
               ? 400
@@ -338,6 +355,173 @@ export function createApp({
     sensitive("reset-password");
     return users.resetPassword({ actorId: req.user.id, userId: req.params.id });
   });
+  const assistantContext = (req) => async () => {
+    const user = await auth.session(req);
+    if (!user) throw Object.assign(Error("Sign in required"), { status: 401 });
+    const finance = await createAccessStore(store, user);
+    const permissions = await finance.permissions();
+    if (!permissions.financialAccess)
+      throw Object.assign(Error("Financial access has not been granted"), {
+        status: 403,
+      });
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify({ id: user.id, role: user.role, permissions }))
+      .digest("hex");
+    // The assistant receives only read services, never Store/pool/credentials or mutation methods.
+    const readOnly = Object.freeze(
+      Object.fromEntries(
+        [
+          "permissions",
+          "listAccounts",
+          "listTransactions",
+          "transactionPage",
+          "getTransaction",
+          "report",
+          "listBudgets",
+          "listCategories",
+          "listReviews",
+          "audit",
+          "exportSnapshot",
+        ].map((name) => [name, (...args) => finance[name](...args)]),
+      ),
+    );
+    return { user, fingerprint, finance: readOnly };
+  };
+  route("get", "/api/settings/assistant", async () => ({
+    ...(await assistantSettings.getPublic()),
+    tools: FINANCE_TOOLS,
+    readOnly: true,
+  }));
+  route("put", "/api/settings/assistant", async (req) => {
+    sensitive("assistant-settings");
+    return assistantSettings.save(await body(req));
+  });
+  route("post", "/api/settings/assistant/test-connection", async () => {
+    sensitive("assistant-connection-test");
+    return testProviderConnection(
+      await assistantSettings.getRuntimeConfig(),
+      providerDependencies,
+    );
+  });
+  route("post", "/api/settings/assistant/test-model", async (req) => {
+    sensitive("assistant-model-test");
+    z.object({ acknowledgeCost: z.literal(true) })
+      .strict()
+      .parse(await body(req));
+    return testAssistantModel(
+      await assistantSettings.getRuntimeConfig(),
+      providerDependencies,
+    );
+  });
+  route(
+    "get",
+    "/api/assistant/status",
+    () => assistantSettings.getUserStatus(),
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/tools",
+    async (req) => {
+      await assistantContext(req)();
+      return { tools: FINANCE_TOOLS, readOnly: true };
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/tools/:name",
+    async (req) =>
+      invokeFinanceTool(req.params.name, await body(req), {
+        getFinance: async () => (await assistantContext(req)()).finance,
+        timeZone: config.timezone,
+      }),
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/chats",
+    (req) => assistant.list({ getContext: assistantContext(req) }),
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/chats",
+    async (req) => {
+      z.object({})
+        .strict()
+        .parse(await body(req));
+      return assistant.create({ getContext: assistantContext(req) });
+    },
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/chats/:id",
+    (req) =>
+      assistant.get({
+        chatId: req.params.id,
+        getContext: assistantContext(req),
+      }),
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/chats/:id/messages",
+    async (req, res) => {
+      const input = z
+        .object({
+          message: z.string().min(1).max(4000),
+          acknowledgeDataSharing: z.literal(true),
+        })
+        .strict()
+        .parse(await body(req));
+      const cancel = new AbortController();
+      const disconnected = () => {
+        if (!res.writableEnded) cancel.abort();
+      };
+      req.once("aborted", disconnected);
+      res.once("close", disconnected);
+      try {
+        return await assistant.send({
+          ...input,
+          chatId: req.params.id,
+          getContext: assistantContext(req),
+          signal: cancel.signal,
+        });
+      } finally {
+        req.off("aborted", disconnected);
+        res.off("close", disconnected);
+      }
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/chats/:id/cancel",
+    (req) =>
+      assistant.cancel({
+        chatId: req.params.id,
+        getContext: assistantContext(req),
+      }),
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/reports/:id",
+    async (req, res) => {
+      const report = await assistant.report({
+        reportId: req.params.id,
+        getContext: assistantContext(req),
+      });
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="profe-assistant-report.json"',
+      );
+      return report;
+    },
+    { allowMember: true },
+  );
   const filters = (req) => {
     const q = { ...req.query };
     if (
@@ -409,6 +593,9 @@ export function createApp({
   );
   route("get", "/api/transactions", async (req) =>
     ledger(req).transactionPage(filters(req)),
+  );
+  route("get", "/api/transactions/:id", (req) =>
+    ledger(req).getTransaction(req.params.id),
   );
   route("patch", "/api/transactions/:id", async (req) =>
     ledger(req).correctTransaction(
@@ -668,6 +855,7 @@ export function createApp({
     };
   });
   async function staticFile(req, res) {
+    securityHeaders(res);
     if (req.url.startsWith("/api/"))
       return send(res, { error: "Not found" }, 404);
     if (req.method !== "GET") return send(res, { error: "Not found" }, 404);
@@ -676,6 +864,8 @@ export function createApp({
       const pathname = decodeURIComponent(
         new URL(req.url, "http://localhost").pathname,
       );
+      if (pathname.split("/").some((segment) => segment.startsWith(".")))
+        return send(res, { error: "Not found" }, 404);
       const path = resolve(root, "." + pathname);
       if (!path.startsWith(root + "/") && path !== root)
         return send(res, { error: "Not found" }, 404);
@@ -698,7 +888,7 @@ export function createApp({
             ".png": "image/png",
           }[ext] || "application/octet-stream",
         "Content-Security-Policy":
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'",
       });
       res.end(data);
     } catch {

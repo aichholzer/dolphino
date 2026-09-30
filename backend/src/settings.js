@@ -45,7 +45,17 @@ export const providerSettingsSchema = z
 const fields = ["apiKey", "accessKeyId", "secretAccessKey"];
 const required = (provider) =>
   provider === "openai" ? ["apiKey"] : ["accessKeyId", "secretAccessKey"];
-export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
+export function createSettingsStore({
+  pool,
+  appSecret,
+  envConfig = {},
+  providerNamespace = "llm",
+  allowEnvironmentFallback = true,
+  settingsSchema = providerSettingsSchema,
+}) {
+  if (!/^[a-z][a-z0-9_.]{0,63}$/.test(providerNamespace))
+    throw Error("Invalid provider namespace");
+  const fallbackConfig = allowEnvironmentFallback ? envConfig : {};
   async function setSecret(setting, provider, value, client = pool) {
     if (value === null) return clearSecret(setting, provider, client);
     const ciphertext = encryptSecret(value, appSecret, setting, provider);
@@ -84,14 +94,14 @@ export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
     );
   }
   async function getPublicProvider() {
-    const stored = await getValue("llm");
+    const stored = await getValue(providerNamespace);
     const state = stored || {
-      provider: envConfig.llmProvider || "openai",
-      model: envConfig.llmModel || "",
-      enabled: !!envConfig.llmApiKey,
-      autoApply: !!envConfig.llmAutoApply,
-      dailyRequestLimit: envConfig.llmDailyRequestLimit || 20,
-      batchSize: envConfig.llmBatchSize || 5,
+      provider: fallbackConfig.llmProvider || "openai",
+      model: fallbackConfig.llmModel || "",
+      enabled: !!fallbackConfig.llmApiKey,
+      autoApply: !!fallbackConfig.llmAutoApply,
+      dailyRequestLimit: fallbackConfig.llmDailyRequestLimit || 20,
+      batchSize: fallbackConfig.llmBatchSize || 5,
     };
     const credentials = {};
     let available = true;
@@ -101,17 +111,17 @@ export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
         configured = !!(
           await pool.query(
             "SELECT 1 FROM encrypted_credentials WHERE setting=$1 AND provider=$2",
-            [`llm.${field}`, state.provider],
+            [`${providerNamespace}.${field}`, state.provider],
           )
         ).rowCount;
         if (configured) {
           try {
-            await getSecret(`llm.${field}`, state.provider);
+            await getSecret(`${providerNamespace}.${field}`, state.provider);
           } catch {
             available = false;
           }
         }
-      } else configured = field === "apiKey" && !!envConfig.llmApiKey;
+      } else configured = field === "apiKey" && !!fallbackConfig.llmApiKey;
       credentials[field] = { configured, masked: configured ? "••••••••" : "" };
     }
     return {
@@ -127,7 +137,7 @@ export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
     };
   }
   async function saveProvider(input) {
-    const parsed = providerSettingsSchema.safeParse(input);
+    const parsed = settingsSchema.safeParse(input);
     if (!parsed.success)
       throw Object.assign(Error("Invalid provider settings"), { status: 400 });
     const value = parsed.data;
@@ -137,21 +147,30 @@ export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
       await client.query("SELECT pg_advisory_xact_lock(17092381)");
       for (const field of fields)
         if (value[field] !== undefined)
-          await setSecret(`llm.${field}`, value.provider, value[field], client);
+          await setSecret(
+            `${providerNamespace}.${field}`,
+            value.provider,
+            value[field],
+            client,
+          );
       // Enabling is allowed only when every required stored credential can actually be decrypted.
       if (value.enabled)
         for (const field of required(value.provider))
-          if (!(await getSecret(`llm.${field}`, value.provider, client)))
+          if (
+            !(await getSecret(
+              `${providerNamespace}.${field}`,
+              value.provider,
+              client,
+            ))
+          )
             throw Object.assign(
-              Error(
-                "Configure required provider credentials before enabling classification",
-              ),
+              Error("Configure required provider credentials before enabling"),
               { status: 409 },
             );
       const publicValue = Object.fromEntries(
         Object.entries(value).filter(([k]) => !fields.includes(k)),
       );
-      await setValue("llm", publicValue, client);
+      await setValue(providerNamespace, publicValue, client);
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
@@ -162,10 +181,20 @@ export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
     return getPublicProvider();
   }
   async function getProviderConfig() {
-    const value = await getValue("llm");
-    if (!value) return { ...envConfig };
+    const value = await getValue(providerNamespace);
+    if (!value)
+      return allowEnvironmentFallback
+        ? { ...envConfig }
+        : {
+            llmEnabled: false,
+            llmAutoClassify: false,
+            llmAutoApply: false,
+            llmApiKey: "",
+            llmAccessKeyId: "",
+            llmSecretAccessKey: "",
+          };
     const config = {
-      ...envConfig,
+      ...fallbackConfig,
       llmProvider: value.provider,
       llmModel: value.model,
       llmRegion: value.region,
@@ -187,7 +216,9 @@ export function createSettingsStore({ pool, appSecret, envConfig = {} }) {
         secretAccessKey: "llmSecretAccessKey",
       };
       for (const [field, name] of Object.entries(names))
-        config[name] = (await getSecret(`llm.${field}`, value.provider)) || "";
+        config[name] =
+          (await getSecret(`${providerNamespace}.${field}`, value.provider)) ||
+          "";
       if (
         value.provider === "bedrock" &&
         config.llmAccessKeyId.startsWith("ASIA")

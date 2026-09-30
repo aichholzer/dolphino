@@ -31,6 +31,8 @@ import { Dialog } from "./components/ui/dialog";
 import "./style.css";
 import { AuthScreen, AccessPending, PasswordForm } from "./components/auth";
 import { UsersSettings } from "./components/users-settings";
+import { AssistantPanel } from "./components/assistant-panel";
+import { AssistantSettings } from "./components/assistant-settings";
 import { ImportHealth } from "./components/import-health";
 import { NotificationSettings } from "./components/notification-settings";
 import { IntegrationSettings } from "./components/integration-settings";
@@ -279,7 +281,7 @@ function App() {
     setIds(filters.ids ?? null);
     setCategory(filters.category || "");
     setKind(filters.kind || "");
-    setStatus(filters.status || "posted");
+    setStatus(filters.status ?? "posted");
     if (filters.month) setMonth(filters.month);
     else if (
       page === "Overview" &&
@@ -412,6 +414,21 @@ function App() {
             <span>{page}</span>
           </div>
           <div className="topbar-right">
+            {hasFinancialAccess && (
+              <AssistantPanel
+                api={api}
+                session={session}
+                onViewTransaction={
+                  hasAccountAccess
+                    ? (id, sourceCurrency) => {
+                        if (/^[A-Z]{3}$/.test(sourceCurrency || ""))
+                          setCurrency(sourceCurrency);
+                        drill({ ids: [id], status: "" });
+                      }
+                    : undefined
+                }
+              />
+            )}
             {session?.demo && (
               <span className="demo-badge">
                 <span />
@@ -1412,6 +1429,7 @@ function App() {
                       </p>
                     )}
                   </section>
+                  <AssistantSettings api={api} demo={session?.demo} />
                   <UsersSettings
                     api={api}
                     session={session}
@@ -1800,7 +1818,11 @@ function EditTransaction({
         </datalist>
         <label>
           Transaction type
-          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <select
+            disabled={!canSuggest && transaction?.internalTransfer}
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+          >
             {["expense", "income", "transfer", "refund"].map((k) => (
               <option key={k}>{k}</option>
             ))}

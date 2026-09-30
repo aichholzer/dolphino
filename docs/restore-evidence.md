@@ -15,29 +15,30 @@ REHEARSAL_ADMIN_URL=postgresql://profe@127.0.0.1:54329/profe_test \
 node scripts/restore-rehearsal.mjs
 ```
 
-The reusable script rejects non-loopback hosts and never accepts an existing database name as a source or restore target. It seeds fictional demo records, then adds an actual correction, classification rule, audit event, queued classification job, webhook receipt, sync job and fetch evidence. Budget and financial mutations create overspend alerts before any report is opened; a fictional daily classification-request counter is also seeded. Exact JSON row content was compared across **all 29 public tables**, including timestamps and raw evidence; complete backend reports for both fixture months matched. Corrections/audit history, immutable observation trigger and sequence continuation were checked separately. Four encrypted synthetic credentials (provider API key, Redbark signing key, SMTP URL and Telegram bot token) and the provider settings document also survived exactly. All decrypted only with the separately retained synthetic master key; missing-key credential access failed closed without affecting restored financial reports.
+The reusable script rejects non-loopback hosts and never accepts an existing database name as a source or restore target. It seeds fictional demo records, then adds an actual correction, classification rule, audit event, queued classification job, webhook receipt, sync job and fetch evidence. Budget and financial mutations create overspend alerts before any report is opened; a fictional daily classification-request counter is also seeded. Exact JSON row content was compared across **all 32 public tables**, including timestamps and raw evidence; complete backend reports for both fixture months matched. Corrections/audit history, immutable observation trigger and sequence continuation were checked separately. Five encrypted synthetic credentials (classification API key, separate assistant API key, Redbark signing key, SMTP URL and Telegram bot token) and the provider settings document also survived exactly. All decrypted only with the separately retained synthetic master key; missing-key credential access failed closed without affecting restored financial reports.
 
 The extended rehearsal also seeds pending and sent notification outbox rows without sending, durable notification events with revisions, remote webhook registration metadata, a backfill job with retry state, and local account label/description overrides. All rows and states survive byte-for-byte. Notification send functions are injected to throw if accidentally called; no provider or notification network call runs.
 
 Observed output (monetary amounts are exact integer AUD cents):
 
 ```text
-Backup written to /tmp/profe-restore-rehearsal-UySuF2/profe-20260930T122205Z.dump
-Restored to profe_restore_test_0bd5bc3c2f9641ff8b390e9b50552e03. Verify totals and settings before switching the app.
+Backup written to /tmp/profe-restore-rehearsal-NBUcvS/profe-20260930T124016Z.dump
+Restored to profe_restore_test_9913ab6a71d44eba984d74de5b3d7f48. Verify totals and settings before switching the app.
 {
   "result": "PASS",
   "server": "18.4",
-  "source": "profe_backup_test_0bd5bc3c2f9641ff8b390e9b50552e03",
-  "target": "profe_restore_test_0bd5bc3c2f9641ff8b390e9b50552e03",
+  "source": "profe_backup_test_9913ab6a71d44eba984d74de5b3d7f48",
+  "target": "profe_restore_test_9913ab6a71d44eba984d74de5b3d7f48",
   "counts": {
     "accounts": 3,
-    "app_settings": 1,
+    "app_settings": 2,
+    "assistant_usage": 1,
     "audit_history": 2,
     "budget_alerts": 2,
     "budgets": 7,
     "classification_jobs": 1,
     "classification_usage": 1,
-    "encrypted_credentials": 4,
+    "encrypted_credentials": 5,
     "household_auth_limits": 1,
     "household_auth_state": 1,
     "household_demo_users": 0,
@@ -56,6 +57,7 @@ Restored to profe_restore_test_0bd5bc3c2f9641ff8b390e9b50552e03. Verify totals a
     "source_aliases": 28,
     "transaction_overrides": 1,
     "transactions": 28,
+    "user_access_revisions": 0,
     "user_account_grants": 1,
     "user_budget_grants": 1,
     "webhook_registration": 1
@@ -79,6 +81,7 @@ Restored to profe_restore_test_0bd5bc3c2f9641ff8b390e9b50552e03. Verify totals a
     }
   ],
   "checks": [
+    "Independent encrypted assistant credentials and durable per-user quota restore without any provider request",
     "Household users, hashed sessions, hashed invitations, closed bootstrap and independent resource grants survive",
     "Every row in every public table matches exactly",
     "Complete financial reports including budgets/coverage match",
@@ -99,3 +102,7 @@ The demonstrated September totals were income **AUD 6,650.00**, expenses **AUD 3
 This proves the application database backup/restore path, including immutable triggers and durable work/evidence tables. It does not back up server-side configuration/secrets, database roles, TLS certificates, or an external provider account; operators must preserve those separately as described in deployment instructions.
 
 Household-upgrade rehearsal also preserved two synthetic named accounts, one hashed live session, a hashed invitation, closed-bootstrap state, authentication audit/rate-limit records, and independent account-view/budget-edit grants. The restored session resolved its synthetic administrator and public setup remained closed. No token or password plaintext was written to the evidence output; no email was sent.
+
+Assistant verification adds the independent encrypted assistant credential/settings namespace and per-user request quota. Its restored synthetic credential decrypts only with the retained master key, remains disabled, and is distinct from classification. The restored quota retains its reserved count and rejects an already-exhausted limit. Assistant conversations/reports are transient process memory and are not part of the PostgreSQL backup.
+
+The deployment-mode lock is included in the restored database; it prevents accidentally restarting this database under the other mode.

@@ -1859,3 +1859,238 @@ label select {
 .monthly-comparison > .card-heading {
   padding: 24px;
 }
+.assistant-overlay {
+  position: fixed;
+  inset: 0;
+  background: #23202d55;
+  z-index: 60;
+}
+.assistant-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(510px, 100vw);
+  background: #fbfbfe;
+  z-index: 61;
+  box-shadow: -12px 0 60px #25203620;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.assistant-header {
+  padding: 24px 22px 18px;
+  border-bottom: 1px solid #e8e5ef;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: white;
+}
+.assistant-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 18px;
+  margin: 0;
+}
+.assistant-header p {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #80788e;
+  margin-top: 8px;
+}
+.assistant-toolbar {
+  display: flex;
+  padding: 12px 20px;
+  gap: 8px;
+}
+.assistant-toolbar select {
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.assistant-transcript {
+  overflow-y: auto;
+  flex: 1;
+  padding: 10px 22px 24px;
+  min-height: 0;
+}
+.assistant-empty {
+  padding: 22px 6px;
+  color: #81788e;
+  line-height: 1.7;
+  font-size: 13px;
+}
+.assistant-empty h3 {
+  color: #33303e;
+  font-size: 17px;
+  margin: 12px 0;
+}
+.assistant-empty p {
+  margin: 12px 0;
+}
+.assistant-message {
+  background: white;
+  border: 1px solid #e9e5ef;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 14px 0;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.assistant-message-user {
+  background: #f0ebfb;
+  border-color: #e4ddf4;
+  margin-left: 28px;
+}
+.assistant-message > strong {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #817591;
+}
+.assistant-message > p {
+  white-space: pre-wrap;
+  margin-top: 8px;
+}
+.assistant-citations {
+  border-top: 1px solid #eee9f3;
+  margin-top: 15px;
+  padding-top: 10px;
+  font-size: 11px;
+}
+.assistant-citations > div {
+  margin: 8px 0;
+}
+.assistant-citations span,
+.assistant-citations small {
+  display: block;
+}
+.assistant-citations a {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: #7460bb;
+  margin-top: 5px;
+  text-decoration: underline;
+}
+.assistant-working {
+  font-size: 12px;
+  color: #756388;
+}
+.assistant-composer {
+  padding: 16px 20px 20px;
+  background: white;
+  border-top: 1px solid #e8e5ef;
+}
+.assistant-composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 85px;
+  max-height: 180px;
+  border: 1px solid #ddd6e9;
+  border-radius: 9px;
+  padding: 11px;
+  font: inherit;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.assistant-compose-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.assistant-compose-actions small {
+  font-size: 10px;
+  color: #91879c;
+}
+.assistant-consent {
+  font-size: 11px;
+  line-height: 1.5;
+  align-items: flex-start !important;
+}
+.assistant-consent input {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.assistant-tool-catalog {
+  margin-top: 20px;
+  font-size: 12px;
+}
+.assistant-tool-catalog summary,
+.user-grants summary {
+  cursor: pointer;
+  color: #7561b3;
+  margin: 12px 0;
+}
+.grants-editor {
+  padding: 0 8px;
+}
+.assistant-panel .alert {
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.assistant-trigger {
+  white-space: nowrap;
+}
+@media (max-width: 680px) {
+  .assistant-trigger {
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+  .assistant-header {
+    padding: 18px 16px;
+  }
+  .assistant-toolbar {
+    padding: 10px 16px;
+  }
+  .assistant-transcript {
+    padding: 8px 16px 16px;
+  }
+  .assistant-composer {
+    padding: 12px 16px;
+  }
+  .topbar-right {
+    gap: 7px;
+  }
+  .assistant-consent {
+    font-size: 10px;
+  }
+  .assistant-compose-actions small {
+    max-width: 160px;
+  }
+  .integration-settings .settings-row {
+    flex-wrap: wrap;
+  }
+  .integration-settings .settings-row label {
+    min-width: 120px;
+  }
+}
+@keyframes assistant-enter {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes assistant-exit {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.assistant-panel[data-state="open"] {
+  animation: assistant-enter 0.18s ease-out;
+}
+.assistant-panel[data-state="closed"] {
+  animation: assistant-exit 0.14s ease-in;
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-panel[data-state] {
+    animation: none;
+  }
+}

@@ -205,7 +205,12 @@ export async function verifyBedrockAvailability(config, deps = {}) {
   }
   try {
     const control = clientFor(config.llmRegion);
-    const signal = { abortSignal: AbortSignal.timeout(15000) };
+    const timeoutSignal = AbortSignal.timeout(15000);
+    const signal = {
+      abortSignal: deps.signal
+        ? AbortSignal.any([deps.signal, timeoutSignal])
+        : timeoutSignal,
+    };
     const model = config.llmModel;
     let targets;
     if (model.includes(":foundation-model/")) targets = [model];

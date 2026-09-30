@@ -13,3 +13,11 @@ CREATE TABLE IF NOT EXISTS user_budget_grants (
  permission text NOT NULL CHECK(permission IN ('view','edit')),
  PRIMARY KEY(user_id,mode,budget_id)
 );
+
+-- Monotonic authorization epoch prevents a revoked/restored grant set from reviving old assistant context.
+CREATE TABLE IF NOT EXISTS user_access_revisions (
+ user_id text NOT NULL,
+ mode text NOT NULL CHECK(mode IN ('live','demo')),
+ revision bigint NOT NULL DEFAULT 0,
+ PRIMARY KEY(user_id,mode)
+);

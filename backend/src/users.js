@@ -5,7 +5,12 @@ import {
   hashHouseholdPassword,
   appendHouseholdAudit,
 } from "./household-auth.js";
-import { validateGrants, validateAndSetGrants, listGrants } from "./access.js";
+import {
+  validateGrants,
+  validateAndSetGrants,
+  listGrants,
+  bumpAccessRevision,
+} from "./access.js";
 import { sendSmtp } from "./notifications.js";
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const fail = (message, status = 409) =>
@@ -405,6 +410,7 @@ export function createUserManagement({
           "UPDATE household_users SET role=$1,disabled=$2,updated_at=now() WHERE id=$3",
           [nextRole, nextDisabled, userId],
         );
+        await bumpAccessRevision(c, userId, { mode: config.mode || "live" });
         await c.query("DELETE FROM household_sessions WHERE user_id=$1", [
           userId,
         ]);

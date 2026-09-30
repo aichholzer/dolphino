@@ -95,6 +95,22 @@ await page.route("**/api/**", async (route) => {
       pageSize: 50,
       totalPages: 3,
     };
+  else if (path === "/api/settings/assistant")
+    data = {
+      provider: "openai",
+      model: "synthetic-assistant-model",
+      enabled: false,
+      dataSharingAcknowledged: false,
+      dailyRequestsPerUser: 10,
+      maxToolCalls: 4,
+      maxRounds: 3,
+      maxOutputTokens: 1024,
+      configured: false,
+      credentials: {},
+      tools: [
+        { name: "account_balances", description: "Read authorized balances" },
+      ],
+    };
   else if (path === "/api/settings/provider") {
     if (req.method() === "PUT")
       Object.assign(provider, req.postDataJSON(), { apiKey: undefined });
@@ -201,6 +217,27 @@ try {
       exact: true,
     })
     .click();
+  await page
+    .getByLabel("Assistant OpenAI API key", { exact: true })
+    .fill("synthetic-assistant-key");
+  await page
+    .getByRole("button", { name: "Save assistant settings", exact: true })
+    .click();
+  await page.getByText("Assistant settings saved.", { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByLabel("Assistant OpenAI API key", { exact: true })
+      .inputValue(),
+    "",
+  );
+  assert(
+    calls.some(
+      (c) =>
+        c.path === "/api/settings/assistant" &&
+        c.method === "PUT" &&
+        c.body.apiKey === "synthetic-assistant-key",
+    ),
+  );
   await page.getByLabel("OpenAI API key", { exact: true }).waitFor();
   assert.equal(
     await page.getByLabel("OpenAI API key", { exact: true }).inputValue(),
