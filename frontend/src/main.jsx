@@ -708,6 +708,14 @@ function App() {
               )}
               {page === "Transactions" && (
                 <section className="card transactions-card">
+                  <p className="footnote" style={{ padding: "16px 20px 0" }}>
+                    History includes records already imported into Profe. For
+                    older provider records, use{" "}
+                    <button type="button" onClick={() => setPage("Settings")}>
+                      Settings → Import health &amp; history → backfill
+                    </button>
+                    .
+                  </p>
                   <div className="table-toolbar">
                     <div className="transaction-scope">
                       {accountId && (
@@ -734,7 +742,7 @@ function App() {
                             setIds(null);
                           }}
                         />
-                        All history
+                        All imported history
                       </label>
                       <label>
                         From

@@ -315,11 +315,12 @@ export function IntegrationSettings({ api, demo }) {
         </form>
       </section>
       <section className="card settings-card integration-settings">
-        <h2>Redbark webhook</h2>
+        <h2>Redbark thin-event notifications</h2>
         <p className="muted">
-          Register a thin event destination. Its signed sync notifications queue
-          account reconciliation; they do not contain transactions or create an
-          ongoing Redbark sync.
+          Register signed thin-event notifications that trigger account
+          reconciliation, not a live bank-feed subscription. Subscribed events:
+          sync_run.succeeded and connection.refreshed. Profe does not create a
+          Redbark sync.
         </p>
         <dl>
           <div>
@@ -345,12 +346,16 @@ export function IntegrationSettings({ api, demo }) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            action(() =>
-              api("/settings/webhook/register", {
+            action(async () => {
+              await api("/settings/webhook/register", {
                 method: "POST",
                 body: JSON.stringify({ publicBaseUrl: baseUrl }),
-              }),
-            );
+              });
+              return {
+                message:
+                  "Thin-event notifications registered/reused: sync_run.succeeded and connection.refreshed trigger reconciliation. No Redbark sync or live bank-feed subscription was created. Independent four-hour polling remains the fallback.",
+              };
+            });
           }}
         >
           <label>
@@ -430,9 +435,11 @@ export function IntegrationSettings({ api, demo }) {
           </div>
         )}
         <p className="footnote">
-          Keep an enabled Redbark sync configured for account activity. The
-          four-hour poll remains active, including account discovery. No instant
-          bank freshness is promised.
+          An existing Redbark sync must run successfully to produce
+          sync_run.succeeded. connection.refreshed is not a per-transaction
+          notification. Independent four-hour polling remains the fallback even
+          without events, after connection verification and subject to outages
+          and retry delays. No instant bank freshness is promised.
           {demo
             ? " Registration and remote tests are unavailable in demo mode."
             : ""}

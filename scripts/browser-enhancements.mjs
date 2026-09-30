@@ -176,7 +176,7 @@ try {
   await page
     .getByRole("button", { name: "View transactions for Household" })
     .click();
-  await page.getByRole("checkbox", { name: "All history" }).waitFor();
+  await page.getByRole("checkbox", { name: "All imported history" }).waitFor();
   assert(
     calls.some(
       (c) =>
@@ -189,7 +189,12 @@ try {
   await page.getByText("Page 2", { exact: true }).waitFor();
   await page.getByLabel("Transactions from").fill("2026-01-01");
   await page.getByText("Page 1", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Settings → Import health & history → backfill",
+      exact: true,
+    })
+    .click();
   await page.getByLabel("OpenAI API key", { exact: true }).waitFor();
   assert.equal(
     await page.getByLabel("OpenAI API key", { exact: true }).inputValue(),
@@ -229,7 +234,11 @@ try {
     .getByRole("button", { name: "Register / reuse destination", exact: true })
     .click();
   await page
-    .getByText("Synthetic registration reused", { exact: true })
+    .getByRole("status")
+    .filter({
+      hasText:
+        "Thin-event notifications registered/reused: sync_run.succeeded and connection.refreshed",
+    })
     .waitFor();
   await page.getByLabel("Provider", { exact: true }).selectOption("bedrock");
   await page.getByLabel("AWS region", { exact: true }).waitFor();
