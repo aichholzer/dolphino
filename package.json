@@ -1,0 +1,33 @@
+{
+  "name": "profe",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "node --watch backend/src/server.js",
+    "start": "node backend/src/server.js",
+    "test": "node --test backend/test/*.test.js",
+    "build": "npm run build --workspace frontend",
+    "seed": "node backend/src/seed.js",
+    "password": "node scripts/hash-password.js",
+    "check": "npm test && npm run build",
+    "migrate": "node backend/src/migrate.js",
+    "lint": "node scripts/check-syntax.js",
+    "test:browser": "node scripts/browser-check.mjs",
+    "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\""
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "rayo": "1.4.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "prettier": "^3.6.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

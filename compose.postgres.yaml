@@ -1,0 +1,27 @@
+# Explicit alternative only: docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
+services:
+  app:
+    environment:
+      DATABASE_URL: "postgresql://profe:${POSTGRES_PASSWORD:?Set a URL-safe POSTGRES_PASSWORD in .env}@db:5432/profe"
+      DATABASE_URL_FILE: ""
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: profe
+      POSTGRES_USER: profe
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - profe_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profe -d profe"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  profe_postgres:
