@@ -4,13 +4,13 @@ All records used during development and verification are fictional. No productio
 
 ## Commands and outcomes
 
-- `DATABASE_URL=postgresql://profe@127.0.0.1:54329/profe_test npm test`: passed all 31 tests, including real PostgreSQL integration. No database tests skipped in the final run.
+- `DATABASE_URL=postgresql://profe@127.0.0.1:54329/profe_test npm test`: passed all 37 tests, including real PostgreSQL integration. No database tests skipped in the final run.
 - `npm run build`: production Vite build passed.
 - `npm run lint`: backend/script JavaScript syntax checks passed.
 - `node scripts/browser-check.mjs`: Chromium desktop (1440px) and mobile (390px) checks passed. Checked income/spending, refund drilldown, excluded repayment, two genuine identical coffees, invalid split rejection, cancelled edit, budget save, account freshness, disabled demo connection test, JSON export, and API failure/retry recovery. No uncaught browser errors or viewport overflow.
 - `npm audit --omit=dev --audit-level=high`: zero known production dependency vulnerabilities at verification time.
 - Both external-database and bundled-database Compose configurations parsed with `docker compose config --format json`; assertions confirmed the default has only the external URL, the override selects `db` and clears `DATABASE_URL_FILE`, and bundled PostgreSQL publishes no port.
-- Actual isolated backup/restore rehearsal passed using the repository shell scripts and PostgreSQL 18 client tools built under `/tmp`: all rows across 14 public tables and complete financial reports matched. Both new fictional databases and the dump were deleted. See [restore evidence](restore-evidence.md).
+- Actual isolated backup/restore rehearsal passed using the repository shell scripts and PostgreSQL 18 client tools built under `/tmp`: all rows across 15 public tables and complete financial reports matched. Both new fictional databases and the dump were deleted. See [restore evidence](restore-evidence.md).
 
 PostgreSQL 18.4 ran locally from temporary extracted binaries after Docker Hub denied the image pull. Docker itself is available, but a complete container image build could not be verified because base-image downloads were blocked.
 
@@ -37,10 +37,12 @@ Signed raw-byte webhook verification, five-minute replay window, rotated signatu
 
 ## Follow-up review and verification
 
-An [independent review](review.md) found and corrected repeated review warnings and non-UTC calendar-date conversion. Follow-up added durable in-app alert identities and a [durable on-demand AI suggestion queue](classification.md), without automatic acceptance or bulk AI classification.
+An [independent review](review.md) found and corrected repeated review warnings and non-UTC calendar-date conversion. Final follow-up adds mutation-driven durable in-app alerts and [automatic classification of unresolved posted imports](classification.md), with explicit opt-in required for automatic category application.
 
 A running timer test advances a controllable clock across four-hour boundaries and verifies actual job processing, no repeat imports in one bucket, clean stop, and webhook/poll imports sharing one canonical transaction/source alias. Production checks every 15 seconds and schedules one poll bucket per four hours while the process runs.
 
-Alert tests verify concurrent deduplication, persistence through a new Store instance, unchanged-read stability, resolution and reopening after corrections/refunds/late imports, and export consistency. Alert state is refreshed when a report/export is requested; there is no external notification delivery.
+Alert tests verify concurrent deduplication, persistence through a new Store instance, unchanged-read stability, resolution and reopening after corrections/refunds/late imports, and export consistency. Alert state is recalculated by financial writes without report/export access; no external notification destination is required. Dashboard-closed tests cover ingestion, correction, classification, budget changes, refunds and affected rollover months.
 
-Classification tests verify disabled-by-default behavior, explicit on-demand scheduling, durable retries/Retry-After, restart, concurrent deduplication, bounded failure, configuration/credential fingerprints, single-connection pool safety, and preservation of manual overrides. The independent follow-up fixed pool exhaustion deadlock and made corrected credentials retry exhausted jobs without persisting secrets. Suggestions require user review and saving; exhausted jobs fall back to manual classification.
+Classification tests verify disabled-by-default behavior, automatic unresolved-import scheduling and on-demand retry, durable retries/Retry-After, restart, concurrent deduplication, bounded failure, configuration/credential fingerprints, single-connection pool safety, and preservation of manual overrides. The independent follow-up fixed pool exhaustion deadlock and made corrected credentials retry exhausted jobs without persisting secrets. By default suggestions require user review and saving. Automatic application is separately opt-in, validated and rechecks precedence; invalid/exhausted work falls back to review. A durable daily request counter and global provider-call serialization bound cost and concurrency.
+
+A final independent review reran nine focused PostgreSQL tests for automatic classification and reactive alerts: all passed, none skipped. It checked real multi-connection concurrency, stale correction races, source-change requeue, automatic-work pause controls, review fallback, request quotas and dashboard-closed alert updates.

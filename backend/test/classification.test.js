@@ -42,6 +42,7 @@ test(
       llmApiKey: "fictional-secret-do-not-persist",
       llmBaseUrl: "https://example.test/v1",
       llmModel: "inexpensive",
+      llmAutoClassify: false,
     };
     let calls = 0,
       fail = true;
@@ -128,9 +129,14 @@ test(
       assert.equal(rows[1].attempts, 5);
       assert.equal(rows[1].status, "failed");
       const previous = calls;
-      await assert.rejects(restarted.suggest(tx.id), /bounded retries/);
       await restarted.tick();
-      assert.equal(calls, previous);
+      assert.equal(calls, previous, "automatic retries stop at attempt limit");
+      await assert.rejects(restarted.suggest(tx.id), /queued for retry/);
+      assert.equal(
+        calls,
+        previous + 1,
+        "explicit on-demand request retries a failed job",
+      );
       config.llmApiKey = "corrected-fictional-key";
       fail = false;
       assert.equal(
@@ -138,7 +144,7 @@ test(
         "Groceries",
         "corrected provider credentials can retry a previously failed input",
       );
-      assert.equal(calls, previous + 1);
+      assert.equal(calls, previous + 2);
       assert(
         !JSON.stringify(
           (await pool.query("SELECT * FROM classification_jobs")).rows,

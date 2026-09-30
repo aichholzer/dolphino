@@ -1059,14 +1059,36 @@ function App() {
                         <dd>{data.llm?.enabled ? "Enabled" : "Disabled"}</dd>
                       </div>
                       <div>
+                        <dt>Unresolved imports</dt>
+                        <dd>
+                          {data.llm?.automaticClassification
+                            ? "Automatic suggestions"
+                            : "AI processing off"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Apply AI suggestions</dt>
+                        <dd>
+                          {data.llm?.automaticApplication
+                            ? "Automatic · opted in"
+                            : "Manual review required"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>AI request limit</dt>
+                        <dd>{data.llm?.dailyRequestLimit ?? 20} per UTC day</dd>
+                      </div>
+                      <div>
                         <dt>Actual spending</dt>
                         <dd>Posted only · refunds on refund date</dd>
                       </div>
                     </dl>
                     <p className="muted">
                       Useful provider categories, your rules, and manual
-                      corrections work without AI. Optional providers are
-                      configured on the server.
+                      corrections work without AI. A configured provider can
+                      suggest categories for unresolved posted imports.
+                      Automatic application requires a separate server-side
+                      opt-in.
                     </p>
                   </section>
                   <section className="card settings-card">

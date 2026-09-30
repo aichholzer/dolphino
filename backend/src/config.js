@@ -25,7 +25,21 @@ export function readConfig(env = process.env) {
     llmApiKey: secret(env, "LLM_API_KEY"),
     llmBaseUrl: env.LLM_BASE_URL || "",
     llmModel: env.LLM_MODEL || "",
+    llmAutoClassify: env.LLM_AUTO_CLASSIFY !== "false",
+    llmAutoApply: env.LLM_AUTO_APPLY === "true",
+    llmDailyRequestLimit: Number(env.LLM_DAILY_REQUEST_LIMIT || 20),
+    llmBatchSize: Number(env.LLM_BATCH_SIZE || 5),
   };
+  for (const [name, value, max] of [
+    ["LLM_DAILY_REQUEST_LIMIT", config.llmDailyRequestLimit, 1000],
+    ["LLM_BATCH_SIZE", config.llmBatchSize, 20],
+  ]) {
+    if (!Number.isInteger(value) || value < 1 || value > max)
+      throw Error(`${name} must be an integer from 1 to ${max}`);
+  }
+  for (const name of ["LLM_AUTO_CLASSIFY", "LLM_AUTO_APPLY"])
+    if (env[name] !== undefined && !["true", "false"].includes(env[name]))
+      throw Error(`${name} must be true or false`);
   if (!config.databaseUrl)
     throw Error(
       "DATABASE_URL or DATABASE_URL_FILE is required; no database fallback exists",

@@ -7,7 +7,7 @@ Reviewed the backend, frontend integration, migrations, deployment configuration
 - Fresh polls reintroduced classification warnings after a manual correction or explicit review decision. Unchanged evidence now preserves that decision; changed financial evidence can reopen review. Rules clear classification warnings they resolve, while source identity warnings remain separate. A PostgreSQL regression covers these repeated flows.
 - PostgreSQL DATE values were converted through UTC, shifting dates on hosts east of UTC. Calendar dates now retain their local date fields; a separate process using `TZ=Australia/Brisbane` verifies that 1 September remains 1 September.
 - Overspend alerts were initially response-only calculations, with no durable identity. Follow-up adds persisted, deduplicated alert state (see alert integration tests).
-- Optional LLM suggestions were initially synchronous API calls. Follow-up adds an explicitly requested durable suggestion job, configurable through server secrets and disabled until configured. Rules remain synchronous and first in the classification order; LLM suggestions require manual acceptance.
+- Optional LLM suggestions were initially synchronous API calls. Final follow-up automatically queues unresolved posted imports after manual/rule/provider precedence, with server-configured cost bounds. LLM providers remain disabled until configured; application of suggestions requires a separate explicit opt-in.
 
 - The follow-up suggestion worker originally acquired a second pooled connection while holding a worker lock, risking pool exhaustion under concurrent requests. Reads now reuse the held client; tests run with a single-connection pool. A one-way credential digest also allows corrected provider credentials to retry an exhausted job without storing secrets.
 
@@ -20,7 +20,7 @@ Financial reports use integer minor units and explicit currency, with one backen
 ## Remaining limits and operational caveats
 
 - The scheduler runs only while the app process is running. It resumes polling on restart; it cannot make bank data instantly fresh. Provider access/version support still needs the owner's successful connection test.
-- The LLM flow is opt-in per transaction, not automatic batch classification of all imports. Rules and provider categories continue working without it.
+- Automatic LLM work is limited to unresolved posted imports, serialized and bounded by a durable daily request limit. On-demand suggestions remain available. Manual/rule/provider classification remains authoritative, and default behavior requires manual acceptance.
 - Generic provider transfer categories are provisional: the user must confirm internal transfers/card repayments versus external transfers in review. Income/refund classification can likewise require correction.
 - There is no compatible opening balance or complete historical coverage proof, so no balance reconciliation is claimed. Default imports use an explicit bounded lookback; older corrections require increasing the configured window.
 - Single-user session cookies expire after 12 hours. Logout clears the browser cookie; there is no server-side revocation list. Keep HTTPS and a protected home-lab reverse proxy; changing the session secret invalidates all sessions.
@@ -28,3 +28,7 @@ Financial reports use integer minor units and explicit currency, with one backen
 - In-app alerts only; external notifications, multi-user access and FX conversion are unsupported.
 
 Compose parsing, PostgreSQL tests, backup/restore rehearsal, screenshot artifacts and final commands are recorded in `verification.md`.
+
+## Final automatic-classification and reactive-alert review
+
+The final scoped review passed with nine focused real-PostgreSQL tests and no remaining material issue identified. Automatic classification honors precedence and revalidates source evidence under the ledger lock; daily request reservations and provider-call serialization work across concurrent workers. Substantive source changes permit fresh classification, disabling automation pauses automatic jobs, and unresolved results stay in review. Financial writes refresh alert state atomically, including classification acceptance and affected rollover months; reads are not needed to create or resolve alerts.

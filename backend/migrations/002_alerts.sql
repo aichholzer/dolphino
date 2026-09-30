@@ -1,5 +1,4 @@
--- Durable current alert state. Reconciliation is lazy on report/export reads,
--- within the same serialized transaction as financial calculation.
+-- Durable current alert state reconciled within each serialized financial mutation.
 CREATE TABLE IF NOT EXISTS budget_alerts (
  id uuid PRIMARY KEY,
  mode text NOT NULL CHECK(mode IN ('demo','live')),

@@ -5,7 +5,7 @@ const error = (message, status) =>
   Object.assign(Error(message), { status, expose: true });
 const maxAttempts = 5;
 
-// Suggestions are durable, but never write to the ledger or manual overrides.
+// Provider work is durable and globally serialized; automatic application is opt-in.
 export function createClassificationIntegration({
   pool,
   store,
@@ -37,6 +37,12 @@ export function createClassificationIntegration({
       .update(
         JSON.stringify({
           description: tx.description,
+          amountMinor: tx.amountMinor,
+          date: tx.date,
+          status: tx.status,
+          currency: tx.currency,
+          providerCategory: tx.providerCategory,
+          kind: tx.kind,
           categories,
           endpoint: config.llmBaseUrl,
           model: config.llmModel,
@@ -53,9 +59,10 @@ export function createClassificationIntegration({
     let locked = false;
     try {
       locked = (
-        await c.query("SELECT pg_try_advisory_lock(hashtext($1)) locked", [
-          `profe:classification:${id}`,
-        ])
+        await c.query(
+          "SELECT pg_try_advisory_lock(hashtext(current_schema()),hashtext($1)) locked",
+          [`profe:classification:worker:${config.mode}`],
+        )
       ).rows[0].locked;
       if (!locked) return;
       const job = (
@@ -71,6 +78,34 @@ export function createClassificationIntegration({
       )
         return;
       enabled();
+      if (job.origin === "automatic" && config.llmAutoClassify === false)
+        return;
+      const current = await input(job.transaction_id, c);
+      if (
+        current.fingerprint !== job.fingerprint ||
+        (job.origin === "automatic" &&
+          !(await store.isAutomaticClassificationEligible(current.tx, c)))
+      ) {
+        await c.query(
+          "UPDATE classification_jobs SET status='failed',error_code='input_changed',updated_at=now() WHERE id=$1",
+          [id],
+        );
+        return;
+      }
+      if (
+        job.origin === "automatic" &&
+        !(await store.markAutomaticClassificationReview(
+          job.transaction_id,
+          current.tx,
+          c,
+        ))
+      ) {
+        await c.query(
+          "UPDATE classification_jobs SET status='failed',error_code='input_changed',updated_at=now() WHERE id=$1",
+          [id],
+        );
+        return;
+      }
       // Attempts are committed before the network call so a crashed process cannot retry forever.
       if (job.attempts >= maxAttempts) {
         await c.query(
@@ -79,20 +114,22 @@ export function createClassificationIntegration({
         );
         return;
       }
+      // Reserve a daily call before network I/O. A crash consumes the reservation.
+      // The global session lock serializes workers across application instances.
+      const reserved = await c.query(
+        `INSERT INTO classification_usage(mode,day,requests)
+        VALUES($1,(now() AT TIME ZONE 'UTC')::date,1)
+        ON CONFLICT(mode,day) DO UPDATE SET requests=classification_usage.requests+1
+        WHERE classification_usage.requests < $2 RETURNING requests`,
+        [config.mode, config.llmDailyRequestLimit ?? 20],
+      );
+      if (!reserved.rowCount) return;
       await c.query(
         "UPDATE classification_jobs SET attempts=attempts+1,next_attempt_at=now()+interval '1 minute',updated_at=now() WHERE id=$1",
         [id],
       );
       let retryAfterSeconds = 0;
       try {
-        const current = await input(job.transaction_id, c);
-        if (current.fingerprint !== job.fingerprint) {
-          await c.query(
-            "UPDATE classification_jobs SET status='failed',error_code='input_changed',updated_at=now() WHERE id=$1",
-            [id],
-          );
-          return;
-        }
         const result = await suggestCategory(
           current.tx,
           current.categories,
@@ -110,6 +147,19 @@ export function createClassificationIntegration({
             return response;
           },
         );
+        if (
+          job.origin === "automatic" &&
+          config.llmAutoApply &&
+          result.category !== "Uncategorized"
+        ) {
+          const { applied } = await store.acceptAutomaticClassification(
+            job.transaction_id,
+            result.category,
+            current.tx,
+            c,
+          );
+          result.requiresReview = !applied;
+        }
         await c.query(
           "UPDATE classification_jobs SET status='succeeded',result=$2,error_code=NULL,updated_at=now() WHERE id=$1",
           [id, result],
@@ -131,9 +181,10 @@ export function createClassificationIntegration({
     } finally {
       try {
         if (locked)
-          await c.query("SELECT pg_advisory_unlock(hashtext($1))", [
-            `profe:classification:${id}`,
-          ]);
+          await c.query(
+            "SELECT pg_advisory_unlock(hashtext(current_schema()),hashtext($1))",
+            [`profe:classification:worker:${config.mode}`],
+          );
       } finally {
         c.release();
       }
@@ -148,9 +199,31 @@ export function createClassificationIntegration({
     }
     ticking = true;
     try {
+      if (config.llmAutoClassify !== false) {
+        const c = await pool.connect();
+        try {
+          const candidates = await store.automaticClassificationCandidates(c);
+          let queued = 0;
+          for (const tx of candidates) {
+            const { fingerprint } = await input(tx.id, c);
+            const inserted = await c.query(
+              "INSERT INTO classification_jobs(mode,transaction_id,fingerprint,origin) VALUES($1,$2,$3,'automatic') ON CONFLICT(mode,transaction_id,fingerprint) DO NOTHING RETURNING id",
+              [config.mode, tx.id, fingerprint],
+            );
+            queued += inserted.rowCount;
+            if (queued >= (config.llmBatchSize ?? 5)) break;
+          }
+        } finally {
+          c.release();
+        }
+      }
       const { rows } = await pool.query(
-        "SELECT id FROM classification_jobs WHERE mode=$1 AND status='pending' AND next_attempt_at<=now() ORDER BY next_attempt_at LIMIT 10",
-        [config.mode],
+        "SELECT id FROM classification_jobs WHERE mode=$1 AND status='pending' AND next_attempt_at<=now() AND (origin='manual' OR $3) ORDER BY next_attempt_at,id LIMIT $2",
+        [
+          config.mode,
+          config.llmBatchSize ?? 5,
+          config.llmAutoClassify !== false,
+        ],
       );
       for (const row of rows) await processJob(row.id);
     } finally {
@@ -168,12 +241,19 @@ export function createClassificationIntegration({
         created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
         UNIQUE(mode,transaction_id,fingerprint)
       )`);
+      await pool.query(
+        "ALTER TABLE classification_jobs ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'manual'",
+      );
+      await pool.query(`CREATE TABLE IF NOT EXISTS classification_usage (
+        mode text NOT NULL, day date NOT NULL, requests integer NOT NULL,
+        PRIMARY KEY(mode,day)
+      )`);
     },
     async suggest(id) {
       enabled();
       const { fingerprint } = await input(id);
       const { rows } = await pool.query(
-        "INSERT INTO classification_jobs(mode,transaction_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT(mode,transaction_id,fingerprint) DO UPDATE SET fingerprint=excluded.fingerprint RETURNING id",
+        "INSERT INTO classification_jobs(mode,transaction_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT(mode,transaction_id,fingerprint) DO UPDATE SET origin=CASE WHEN classification_jobs.status <> 'succeeded' THEN 'manual' ELSE classification_jobs.origin END, status=CASE WHEN classification_jobs.status='failed' THEN 'pending' ELSE classification_jobs.status END, attempts=CASE WHEN classification_jobs.status='failed' THEN 0 ELSE classification_jobs.attempts END,next_attempt_at=CASE WHEN classification_jobs.status='failed' THEN now() ELSE classification_jobs.next_attempt_at END RETURNING id",
         [config.mode, id, fingerprint],
       );
       await processJob(rows[0].id);

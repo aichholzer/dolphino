@@ -15,24 +15,25 @@ REHEARSAL_ADMIN_URL=postgresql://profe@127.0.0.1:54329/profe_test \
 node scripts/restore-rehearsal.mjs
 ```
 
-The reusable script rejects non-loopback hosts and never accepts an existing database name as a source or restore target. It seeds fictional demo records, then adds an actual correction, classification rule, audit event, queued classification job, webhook receipt, sync job and fetch evidence. Reading reports also creates the overspend alert. Exact JSON row content was compared across **all 14 public tables**, including timestamps and raw evidence; complete backend reports for both fixture months matched. Corrections/audit history, immutable observation trigger and sequence continuation were checked separately.
+The reusable script rejects non-loopback hosts and never accepts an existing database name as a source or restore target. It seeds fictional demo records, then adds an actual correction, classification rule, audit event, queued classification job, webhook receipt, sync job and fetch evidence. Budget and financial mutations create overspend alerts before any report is opened; a fictional daily classification-request counter is also seeded. Exact JSON row content was compared across **all 15 public tables**, including timestamps and raw evidence; complete backend reports for both fixture months matched. Corrections/audit history, immutable observation trigger and sequence continuation were checked separately.
 
 Observed output (monetary amounts are exact integer AUD cents):
 
 ```text
-Backup written to /tmp/profe-restore-rehearsal-Nc2xYX/profe-20260930T104813Z.dump
-Restored to profe_restore_test_f2b5e3c9ad9a4dc1b53e653ef1949a76. Verify totals and settings before switching the app.
+Backup written to /tmp/profe-restore-rehearsal-kXfgvz/profe-20260930T105923Z.dump
+Restored to profe_restore_test_262fc40cd36c43b68bcdba335790a8e0. Verify totals and settings before switching the app.
 {
   "result": "PASS",
   "server": "18.4",
-  "source": "profe_backup_test_f2b5e3c9ad9a4dc1b53e653ef1949a76",
-  "target": "profe_restore_test_f2b5e3c9ad9a4dc1b53e653ef1949a76",
+  "source": "profe_backup_test_262fc40cd36c43b68bcdba335790a8e0",
+  "target": "profe_restore_test_262fc40cd36c43b68bcdba335790a8e0",
   "counts": {
     "accounts": 3,
     "audit_history": 1,
-    "budget_alerts": 1,
+    "budget_alerts": 2,
     "budgets": 7,
     "classification_jobs": 1,
+    "classification_usage": 1,
     "provider_observations": 28,
     "redbark_fetches": 1,
     "redbark_jobs": 1,

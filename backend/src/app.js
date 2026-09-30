@@ -250,6 +250,11 @@ export function createApp({ store, integration, classification, config }) {
     llm: {
       enabled: !!(config.llmApiKey && config.llmBaseUrl && config.llmModel),
       configured: !!(config.llmApiKey && config.llmBaseUrl && config.llmModel),
+      automaticClassification:
+        !!(config.llmApiKey && config.llmBaseUrl && config.llmModel) &&
+        config.llmAutoClassify !== false,
+      automaticApplication: config.llmAutoApply === true,
+      dailyRequestLimit: config.llmDailyRequestLimit ?? 20,
     },
   }));
   route("post", "/api/connection/test", () => integration.testConnection());

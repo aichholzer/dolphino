@@ -72,6 +72,9 @@ try {
     store,
     config: { mode: "demo" },
   }).init();
+  await srcPool.query(
+    "INSERT INTO classification_usage(mode,day,requests) VALUES('demo',(now() AT TIME ZONE 'UTC')::date,3)",
+  );
   await store.seedDemo();
   const transaction = (await store.listTransactions()).find(
     (t) => t.status === "posted" && t.kind === "expense",

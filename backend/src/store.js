@@ -25,6 +25,7 @@ const ruleResolvesReview = (reason, description, rules) => {
 const txRow = (r) => ({
   id: r.id,
   accountId: r.account_id,
+  supersededBy: r.superseded_by || null,
   accountName: r.account_name,
   currency: r.currency,
   amountMinor: String(r.amount_minor),
@@ -34,7 +35,10 @@ const txRow = (r) => ({
   providerCategory: r.provider_category,
   category:
     r.override_category ||
-    r.classification_category ||
+    (r.classification_category !== "Uncategorized"
+      ? r.classification_category
+      : null) ||
+    r.ai_category ||
     r.provider_category ||
     "Uncategorized",
   kind: r.override_kind || r.kind,
@@ -71,7 +75,11 @@ export class Store {
     this.timezone = timezone;
   }
   async migrate() {
-    for (const name of ["001_core.sql", "002_alerts.sql"])
+    for (const name of [
+      "001_core.sql",
+      "002_alerts.sql",
+      "003_automatic_classification.sql",
+    ])
       await this.pool.query(
         await readFile(
           new URL(`../migrations/${name}`, import.meta.url),
@@ -79,21 +87,22 @@ export class Store {
         ),
       );
   }
-  async atomic(fn) {
-    const c = await this.pool.connect();
+  async atomic(fn, { refresh = true, client } = {}) {
+    const c = client || (await this.pool.connect());
     try {
       await c.query("BEGIN");
       await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         `profe:${this.mode}`,
       ]);
       const result = await fn(c);
+      if (refresh) await this.refreshAlerts(c);
       await c.query("COMMIT");
       return result;
     } catch (e) {
       await c.query("ROLLBACK");
       throw e;
     } finally {
-      c.release();
+      if (!client) c.release();
     }
   }
   async updateAccount(account, coverage = null, c = this.pool) {
@@ -215,6 +224,7 @@ export class Store {
       existing.currency === o.currency &&
       String(existing.amount_minor) === o.amountMinor &&
       existing.status === o.status &&
+      existing.kind === classification.kind &&
       dateString(existing.date) === o.date &&
       existing.description === o.description &&
       (existing.provider_category || null) === (o.category || null);
@@ -258,12 +268,23 @@ export class Store {
       Date.parse(fetchedAt) >= Date.parse(existing.fetched_at) &&
       !(existing.status === "posted" && o.status === "pending")
     ) {
+      if (!unchanged)
+        await c.query("UPDATE transactions SET ai_category=NULL WHERE id=$1", [
+          id,
+        ]);
       const override = (
         await c.query(
           "SELECT splits FROM transaction_overrides WHERE transaction_id=$1",
           [id],
         )
       ).rows[0];
+      if (
+        !unchanged &&
+        classification.category === "Uncategorized" &&
+        !override &&
+        !reason
+      )
+        reason = "Category needs review";
       if (override?.splits?.length) {
         try {
           validateSplits(override.splits, o.amountMinor);
@@ -345,7 +366,7 @@ export class Store {
     if (filters.category) {
       values.push(filters.category);
       clauses.push(
-        `((COALESCE(jsonb_array_length(o.splits),0)=0 AND COALESCE(o.category,t.classification_category,t.provider_category,'Uncategorized')=$${values.length}) OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(o.splits,'[]'::jsonb)) split WHERE split->>'category'=$${values.length}))`,
+        `((COALESCE(jsonb_array_length(o.splits),0)=0 AND COALESCE(o.category,NULLIF(t.classification_category,'Uncategorized'),t.ai_category,t.provider_category,'Uncategorized')=$${values.length}) OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(o.splits,'[]'::jsonb)) split WHERE split->>'category'=$${values.length}))`,
       );
     }
     if (filters.q || filters.search)
@@ -462,7 +483,6 @@ export class Store {
         month,
         currency,
       });
-      await this.persistAlerts(report, c);
       return {
         ...report,
         accounts,
@@ -482,10 +502,37 @@ export class Store {
         },
       };
     };
-    return client ? calculate(client) : this.atomic(calculate);
+    return client
+      ? calculate(client)
+      : this.atomic(calculate, { refresh: false });
+  }
+  // Recompute every configured budget period, including later rollover periods and
+  // removed budgets with persisted alerts, inside the financial write transaction.
+  async refreshAlerts(c) {
+    const budgets = await this.listBudgets(c);
+    const periods = new Map(
+      budgets.map((b) => [`${b.currency}:${b.month}`, b]),
+    );
+    for (const row of (
+      await c.query(
+        "SELECT DISTINCT currency,month FROM budget_alerts WHERE mode=$1",
+        [this.mode],
+      )
+    ).rows)
+      periods.set(`${row.currency}:${row.month}`, row);
+    if (!periods.size) return;
+    const transactions = await this.listTransactions({}, c);
+    for (const { month, currency } of [...periods.values()].sort(
+      (a, b) =>
+        a.month.localeCompare(b.month) || a.currency.localeCompare(b.currency),
+    ))
+      await this.persistAlerts(
+        calculateReport(transactions, budgets, { month, currency }),
+        c,
+      );
   }
   // Reconcile durable alert state with the same atomic snapshot used by reports.
-  // A stable natural key prevents concurrent/repeated reads from generating duplicates.
+  // A stable natural key prevents concurrent/repeated mutations from generating duplicates.
   async persistAlerts(report, c) {
     const categories = report.alerts.map((alert) => alert.category);
     await c.query(
@@ -515,17 +562,20 @@ export class Store {
       );
   }
   async exportSnapshot(filters) {
-    return this.atomic(async (c) => {
-      const transactions = await this.listTransactions(filters, c);
-      return {
-        filters,
-        summaryScope:
-          "All imported transactions in the selected month and currency",
-        summary: await this.report(filters, c),
-        selectionSummary: calculateReport(transactions, [], filters),
-        transactions,
-      };
-    });
+    return this.atomic(
+      async (c) => {
+        const transactions = await this.listTransactions(filters, c);
+        return {
+          filters,
+          summaryScope:
+            "All imported transactions in the selected month and currency",
+          summary: await this.report(filters, c),
+          selectionSummary: calculateReport(transactions, [], filters),
+          transactions,
+        };
+      },
+      { refresh: false },
+    );
   }
   async listBudgets(c = this.pool) {
     return (
@@ -641,7 +691,7 @@ export class Store {
         rules,
       );
       await c.query(
-        "UPDATE transactions SET classification_category=$2,kind=$3,review_reason=CASE WHEN $4 THEN NULL ELSE review_reason END WHERE id=$1",
+        "UPDATE transactions SET classification_category=$2,kind=$3,ai_category=CASE WHEN $2 <> 'Uncategorized' OR kind <> $3 THEN NULL ELSE ai_category END,review_reason=CASE WHEN $4 THEN NULL ELSE review_reason END WHERE id=$1",
         [
           row.id,
           result.category,
@@ -654,6 +704,12 @@ export class Store {
   }
   async listCategories(c = this.pool) {
     const rows = await this.listTransactions({}, c);
+    const configured = (
+      await c.query(
+        "SELECT category FROM budgets WHERE mode=$1 UNION SELECT category FROM rules WHERE mode=$1",
+        [this.mode],
+      )
+    ).rows;
     return [
       ...new Set([
         "Uncategorized",
@@ -667,8 +723,104 @@ export class Store {
         "Health",
         "Income",
         ...rows.map((t) => t.category),
+        ...configured.map((r) => r.category),
       ]),
     ].sort();
+  }
+  async isAutomaticClassificationEligible(tx, c = this.pool) {
+    if (
+      tx.supersededBy ||
+      tx.status !== "posted" ||
+      tx.category !== "Uncategorized" ||
+      tx.manuallyCorrected ||
+      tx.kind === "transfer" ||
+      (tx.providerCategory && tx.providerCategory !== "Uncategorized") ||
+      (tx.reviewReason && tx.reviewReason !== "Category needs review")
+    )
+      return false;
+    const rows = (
+      await c.query("SELECT contains FROM rules WHERE mode=$1", [this.mode])
+    ).rows;
+    return !rows.some((r) =>
+      tx.description.toLowerCase().includes(r.contains.toLowerCase()),
+    );
+  }
+  async automaticClassificationCandidates(c = this.pool) {
+    const candidates = await this.listTransactions(
+      { status: "posted", category: "Uncategorized" },
+      c,
+    );
+    const result = [];
+    for (const tx of candidates)
+      if (await this.isAutomaticClassificationEligible(tx, c)) result.push(tx);
+    return result;
+  }
+  async markAutomaticClassificationReview(id, expectedTx, client) {
+    return this.atomic(
+      async (c) => {
+        const tx = (await this.listTransactions({ ids: [id] }, c))[0];
+        const keys = [
+          "description",
+          "amountMinor",
+          "status",
+          "kind",
+          "providerCategory",
+          "category",
+          "currency",
+          "date",
+        ];
+        if (
+          !tx ||
+          !(await this.isAutomaticClassificationEligible(tx, c)) ||
+          keys.some((k) => tx[k] !== expectedTx[k])
+        )
+          return false;
+        await c.query(
+          "UPDATE transactions SET review_reason='Category needs review' WHERE id=$1 AND review_reason IS NULL",
+          [id],
+        );
+        return true;
+      },
+      { client, refresh: false },
+    );
+  }
+  async acceptAutomaticClassification(id, category, expectedTx, client) {
+    return this.atomic(
+      async (c) => {
+        const tx = (await this.listTransactions({ ids: [id] }, c))[0];
+        const keys = [
+          "description",
+          "amountMinor",
+          "status",
+          "kind",
+          "providerCategory",
+          "category",
+          "currency",
+          "date",
+        ];
+        if (
+          !tx ||
+          !(await this.isAutomaticClassificationEligible(tx, c)) ||
+          keys.some((k) => tx[k] !== expectedTx[k])
+        )
+          return { applied: false, reason: "transaction_changed_or_resolved" };
+        if (
+          category === "Uncategorized" ||
+          !(await this.listCategories(c)).includes(category)
+        )
+          return { applied: false, reason: "invalid_category" };
+        await c.query(
+          "UPDATE transactions SET ai_category=$2,review_reason=NULL WHERE id=$1",
+          [id, category],
+        );
+        await c.query(
+          "INSERT INTO audit_history(mode,transaction_id,action,before_value,after_value) VALUES($1,$2,'llm-classification',$3,$4)",
+          [this.mode, id, { category: tx.category }, { category }],
+        );
+        return { applied: true };
+      },
+      { client },
+    );
   }
   async listReviews() {
     return this.listTransactions({ review: true });
