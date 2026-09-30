@@ -19,9 +19,10 @@ Open <http://localhost:3001>. Demo mode is prominently labelled and makes no liv
 
 - Income, expenses, cash flow, category charts, source account balances and freshness.
 - Search and filters, transaction corrections, exact splits, rules and a review queue.
-- Monthly category caps, overspend alerts, allocations and opt-in positive rollover.
+- Monthly category caps, persistent deduplicated in-app overspend alerts, allocations and opt-in positive rollover.
 - PostgreSQL provider observations, canonical identities, independent manual overrides and audit history.
 - Durable webhook receipts and jobs, four-hour Redbark account discovery/reconciliation, bounded backfill and a connection test.
+- Optional configurable AI suggestions use durable on-demand jobs and require manual acceptance; rules/provider categories work without AI.
 - Single-user password/session authentication for live data, JSON export, and backup/restore scripts.
 
 Amounts travel as integer minor-unit strings; calculations use integer arithmetic. Posted transactions drive actual spending, pending items are separate, refunds reduce spending on their posted date, and transfers/card repayments do not count as expenses. Budget allocations do not create bank transactions. Account balances remain provider snapshots; unsupported reconciliation is explicitly marked rather than repaired with invented entries.
@@ -41,3 +42,5 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/profe_test npm test
 The service is an MVP for a trusted single-user homelab. Put live mode behind HTTPS and maintain tested encrypted backups. No production deployment, real financial connection, external account creation, or external permission change is needed to try the demo.
 
 Browser checks against the running demo: `node scripts/browser-check.mjs` (set `CHROMIUM_PATH` if Chromium is elsewhere). See [verification evidence](docs/verification.md).
+
+Follow-up evidence: [independent review](docs/review.md), [backup/restore rehearsal](docs/restore-evidence.md), and [classification job policy](docs/classification.md).

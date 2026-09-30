@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { z } from "zod";
 import { createAuth } from "./auth.js";
-import { suggestCategory } from "./llm.js";
 const minor = z.string().regex(/^-?\d{1,18}$/);
 const category = z.string().trim().min(1).max(100);
 const kind = z.enum(["expense", "income", "transfer", "refund"]);
@@ -56,7 +55,7 @@ function send(res, data, status = 200) {
   });
   res.end(JSON.stringify(data));
 }
-export function createApp({ store, integration, config }) {
+export function createApp({ store, integration, classification, config }) {
   const auth = createAuth(config);
   const app = rayo({
     host: config.host,
@@ -101,7 +100,7 @@ export function createApp({ store, integration, config }) {
             res,
             {
               error:
-                status < 500
+                status < 500 || e.expose === true
                   ? e instanceof z.ZodError
                     ? "Invalid request fields"
                     : e.message
@@ -261,13 +260,9 @@ export function createApp({ store, integration, config }) {
       integration.receiveWebhook(await body(req, true), req.headers),
     { publicRoute: true, webhook: true },
   );
-  route("post", "/api/transactions/:id/suggest", async (req) => {
-    const transactions = await store.listTransactions({});
-    const tx = transactions.find((t) => t.id === req.params.id);
-    if (!tx)
-      throw Object.assign(Error("Transaction not found"), { status: 404 });
-    return suggestCategory(tx, await store.listCategories(), config);
-  });
+  route("post", "/api/transactions/:id/suggest", async (req) =>
+    classification.suggest(req.params.id),
+  );
   route("get", "/api/export", async (req, res) => {
     const f = filters(req);
     const snapshot = await store.exportSnapshot(f);

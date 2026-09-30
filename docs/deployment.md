@@ -103,7 +103,7 @@ Restore into a **new empty database**, with the app stopped or pointed elsewhere
 PGHOST=your-db PGUSER=profe PGDATABASE=profe_restore PROFE_RESTORE_CONFIRM=profe_restore scripts/restore.sh backups/profe.dump
 ```
 
-For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's database URL and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process.
+For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's database URL and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process. A disposable loopback-only rehearsal script and the successful test evidence are documented in [restore evidence](restore-evidence.md).
 
 ## Policies and limits
 
@@ -111,4 +111,6 @@ AUD and Australia/Brisbane are defaults, configurable server-side. Keep currenci
 
 Positive category rollover is opt-in and applies only across consecutive configured budget months. Negative overspend does not silently roll forward. Allocations are planning entries and do not affect bank spending. Historical import or correction recomputes the affected rollovers deterministically. Provider balance snapshots are not proof transaction coverage is complete; incompatible type, time or coverage remains unreconciled with a reason.
 
-Alerts are in-app. Email, push, Slack delivery, multi-user roles, FX conversion, investment accounting, and audited disaster recovery automation are future work. Four-hour discovery and event-driven sync cannot promise instant bank freshness. Review source freshness and coverage before relying on totals.
+Alerts are persisted and deduplicated in-app. Their current state is reconciled when the monthly report/export is read; they do not generate background deliveries. Email, push, Slack delivery, multi-user roles, FX conversion, investment accounting, and audited disaster recovery automation are future work. Four-hour discovery and event-driven sync cannot promise instant bank freshness. Review source freshness and coverage before relying on totals.
+
+Optional AI suggestions use a durable, on-demand retry queue; see [classification behavior and limits](classification.md). No automatic bulk AI classification or automatic acceptance is enabled.

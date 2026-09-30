@@ -23,7 +23,14 @@ export async function ensureRedbarkSchema(pool) {
     CREATE TRIGGER immutable_redbark_receipts BEFORE UPDATE OR DELETE ON redbark_receipts FOR EACH ROW EXECUTE FUNCTION reject_redbark_evidence_changes();
   `);
 }
-export function createRedbarkIntegration({ pool, store, config, fetchImpl }) {
+export function createRedbarkIntegration({
+  pool,
+  store,
+  config,
+  fetchImpl,
+  now = Date.now,
+  timerIntervalMs = 15000,
+}) {
   const client = new RedbarkClient({
     apiKey: config.redbarkApiKey,
     version: config.redbarkVersion || REDBARK_VERSION,
@@ -227,7 +234,7 @@ export function createRedbarkIntegration({ pool, store, config, fetchImpl }) {
           new Date(state.next_attempt).getTime() > Date.now())
       )
         return;
-      const bucket = Math.floor(Date.now() / (4 * 3600000));
+      const bucket = Math.floor(now() / (4 * 3600000));
       await db.query(
         "INSERT INTO redbark_jobs(dedupe_key) VALUES($1) ON CONFLICT DO NOTHING",
         [`poll:${bucket}`],
@@ -278,7 +285,7 @@ export function createRedbarkIntegration({ pool, store, config, fetchImpl }) {
       if (!timer) {
         timer = setInterval(() => {
           tick().catch(() => {});
-        }, 15000);
+        }, timerIntervalMs);
         timer.unref();
       }
     },

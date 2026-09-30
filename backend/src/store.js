@@ -10,7 +10,18 @@ import {
 } from "./engine.js";
 import { demoData } from "./demo.js";
 const dateString = (d) =>
-  d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+  d instanceof Date
+    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    : String(d).slice(0, 10);
+const classificationReview = (reason) =>
+  reason === "Category needs review" ||
+  reason?.startsWith("Classification review:");
+const ruleResolvesReview = (reason, description, rules) => {
+  const matched = [...rules]
+    .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
+    .find((r) => description.toLowerCase().includes(r.contains.toLowerCase()));
+  return !!matched && (reason === "Category needs review" || !!matched.kind);
+};
 const txRow = (r) => ({
   id: r.id,
   accountId: r.account_id,
@@ -60,12 +71,13 @@ export class Store {
     this.timezone = timezone;
   }
   async migrate() {
-    await this.pool.query(
-      await readFile(
-        new URL("../migrations/001_core.sql", import.meta.url),
-        "utf8",
-      ),
-    );
+    for (const name of ["001_core.sql", "002_alerts.sql"])
+      await this.pool.query(
+        await readFile(
+          new URL(`../migrations/${name}`, import.meta.url),
+          "utf8",
+        ),
+      );
   }
   async atomic(fn) {
     const c = await this.pool.connect();
@@ -197,6 +209,28 @@ export class Store {
       )
     ).rows.map(ruleRow);
     const classification = classify(o, rules);
+    // Re-fetching unchanged evidence must not undo an explicit review decision.
+    const unchanged =
+      existing &&
+      existing.currency === o.currency &&
+      String(existing.amount_minor) === o.amountMinor &&
+      existing.status === o.status &&
+      dateString(existing.date) === o.date &&
+      existing.description === o.description &&
+      (existing.provider_category || null) === (o.category || null);
+    if (
+      classificationReview(reason) &&
+      (ruleResolvesReview(reason, o.description, rules) ||
+        (unchanged && !existing.review_reason))
+    )
+      reason = null;
+    // A category hint must never replace an outstanding source-identity warning.
+    if (
+      existing?.review_reason &&
+      !classificationReview(existing.review_reason) &&
+      classificationReview(reason)
+    )
+      reason = existing.review_reason;
     if (!existing)
       await c.query(
         `INSERT INTO transactions(id,mode,account_id,currency,amount_minor,status,date,description,provider_category,classification_category,kind,fetched_at,review_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
@@ -333,12 +367,9 @@ export class Store {
       )
     ).rows.map(txRow);
   }
-  async getTransaction(id) {
+  async getTransaction(id, c = this.pool) {
     const r = (
-      await this.pool.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2`, [
-        this.mode,
-        id,
-      ])
+      await c.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2`, [this.mode, id])
     ).rows[0];
     if (!r) throw domainError("Transaction not found");
     return txRow(r);
@@ -427,8 +458,13 @@ export class Store {
       const transactions = await this.listTransactions({ currency }, c),
         budgets = await this.listBudgets(c),
         accounts = await this.listAccounts(c);
+      const report = calculateReport(transactions, budgets, {
+        month,
+        currency,
+      });
+      await this.persistAlerts(report, c);
       return {
-        ...calculateReport(transactions, budgets, { month, currency }),
+        ...report,
         accounts,
         coverage: {
           accounts: accounts
@@ -447,6 +483,36 @@ export class Store {
       };
     };
     return client ? calculate(client) : this.atomic(calculate);
+  }
+  // Reconcile durable alert state with the same atomic snapshot used by reports.
+  // A stable natural key prevents concurrent/repeated reads from generating duplicates.
+  async persistAlerts(report, c) {
+    const categories = report.alerts.map((alert) => alert.category);
+    await c.query(
+      `UPDATE budget_alerts SET resolved_at=now(),updated_at=now()
+       WHERE mode=$1 AND currency=$2 AND month=$3 AND type='overspend'
+       AND resolved_at IS NULL AND NOT(category=ANY($4::text[]))`,
+      [this.mode, report.currency, report.month, categories],
+    );
+    for (const alert of report.alerts)
+      await c.query(
+        `INSERT INTO budget_alerts(id,mode,currency,month,category,type,amount_minor,message)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT(mode,currency,month,category,type) DO UPDATE
+         SET amount_minor=excluded.amount_minor,message=excluded.message,resolved_at=NULL,updated_at=now()
+         WHERE budget_alerts.amount_minor IS DISTINCT FROM excluded.amount_minor
+         OR budget_alerts.message IS DISTINCT FROM excluded.message OR budget_alerts.resolved_at IS NOT NULL`,
+        [
+          randomUUID(),
+          this.mode,
+          report.currency,
+          report.month,
+          alert.category,
+          alert.type,
+          alert.amountMinor,
+          alert.message,
+        ],
+      );
   }
   async exportSnapshot(filters) {
     return this.atomic(async (c) => {
@@ -575,13 +641,19 @@ export class Store {
         rules,
       );
       await c.query(
-        "UPDATE transactions SET classification_category=$2,kind=$3 WHERE id=$1",
-        [row.id, result.category, result.kind],
+        "UPDATE transactions SET classification_category=$2,kind=$3,review_reason=CASE WHEN $4 THEN NULL ELSE review_reason END WHERE id=$1",
+        [
+          row.id,
+          result.category,
+          result.kind,
+          classificationReview(row.review_reason) &&
+            ruleResolvesReview(row.review_reason, row.description, rules),
+        ],
       );
     }
   }
-  async listCategories() {
-    const rows = await this.listTransactions();
+  async listCategories(c = this.pool) {
+    const rows = await this.listTransactions({}, c);
     return [
       ...new Set([
         "Uncategorized",
