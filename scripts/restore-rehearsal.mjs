@@ -34,12 +34,12 @@ if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))
     "Restore rehearsal is restricted to a local test PostgreSQL server",
   );
 const suffix = randomUUID().replaceAll("-", "");
-const source = `profe_backup_test_${suffix}`;
-const target = `profe_restore_test_${suffix}`;
+const source = `dolphino_backup_test_${suffix}`;
+const target = `dolphino_restore_test_${suffix}`;
 const admin = new pg.Pool({ connectionString });
 const pools = [];
 const created = [];
-const backupDir = await mkdtemp(join(tmpdir(), "profe-restore-rehearsal-"));
+const backupDir = await mkdtemp(join(tmpdir(), "dolphino-restore-rehearsal-"));
 const env = {
   ...process.env,
   PGHOST: url.hostname,
@@ -97,7 +97,7 @@ try {
   await settings.init();
   const authConfig = {
     mode: "live",
-    origin: "https://profe.example.invalid",
+    origin: "https://dolphino.example.invalid",
     bootstrapToken: randomBytes(32).toString("base64"),
   };
   const householdAuth = createHouseholdAuth({
@@ -211,7 +211,7 @@ try {
   for (const [setting, provider, value] of extraCredentials)
     await settings.setSecret(setting, provider, value);
   await srcPool.query(
-    "INSERT INTO webhook_registration(singleton,callback_url,destination_id,state,ping_event_id) VALUES(true,'https://profe.example.invalid/api/webhooks/redbark','ed_fictionalbackup','registered','evt_fictionalbackup')",
+    "INSERT INTO webhook_registration(singleton,callback_url,destination_id,state,ping_event_id) VALUES(true,'https://dolphino.example.invalid/api/webhooks/redbark','ed_fictionalbackup','registered','evt_fictionalbackup')",
   );
   const notificationEvent = (
     await srcPool.query(
@@ -301,7 +301,7 @@ try {
       "sh",
       [resolve("scripts/restore.sh"), join(backupDir, dumps[0])],
       {
-        env: { ...env, PGDATABASE: target, PROFE_RESTORE_CONFIRM: target },
+        env: { ...env, PGDATABASE: target, DOLPHINO_RESTORE_CONFIRM: target },
         encoding: "utf8",
       },
     ).trim(),

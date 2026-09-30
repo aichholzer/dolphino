@@ -4,20 +4,39 @@ export function secret(env, name) {
     ? readFileSync(env[`${name}_FILE`], "utf8").trim()
     : env[name] || "";
 }
+// Renamed settings accept legacy deployments but never silently choose between conflicting values.
+export function brandedSetting(env, suffix) {
+  function value(name) {
+    const direct = env[name] || "";
+    const file = env[`${name}_FILE`]
+      ? readFileSync(env[`${name}_FILE`], "utf8").trim()
+      : "";
+    if (direct && file && direct !== file)
+      throw Error(`Conflicting ${name} and ${name}_FILE configuration`);
+    return file || direct;
+  }
+  const current = value(`DOLPHINO_${suffix}`),
+    legacy = value(`PROFE_${suffix}`);
+  if (current && legacy && current !== legacy)
+    throw Error(
+      `Conflicting DOLPHINO_${suffix} and legacy PROFE_${suffix} configuration`,
+    );
+  return current || legacy;
+}
 export function readConfig(env = process.env) {
-  const mode = env.PROFE_MODE || "demo";
+  const mode = brandedSetting(env, "MODE") || "demo";
   if (!["demo", "live"].includes(mode))
-    throw Error("PROFE_MODE must be demo or live");
+    throw Error("DOLPHINO_MODE must be demo or live");
   const config = {
     mode,
     port: Number(env.PORT || 3001),
     host: env.HOST || "0.0.0.0",
     databaseUrl: secret(env, "DATABASE_URL"),
-    bootstrapToken: secret(env, "PROFE_BOOTSTRAP_TOKEN"),
+    bootstrapToken: brandedSetting(env, "BOOTSTRAP_TOKEN"),
     appSecret: secret(env, "APP_SECRET"),
     origin: env.APP_ORIGIN || "http://localhost:3001",
-    currency: env.PROFE_CURRENCY || "AUD",
-    timezone: env.PROFE_TIMEZONE || "Australia/Brisbane",
+    currency: brandedSetting(env, "CURRENCY") || "AUD",
+    timezone: brandedSetting(env, "TIMEZONE") || "Australia/Brisbane",
     redbarkApiKey: secret(env, "REDBARK_API_KEY"),
     redbarkWebhookSecret: secret(env, "REDBARK_WEBHOOK_SECRET"),
     redbarkVersion: env.REDBARK_VERSION || "2026-10-01.wattle",

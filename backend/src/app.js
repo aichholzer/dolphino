@@ -7,7 +7,10 @@ import { testProviderConnection, testProviderModel } from "./llm.js";
 import { testAssistantModel } from "./assistant-provider-test.js";
 import { FINANCE_TOOLS, invokeFinanceTool } from "./assistant-tools.js";
 import { createAccessStore } from "./access.js";
-import { createHouseholdAuth } from "./household-auth.js";
+import {
+  createHouseholdAuth,
+  householdSessionToken,
+} from "./household-auth.js";
 const minor = z.string().regex(/^-?\d{1,18}$/);
 const category = z.string().trim().min(1).max(100);
 const kind = z.enum(["expense", "income", "transfer", "refund"]);
@@ -516,7 +519,7 @@ export function createApp({
       });
       res.setHeader(
         "Content-Disposition",
-        'attachment; filename="profe-assistant-report.json"',
+        'attachment; filename="dolphino-assistant-report.json"',
       );
       return report;
     },
@@ -796,12 +799,7 @@ export function createApp({
   });
   const pairingSession = (req) =>
     createHash("sha256")
-      .update(
-        (req.headers.cookie || "")
-          .split(";")
-          .map((s) => s.trim())
-          .find((s) => s.startsWith("profe_session=")) || "",
-      )
+      .update(householdSessionToken(req) || "")
       .digest("hex");
   route("get", "/api/settings/telegram/pair", (req) =>
     telegram.status({ sessionId: pairingSession(req) }),
@@ -846,7 +844,7 @@ export function createApp({
     const snapshot = await ledger(req).exportSnapshot(f);
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="profe-export.json"',
+      'attachment; filename="dolphino-export.json"',
     );
     return {
       exportedAt: new Date().toISOString(),

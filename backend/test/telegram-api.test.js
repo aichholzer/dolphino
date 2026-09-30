@@ -44,7 +44,7 @@ test(
           ok: true,
           result:
             method === "getMe"
-              ? { is_bot: true, username: "ProfeTestBot" }
+              ? { is_bot: true, username: "dolphinoTestBot" }
               : method === "getWebhookInfo"
                 ? { url: "" }
                 : method === "getChat"
@@ -69,7 +69,7 @@ test(
       const telegram = createTelegramPairing({ pool, settings, fetchImpl });
       const config = {
         mode: "live",
-        origin: "https://profe.test",
+        origin: "https://dolphino.test",
         host: "127.0.0.1",
         port: 0,
         bootstrapToken: randomBytes(32).toString("base64"),

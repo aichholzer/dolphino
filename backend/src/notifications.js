@@ -92,7 +92,14 @@ export function smtpOptions(value) {
   }
 }
 export async function sendSmtp(
-  { smtpUrl, from, to, text, messageId, subject = "Profe budget notification" },
+  {
+    smtpUrl,
+    from,
+    to,
+    text,
+    messageId,
+    subject = "Dolphino budget notification",
+  },
   createTransport = nodemailer.createTransport,
   lookupImpl = lookup,
 ) {
@@ -166,10 +173,10 @@ export function notificationText(payload, fields = defaultFields) {
     amount: `overspend ${payload.currency} ${payload.state === "resolved" ? minorToDecimal("0", payload.currency) : decimal}`,
     remaining: `remaining budget ${payload.state === "resolved" ? "no longer negative" : `-${decimal} ${payload.currency}`}`,
   };
-  return `Profe budget ${payload.state}: ${fields
+  return `Dolphino budget ${payload.state}: ${fields
     .map((f) => values[f])
     .filter(Boolean)
-    .join("; ")}. Open Profe to review.`;
+    .join("; ")}. Open Dolphino to review.`;
 }
 export function createNotificationIntegration({
   pool,
@@ -447,6 +454,7 @@ export function createNotificationIntegration({
         from: value.from,
         to: recipient,
         text,
+        // Persistent retry identity: retain the historical brand in SMTP Message-ID.
         messageId: `<profe-notification-${id}@profe.local>`,
       });
     if (!sendTelegram) throw Error("Telegram adapter unavailable");
@@ -588,7 +596,7 @@ export function createNotificationIntegration({
       await send(
         channel,
         recipient,
-        "Profe synthetic test: notifications are configured. No transactions or account information are included.",
+        "Dolphino synthetic test: notifications are configured. No transactions or account information are included.",
         `test-${Date.now()}`,
       );
     return { ok: true, message: "Synthetic notification sent" };

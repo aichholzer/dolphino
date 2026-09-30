@@ -15,7 +15,7 @@ function Message({ message, onViewTransaction }) {
     <article
       className={`assistant-message assistant-message-${message.role === "user" ? "user" : "assistant"}`}
     >
-      <strong>{message.role === "user" ? "You" : "Profe assistant"}</strong>
+      <strong>{message.role === "user" ? "You" : "dolphino assistant"}</strong>
       <p>{text}</p>
       {message.citations?.length > 0 && (
         <div className="assistant-citations">
@@ -231,7 +231,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       <Dialog.Trigger asChild>
         <Button variant="outline" className="assistant-trigger">
           <Sparkles size={16} />
-          <span>Ask Profe</span>
+          <span>Ask dolphino</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -241,7 +241,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
             <div>
               <Dialog.Title>
                 <Sparkles size={19} />
-                Your Profe assistant
+                Your dolphino assistant
               </Dialog.Title>
               <Dialog.Description>
                 Private to your account · temporary history expires after 30
@@ -316,7 +316,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                 </p>
                 <p>
                   Classification credentials are not reused. You can keep using
-                  Profe without an assistant.
+                  dolphino without an assistant.
                 </p>
                 <Button variant="outline" onClick={refresh}>
                   Refresh assistant status

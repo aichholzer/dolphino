@@ -1,8 +1,10 @@
-# Explicit alternative only: docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
+# Explicit bundled PostgreSQL only. See docs/rename-upgrade.md before upgrading.
+# Required external volume name prevents a renamed checkout/project from silently
+# creating an empty database. Create it yourself for a NEW installation only.
 services:
   app:
     environment:
-      DATABASE_URL: "postgresql://profe:${POSTGRES_PASSWORD:?Set a URL-safe POSTGRES_PASSWORD in .env}@db:5432/profe"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?Set the existing or new POSTGRES_USER explicitly}:${POSTGRES_PASSWORD:?Set a URL-safe POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set the existing or new POSTGRES_DB explicitly}"
       DATABASE_URL_FILE: ""
     depends_on:
       db:
@@ -11,17 +13,19 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: profe
-      POSTGRES_USER: profe
+      POSTGRES_DB: "${POSTGRES_DB:?Set the existing or new POSTGRES_DB explicitly}"
+      POSTGRES_USER: "${POSTGRES_USER:?Set the existing or new POSTGRES_USER explicitly}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
     volumes:
-      - profe_postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U profe -d profe"]
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       timeout: 5s
       retries: 12
     security_opt:
       - no-new-privileges:true
 volumes:
-  profe_postgres:
+  postgres_data:
+    external: true
+    name: "${POSTGRES_VOLUME:?Set POSTGRES_VOLUME to the exact existing Docker volume, or explicitly create one for a new installation}"

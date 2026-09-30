@@ -6,6 +6,6 @@ set -eu
 backup_dir="${1:-./backups}"
 umask 077
 mkdir -p "$backup_dir"
-backup_file="$backup_dir/profe-$(date -u +%Y%m%dT%H%M%SZ).dump"
+backup_file="$backup_dir/dolphino-$(date -u +%Y%m%dT%H%M%SZ).dump"
 pg_dump --format=custom --no-owner --no-acl --file="$backup_file"
 printf 'Backup written to %s\n' "$backup_file"

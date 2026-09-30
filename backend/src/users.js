@@ -143,9 +143,9 @@ export function createUserManagement({
         to: row.email,
         subject:
           row.purpose === "invite"
-            ? "Your Profe household invitation"
-            : "Reset your Profe password",
-        text: `${row.purpose === "invite" ? "You have been invited to Profe." : "A Profe administrator requested a password reset."}\nOpen this single-use link and choose your own password:\n${link}\nExpires: ${new Date(row.expires_at).toISOString()}\nIf unexpected, ignore this email.`,
+            ? "Your dolphino household invitation"
+            : "Reset your dolphino password",
+        text: `${row.purpose === "invite" ? "You have been invited to dolphino." : "A dolphino administrator requested a password reset."}\nOpen this single-use link and choose your own password:\n${link}\nExpires: ${new Date(row.expires_at).toISOString()}\nIf unexpected, ignore this email.`,
         messageId: `<profe-user-${row.id}@profe.local>`,
       });
       await pool.query(

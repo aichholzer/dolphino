@@ -121,7 +121,7 @@ await page.route("**/api/**", async (route) => {
     data = {
       state: "registered",
       destinationId: "evd_synthetic",
-      publicBaseUrl: "https://profe.example.com",
+      publicBaseUrl: "https://dolphino.example.com",
       pingReceived: false,
       pingEventId: null,
     };
@@ -147,7 +147,7 @@ await page.route("**/api/**", async (route) => {
   else if (path === "/api/settings/telegram/pair")
     data = {
       pairingId: "synthetic-pair",
-      command: "/profe_pair@testbot synthetic-nonce",
+      command: "/dolphino_pair@testbot synthetic-nonce",
       deepLink: "https://t.me/testbot?startgroup=synthetic-nonce",
       expiresAt: "2026-09-30T15:00:00Z",
     };
@@ -181,7 +181,7 @@ await page.route("**/api/**", async (route) => {
   await route.fulfill({ json: data });
 });
 try {
-  await page.goto(process.env.PROFE_TEST_URL || "http://localhost:3001");
+  await page.goto(process.env.DOLPHINO_TEST_URL || "http://localhost:3001");
   await page.getByLabel("Overview period").selectOption("3");
   await page.getByText("Partial month", { exact: true }).waitFor();
   assert(
@@ -362,7 +362,7 @@ try {
     "settings mobile overflow",
   );
   await page.screenshot({
-    path: "artifacts/profe-settings-mobile.png",
+    path: "artifacts/dolphino-settings-mobile.png",
     fullPage: true,
   });
   assert.deepEqual(errors, []);

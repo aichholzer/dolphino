@@ -319,8 +319,8 @@ export function IntegrationSettings({ api, demo }) {
         <p className="muted">
           Register signed thin-event notifications that trigger account
           reconciliation, not a live bank-feed subscription. Subscribed events:
-          sync_run.succeeded and connection.refreshed. Profe does not create a
-          Redbark sync.
+          sync_run.succeeded and connection.refreshed. dolphino does not create
+          a Redbark sync.
         </p>
         <dl>
           <div>
@@ -363,7 +363,7 @@ export function IntegrationSettings({ api, demo }) {
             <input
               required
               type="url"
-              placeholder="https://profe.example.com"
+              placeholder="https://dolphino.example.com"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
             />

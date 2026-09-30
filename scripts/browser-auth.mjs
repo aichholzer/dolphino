@@ -119,7 +119,7 @@ await page.route("**/api/**", async (route) => {
   await route.fulfill({ json: data });
 });
 try {
-  await page.goto(process.env.PROFE_TEST_URL || "http://localhost:3001");
+  await page.goto(process.env.DOLPHINO_TEST_URL || "http://localhost:3001");
   await page.getByRole("heading", { name: "Make yourself at home." }).waitFor();
   await page
     .getByLabel("Email address", { exact: true })
@@ -170,7 +170,7 @@ try {
   );
   session = { authenticated: false, demo: false };
   await page.goto(
-    (process.env.PROFE_TEST_URL || "http://localhost:3001") +
+    (process.env.DOLPHINO_TEST_URL || "http://localhost:3001") +
       "/activate#token=synthetic-invite-only",
   );
   await page.getByRole("heading", { name: "Join your household." }).waitFor();
@@ -226,7 +226,7 @@ try {
     .click();
   await page.getByRole("heading", { name: "Welcome home." }).waitFor();
   await page.screenshot({
-    path: "artifacts/profe-login-mobile.png",
+    path: "artifacts/dolphino-login-mobile.png",
     fullPage: true,
   });
   session = {
@@ -239,7 +239,7 @@ try {
       budgets: [{ budgetId: "budget-one", access: "view" }],
     },
   };
-  await page.goto(process.env.PROFE_TEST_URL || "http://localhost:3001");
+  await page.goto(process.env.DOLPHINO_TEST_URL || "http://localhost:3001");
   await page
     .getByRole("heading", { name: "Make room for what matters.", exact: true })
     .waitFor();
@@ -271,7 +271,7 @@ try {
       budgets: [],
     },
   };
-  await page.goto(process.env.PROFE_TEST_URL || "http://localhost:3001");
+  await page.goto(process.env.DOLPHINO_TEST_URL || "http://localhost:3001");
   await page.getByText("Total income", { exact: true }).waitFor();
   assert.equal(
     await page.getByRole("button", { name: "Budgets", exact: true }).count(),

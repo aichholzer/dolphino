@@ -2094,3 +2094,31 @@ label select {
     animation: none;
   }
 }
+.brand-dolphin {
+  display: block;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+.brand {
+  font-size: 30px;
+  letter-spacing: -1.4px;
+}
+.login-card .brand-dolphin {
+  width: 40px;
+  height: 40px;
+}
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.header-brand img {
+  width: 20px;
+  height: 20px;
+}
+@media (max-width: 680px) {
+  .breadcrumb .header-brand {
+    display: none;
+  }
+}

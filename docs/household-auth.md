@@ -1,10 +1,10 @@
 # Household sign-in and upgrade
 
-Profe uses named household accounts instead of a shared password. The first administrator is established with an explicit installation bootstrap proof; an anonymous visitor cannot claim an uninitialized installation merely by opening the website. Signup closes after that first account. Existing imported transactions, classifications, corrections, budgets and encrypted settings remain in the same PostgreSQL database. APP_SECRET does not change during this upgrade.
+dolphino uses named household accounts instead of a shared password. The first administrator is established with an explicit installation bootstrap proof; an anonymous visitor cannot claim an uninitialized installation merely by opening the website. Signup closes after that first account. Existing imported transactions, classifications, corrections, budgets and encrypted settings remain in the same PostgreSQL database. APP_SECRET does not change during this upgrade.
 
 ## Establish the first administrator
 
-Keep the application bound to loopback or otherwise unavailable to untrusted visitors during first setup. Set live mode and your trusted HTTPS APP_ORIGIN. Generate an independent random bootstrap token in a protected local file, then point `PROFE_BOOTSTRAP_TOKEN_FILE` to its container path. Do not put the token in a URL, command-line argument, repository or chat. Do not reuse APP_SECRET, a provider key or a password.
+Keep the application bound to loopback or otherwise unavailable to untrusted visitors during first setup. Set live mode and your trusted HTTPS APP_ORIGIN. Generate an independent random bootstrap token in a protected local file, then point `DOLPHINO_BOOTSTRAP_TOKEN_FILE` to its container path. Do not put the token in a URL, command-line argument, repository or chat. Do not reuse APP_SECRET, a provider key or a password.
 
 ```sh
 mkdir -p secrets
@@ -12,11 +12,11 @@ chmod 700 secrets
 (umask 077; openssl rand -hex 32 > secrets/bootstrap_token)
 ```
 
-Set `PROFE_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token` in `.env`; Compose already mounts `./secrets` read-only. Ensure the non-root application container can read the file without granting access to other users. Open the restricted HTTPS application, provide the bootstrap token in the setup form, and choose the administrator's email, display name and a unique long password. Once setup succeeds, remove the bootstrap environment setting and remove the token file from the application mount. Restart the app, verify ordinary sign-in, then allow the intended household access. Retaining a bootstrap token does not reopen signup after accounts exist.
+Set `DOLPHINO_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token` in `.env`; Compose already mounts `./secrets` read-only. Ensure the non-root application container can read the file without granting access to other users. Open the restricted HTTPS application, provide the bootstrap token in the setup form, and choose the administrator's email, display name and a unique long password. Once setup succeeds, remove the bootstrap environment setting and remove the token file from the application mount. Restart the app, verify ordinary sign-in, then allow the intended household access. Retaining a bootstrap token does not reopen signup after accounts exist.
 
 ## Upgrade from the shared-password MVP
 
-Take a PostgreSQL backup and separately preserve APP_SECRET and deployment configuration. Stop the old app and upgrade the code while maintaining restricted network exposure. Existing legacy shared-password cookies are deliberately invalidated; the old `PROFE_PASSWORD_HASH` is not an administrator identity and cannot claim an account. Establish the first named administrator using the explicit bootstrap procedure above. This creates authentication records alongside the existing ledger rather than resetting or replacing financial data.
+Take a PostgreSQL backup and separately preserve APP_SECRET and deployment configuration. Stop the old app and upgrade the code while maintaining restricted network exposure. Existing legacy shared-password cookies are deliberately invalidated; the old `DOLPHINO_PASSWORD_HASH` is not an administrator identity and cannot claim an account. Establish the first named administrator using the explicit bootstrap procedure above. This creates authentication records alongside the existing ledger rather than resetting or replacing financial data.
 
 Do not regenerate APP_SECRET during this process: doing so would make saved provider credentials unreadable. Removing the obsolete shared-password environment value after successful migration does not alter financial data. Restore tests must restore the matching encryption key separately from the database dump.
 

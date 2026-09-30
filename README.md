@@ -1,4 +1,4 @@
-# Profe
+# dolphino
 
 A self-hosted, household personal finance service: React, Tailwind and accessible Radix UI components; a separate plain-JavaScript Rayo REST API; PostgreSQL; and an independent accounting engine. The first MVP includes fictional demo data and an opt-in Redbark integration. It does not use Actual.
 
@@ -37,7 +37,7 @@ npm test
 npm run build
 npm run lint
 # Run PostgreSQL integration checks using a disposable database:
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/profe_test npm test
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/dolphino_test npm test
 ```
 
 The service is an MVP for a trusted household homelab. Put live mode behind HTTPS and maintain tested encrypted backups. No production deployment, real financial connection, external account creation, or external permission change is needed to try the demo.
@@ -53,3 +53,5 @@ For new live installs and upgrades from the shared-password version, complete [r
 See [assistant setup, tool catalog and limits](docs/assistant.md).
 
 The [isolated security assessment](docs/security-assessment.md) documents tested attacks, fixed findings and remaining deployment limits. This is not a security certification.
+
+Upgrading an existing installation? Read [rename compatibility and volume preservation](docs/rename-upgrade.md) before changing directories or Compose configuration. Keep APP_SECRET and your existing database/volume.

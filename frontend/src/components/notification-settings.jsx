@@ -240,7 +240,7 @@ export function NotificationSettings({ api, demo }) {
         <p className="footnote">
           Create a dedicated private group, then add your household members and
           bot yourself. Keep bot privacy mode on; no administrator permissions
-          are needed. Profe does not manage membership.
+          are needed. dolphino does not manage membership.
         </p>
         <p className="footnote">
           {telegram.paired

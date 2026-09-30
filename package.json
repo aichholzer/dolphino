@@ -1,5 +1,5 @@
 {
-  "name": "profe",
+  "name": "dolphino",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -19,7 +19,8 @@
     "test:browser:enhancements": "node scripts/browser-enhancements.mjs",
     "test:browser:auth": "node scripts/browser-auth.mjs",
     "recover-user": "node scripts/recover-user.js",
-    "test:browser:assistant": "node scripts/browser-assistant.mjs"
+    "test:browser:assistant": "node scripts/browser-assistant.mjs",
+    "test:browser:brand": "node scripts/browser-brand.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",

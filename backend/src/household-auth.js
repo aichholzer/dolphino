@@ -75,18 +75,26 @@ export function validBootstrapToken(value) {
 }
 const publicUser = (row) =>
   row ? { id: row.id, email: row.email, name: row.name, role: row.role } : null;
+// Prefer the new cookie if both exist; an invalid new cookie never falls back to an old token.
 export function householdSessionToken(req) {
-  const values = (req.headers?.cookie || "")
-    .split(";")
-    .map((s) => s.trim())
-    .filter((s) => s.startsWith("profe_session="));
-  if (values.length !== 1) return null;
-  const token = values[0].slice("profe_session=".length);
-  return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
+  const parts = (req.headers?.cookie || "").split(";").map((s) => s.trim());
+  for (const name of ["dolphino_session", "profe_session"]) {
+    const matches = parts.filter((s) => s.startsWith(`${name}=`));
+    if (!matches.length) continue;
+    if (matches.length !== 1) return null;
+    const token = matches[0].slice(name.length + 1);
+    return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
+  }
+  return null;
 }
 export function createHouseholdAuth({ pool, config, now = Date.now }) {
   const cookie = (token, maxAge = 43200) =>
-    `profe_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${config.mode === "live" ? "; Secure" : ""}`;
+    `dolphino_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${config.mode === "live" ? "; Secure" : ""}`;
+  // Expire both names so a legacy session cannot reappear after logging out.
+  const clearedCookies = () => [
+    cookie("", 0),
+    cookie("", 0).replace("dolphino_session=", "profe_session="),
+  ];
   async function atomic(fn) {
     const c = await pool.connect();
     try {
@@ -280,7 +288,7 @@ export function createHouseholdAuth({ pool, config, now = Date.now }) {
               action: "authentication.logout",
             });
         });
-      return { cookie: cookie("", 0) };
+      return { cookie: clearedCookies() };
     },
     async changePassword(req, { currentPassword, newPassword } = {}) {
       if (config.mode === "demo")
@@ -344,9 +352,9 @@ export function createHouseholdAuth({ pool, config, now = Date.now }) {
           action: "password.changed",
           targetUserId: user.id,
         });
-        return { cookie: cookie("", 0) };
+        return { cookie: clearedCookies() };
       });
     },
-    logoutCookie: cookie("", 0),
+    logoutCookie: clearedCookies(),
   };
 }

@@ -1,6 +1,6 @@
 # Isolated backup and restore rehearsal
 
-Executed 2026-09-30 against the disposable local PostgreSQL 18.4 server on `127.0.0.1:54329`. No real user database or live provider connection was used. The existing `profe_test` database was used only as the administrative connection; source and target were newly created databases with random names. Both rehearsal databases and the temporary dump were deleted in `finally` after verification.
+Executed 2026-09-30 against the disposable local PostgreSQL 18.4 server on `127.0.0.1:54329`. No real user database or live provider connection was used. The existing isolated test database was used only as the administrative connection; source and target were newly created databases with random names. Both rehearsal databases and the temporary dump were deleted in `finally` after verification.
 
 The repository's actual `scripts/backup.sh` invoked `pg_dump --format=custom`, then `scripts/restore.sh` invoked `pg_restore --single-transaction --exit-on-error` into the new empty target. This was a native PostgreSQL tool rehearsal, not a JSON export/import simulation.
 
@@ -11,7 +11,7 @@ Run from the repository root (requires `CREATEDB` privileges on a disposable loo
 ```sh
 PATH=/tmp/postgres-REL_18_0/src/bin/pg_dump:$PATH \
 LD_LIBRARY_PATH=/tmp/postgres-REL_18_0/src/interfaces/libpq \
-REHEARSAL_ADMIN_URL=postgresql://profe@127.0.0.1:54329/profe_test \
+REHEARSAL_ADMIN_URL="$TEST_DATABASE_URL" \
 node scripts/restore-rehearsal.mjs
 ```
 
@@ -22,13 +22,11 @@ The extended rehearsal also seeds pending and sent notification outbox rows with
 Observed output (monetary amounts are exact integer AUD cents):
 
 ```text
-Backup written to /tmp/profe-restore-rehearsal-NBUcvS/profe-20260930T124016Z.dump
-Restored to profe_restore_test_9913ab6a71d44eba984d74de5b3d7f48. Verify totals and settings before switching the app.
 {
   "result": "PASS",
   "server": "18.4",
-  "source": "profe_backup_test_9913ab6a71d44eba984d74de5b3d7f48",
-  "target": "profe_restore_test_9913ab6a71d44eba984d74de5b3d7f48",
+  "source": "dolphino_backup_test_9913ab6a71d44eba984d74de5b3d7f48",
+  "target": "dolphino_restore_test_9913ab6a71d44eba984d74de5b3d7f48",
   "counts": {
     "accounts": 3,
     "app_settings": 2,

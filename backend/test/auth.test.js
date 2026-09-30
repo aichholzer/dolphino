@@ -21,11 +21,11 @@ test("household password hashes use random salts and reject wrong password", asy
 test("live mode fails closed without session protection or HTTPS", () => {
   assert.throws(() =>
     readConfig({
-      PROFE_MODE: "live",
+      DOLPHINO_MODE: "live",
       DATABASE_URL: "postgres://localhost/test",
     }),
   );
-  assert.throws(() => readConfig({ PROFE_MODE: "demo" }));
+  assert.throws(() => readConfig({ DOLPHINO_MODE: "demo" }));
 });
 test(
   "household HTTP setup, login, server sessions and route guards reject legacy shared access",
@@ -47,7 +47,7 @@ test(
       host: "127.0.0.1",
       port: 0,
       mode: "live",
-      origin: "https://profe.test",
+      origin: "https://dolphino.test",
       currency: "AUD",
       timezone: "Australia/Brisbane",
       sessionSecret: randomBytes(32).toString("hex"),

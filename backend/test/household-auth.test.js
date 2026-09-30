@@ -27,7 +27,7 @@ test("household scrypt has independent salts, verifies without blocking timers, 
   assert(!(await verifyHouseholdPassword("incorrect", first)));
   assert(!(await verifyHouseholdPassword(password, "scrypt:legacy")));
   await assert.rejects(hashHouseholdPassword("short"), /12 to 128/);
-  assert.equal(householdSessionToken(req("profe_session=bad")), null);
+  assert.equal(householdSessionToken(req("dolphino_session=bad")), null);
 });
 const connectionString =
   process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
@@ -92,7 +92,7 @@ test(
       );
       assert.equal(
         await auth.session(
-          req(`profe_session=${token}; profe_session=${token}`),
+          req(`dolphino_session=${token}; dolphino_session=${token}`),
         ),
         null,
       );

@@ -31,6 +31,7 @@ import { Dialog } from "./components/ui/dialog";
 import "./style.css";
 import { AuthScreen, AccessPending, PasswordForm } from "./components/auth";
 import { UsersSettings } from "./components/users-settings";
+import { BrandMark } from "./components/brand";
 import { AssistantPanel } from "./components/assistant-panel";
 import { AssistantSettings } from "./components/assistant-settings";
 import { ImportHealth } from "./components/import-health";
@@ -324,12 +325,7 @@ function App() {
             navigate("Overview");
           }}
         >
-          <div className="brand-symbol">
-            <span />
-            <span />
-            <span />
-          </div>
-          profe<span className="brand-dot">.</span>
+          <BrandMark />
         </a>
         <div className="workspace">
           <div className="workspace-avatar">S</div>
@@ -410,7 +406,11 @@ function App() {
             <Menu size={21} />
           </button>
           <div className="breadcrumb">
-            Workspace <ChevronRight size={14} />
+            <span className="header-brand">
+              <img src="/dolphino.svg" alt="" aria-hidden="true" />
+              dolphino
+            </span>{" "}
+            <ChevronRight size={14} />
             <span>{page}</span>
           </div>
           <div className="topbar-right">
@@ -535,7 +535,7 @@ function App() {
             <div className="demo-notice">
               <Sparkles size={15} />
               <span>
-                You're exploring Profe with fictional demo data. No bank
+                You're exploring dolphino with fictional demo data. No bank
                 connection is active.
               </span>
               <button onClick={() => navigate("Settings")}>
@@ -799,7 +799,7 @@ function App() {
               {page === "Transactions" && (
                 <section className="card transactions-card">
                   <p className="footnote" style={{ padding: "16px 20px 0" }}>
-                    History includes records already imported into Profe. For
+                    History includes records already imported into dolphino. For
                     older provider records, use{" "}
                     <button type="button" onClick={() => navigate("Settings")}>
                       {isAdmin
@@ -1409,9 +1409,10 @@ function App() {
                         <p>
                           Set REDBARK_API_KEY (or its Docker secret file) and
                           the API version in your server configuration. Restart
-                          Profe, then test your connection. Register your signed
-                          event destination below after its public callback is
-                          reachable. Never enter credentials into chat.
+                          dolphino, then test your connection. Register your
+                          signed event destination below after its public
+                          callback is reachable. Never enter credentials into
+                          chat.
                         </p>
                       </div>
                     </div>
@@ -1460,7 +1461,7 @@ function App() {
           )}
           <footer className="page-footer">
             <span>
-              profe<span className="brand-dot">.</span>{" "}
+              dolphino<span className="brand-dot">.</span>{" "}
               <span className="footer-copy">
                 A little more clarity. A little less worry.
               </span>

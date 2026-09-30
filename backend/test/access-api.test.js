@@ -27,7 +27,7 @@ test(
         mode: "live",
         host: "127.0.0.1",
         port: 0,
-        origin: "https://profe.test",
+        origin: "https://dolphino.test",
         currency: "AUD",
         timezone: "Australia/Brisbane",
         bootstrapToken: randomBytes(32).toString("base64"),

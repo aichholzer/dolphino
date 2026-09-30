@@ -206,7 +206,7 @@ export function createRegistration({
             await remote.request("event_destinations", {
               method: "POST",
               body: {
-                name: "Profe",
+                name: "Dolphino",
                 webhook_endpoint: { url: callback },
                 enabled_events: EVENTS,
               },

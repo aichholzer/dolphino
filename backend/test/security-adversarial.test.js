@@ -109,7 +109,7 @@ test(
         mode: "live",
         host: "127.0.0.1",
         port: 0,
-        origin: "https://profe.test",
+        origin: "https://dolphino.test",
         currency: "AUD",
         timezone: "Australia/Brisbane",
         bootstrapToken: randomBytes(32).toString("base64"),
@@ -139,7 +139,7 @@ test(
         },
       );
       const attack =
-        '<img src=x onerror="window.__profeXss=1"><script>window.__profeXss=1</script>';
+        '<img src=x onerror="window.__dolphinoXss=1"><script>window.__dolphinoXss=1</script>';
       const tx = await store.ingest({
         sourceId: "visible",
         accountId: "visible",
@@ -349,7 +349,7 @@ test(
       for (const origin of [
         undefined,
         "null",
-        "https://profe.test.attacker.invalid",
+        "https://dolphino.test.attacker.invalid",
         "https://attacker.invalid",
       ]) {
         const headers = {
@@ -441,7 +441,7 @@ test(
       const context = await browser.newContext();
       await context.addCookies([
         {
-          name: "profe_session",
+          name: "dolphino_session",
           value: cookie.split("=")[1],
           url: base,
           httpOnly: true,
@@ -463,7 +463,7 @@ test(
         .first()
         .click();
       await page.getByText(attack, { exact: true }).first().waitFor();
-      assert.equal(await page.evaluate(() => window.__profeXss), undefined);
+      assert.equal(await page.evaluate(() => window.__dolphinoXss), undefined);
       assert.equal(await page.locator('img[src="x"]').count(), 0);
       assert.equal(
         await page
@@ -473,7 +473,7 @@ test(
       );
       assert.equal(external.length, 0);
       await page.setViewportSize({ width: 390, height: 844 });
-      assert.equal(await page.evaluate(() => window.__profeXss), undefined);
+      assert.equal(await page.evaluate(() => window.__dolphinoXss), undefined);
       await browser.close();
       browser = undefined;
       const logout = await request("/api/logout", { method: "POST", body: {} });
@@ -512,7 +512,7 @@ test(
             timeout: 5000,
             env: {
               PATH: process.env.PATH,
-              PROFE_MODE: "demo",
+              DOLPHINO_MODE: "demo",
               DATABASE_URL: url.href,
               HOST: "127.0.0.1",
               PORT: "0",

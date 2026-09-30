@@ -1,4 +1,4 @@
-# Profe isolated adversarial security assessment
+# dolphino isolated adversarial security assessment
 
 Assessment date: 2026-09-30. Scope: this checkout, an ephemeral loopback HTTP app, unique disposable schemas in the isolated test PostgreSQL database, synthetic users/transactions, Chromium and mocked external transports. An independent implementation reviewer performed the additional HTTP/browser probes and SMTP review. This is an engineering adversarial assessment, **not a professional third-party penetration test, certification or a guarantee that the app is bulletproof**.
 
@@ -59,7 +59,7 @@ No unresolved high/critical exploitable defect was found in the bounded cases ex
 Use a disposable PostgreSQL instance only. From the checkout:
 
 ```sh
-export TEST_DATABASE_URL=postgresql://profe@127.0.0.1:54329/profe_test
+export TEST_DATABASE_URL=postgresql://dolphino@127.0.0.1:54329/dolphino_test
 export DATABASE_URL="$TEST_DATABASE_URL"
 npm run build
 node --test --test-concurrency=1 backend/test/security-adversarial.test.js backend/test/assistant-adversarial.test.js backend/test/assistant-api.test.js

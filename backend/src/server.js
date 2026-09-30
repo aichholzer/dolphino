@@ -98,7 +98,7 @@ const app = createApp({
   importHealth,
 });
 const server = app.start(() =>
-  console.log(`Profe ${config.mode} listening on port ${config.port}`),
+  console.log(`dolphino ${config.mode} listening on port ${config.port}`),
 );
 integration.start();
 classification.start();

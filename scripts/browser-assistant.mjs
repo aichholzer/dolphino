@@ -106,8 +106,8 @@ await page.route("**/api/**", async (route) => {
   await route.fulfill({ json: data });
 });
 try {
-  await page.goto(process.env.PROFE_TEST_URL || "http://localhost:3001");
-  await page.getByRole("button", { name: "Ask Profe", exact: true }).click();
+  await page.goto(process.env.DOLPHINO_TEST_URL || "http://localhost:3001");
+  await page.getByRole("button", { name: "Ask dolphino", exact: true }).click();
   await page
     .getByRole("heading", { name: "Your assistant is not enabled yet" })
     .waitFor();
@@ -119,12 +119,12 @@ try {
   assert.equal(await page.getByRole("dialog").count(), 0);
   assert.equal(
     await page
-      .getByRole("button", { name: "Ask Profe", exact: true })
+      .getByRole("button", { name: "Ask dolphino", exact: true })
       .evaluate((el) => el === document.activeElement),
     true,
   );
   configured = true;
-  await page.getByRole("button", { name: "Ask Profe", exact: true }).click();
+  await page.getByRole("button", { name: "Ask dolphino", exact: true }).click();
   await page
     .getByRole("heading", { name: "A little help making sense of it." })
     .waitFor();
@@ -159,7 +159,7 @@ try {
     ),
   );
   await page.screenshot({
-    path: "artifacts/profe-assistant-desktop.png",
+    path: "artifacts/dolphino-assistant-desktop.png",
     fullPage: false,
   });
   slow = true;
@@ -195,7 +195,7 @@ try {
     true,
   );
   await page.screenshot({
-    path: "artifacts/profe-assistant-mobile.png",
+    path: "artifacts/dolphino-assistant-mobile.png",
     fullPage: false,
   });
   for (let i = 0; i < 12; i++) {
@@ -221,7 +221,7 @@ try {
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
-  await page.getByRole("button", { name: "Ask Profe", exact: true }).click();
+  await page.getByRole("button", { name: "Ask dolphino", exact: true }).click();
   await page
     .getByRole("heading", { name: "A little help making sense of it." })
     .waitFor();
@@ -238,13 +238,13 @@ try {
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await page.getByText("Authorized monthly report", { exact: true }).waitFor();
   await page.screenshot({
-    path: "artifacts/profe-assistant-desktop.png",
+    path: "artifacts/dolphino-assistant-desktop.png",
     fullPage: false,
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   await page.screenshot({
-    path: "artifacts/profe-assistant-mobile.png",
+    path: "artifacts/dolphino-assistant-mobile.png",
     fullPage: false,
   });
   await page

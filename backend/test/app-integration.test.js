@@ -36,7 +36,7 @@ test(
     });
     const config = {
       mode: "live",
-      origin: "https://profe.test",
+      origin: "https://dolphino.test",
       port: 0,
       host: "127.0.0.1",
       currency: "AUD",

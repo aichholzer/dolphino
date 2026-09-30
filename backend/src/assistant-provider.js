@@ -217,7 +217,7 @@ function boundBedrockWireResponse(client) {
       return result;
     },
     {
-      name: "profeAssistantResponseBound",
+      name: "dolphinoAssistantResponseBound",
       relation: "after",
       toMiddleware: "deserializerMiddleware",
     },

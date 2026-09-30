@@ -40,13 +40,13 @@ test(
         mail = [],
         failMail = false;
       const settings = {
-        getValue: async () => ({ from: "profe@example.test" }),
+        getValue: async () => ({ from: "dolphino@example.test" }),
         getSecret: async () =>
           "smtps://synthetic:synthetic@smtp.example.test:465",
       };
       const users = createUserManagement({
         pool,
-        config: { origin: "https://profe.example.test" },
+        config: { origin: "https://dolphino.example.test" },
         settings,
         now: () => now,
         sendMail: async (data) => {
@@ -241,7 +241,7 @@ test(
         email: "admin@example.test",
       });
       assert.ok(
-        link.startsWith("https://profe.example.test/reset-password#token="),
+        link.startsWith("https://dolphino.example.test/reset-password#token="),
       );
       await users.activate({
         token: link.split("#token=")[1],
