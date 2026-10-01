@@ -4,8 +4,8 @@ Verified 2026-10-01 against the published `8bffb34b64e6e531b4cc40fa583ae320b50d6
 
 ## Delivered behavior
 
-- Both classification and the separate read-only assistant settings have a shared **Load models** picker, searchable by model name, provider, ID and destination region.
-- Administrators can save Bedrock keys and region while disabled with a blank model ID, then load choices. Enabling still requires a model, usable saved credentials, and the assistant's existing data-sharing acknowledgement.
+- Both classification and the separate read-only assistant settings have a shared model dropdown that loads automatically after Save, searchable by model name, provider, ID and destination region.
+- Administrators can save Bedrock keys and region with a blank model ID; the save explicitly leaves the incomplete configuration disabled and automatically loads choices. Enabling still requires a model, usable saved credentials, and the assistant's existing data-sharing acknowledgement.
 - Regional AWS foundation-model discovery is combined with paginated system/application inference profiles. Exact profile IDs are retained; profiles targeting the same base model remain separate choices.
 - Text/on-demand foundation models are shown; known non-text/provisioned-only base choices are filtered. ACTIVE choices sort first; LEGACY and unknown lifecycle states remain visible. Unknown source-region profile metadata stays explicitly unverified.
 - No selection is made automatically. Existing/custom IDs remain editable and preserved, including when a list is empty, incomplete or denied.
@@ -46,3 +46,13 @@ All provider transports in development verification are synthetic. A successful 
 ## Independent review
 
 An independent security review found no blocking backend issue and separately exercised the SDK response-size guard and revision fencing. Its one comment correction, clarifying that provisioned/custom resources remain unsupported by the existing runtime availability guard, was applied. No migrations, encrypted credential formats, financial accounting logic, region catalogue or provider inference behavior were changed.
+
+## Credentials-first save regression correction
+
+The first published picker still made the manual ID field browser-required whenever Enable was checked. That allowed an administrator to reach a circular setup state: credentials could not be saved because the model was missing, while the model list needed saved credentials. The separate disabled **Load models** button made the setup path unclear.
+
+The corrected flow uses the ordinary **Save provider settings** or **Save assistant settings** button. A model is never required for a Bedrock credential save. An incomplete configuration is explicitly saved disabled, with that consequence shown before and after saving. The primary dropdown is always visible, and each successful Bedrock save automatically loads it using the returned public revision. There is no separate Load models control. Manual ID entry is an optional disclosure; **Retry loading models** appears only after failure and preserves the saved keys. Selecting a model does not enable inference, and clearing a model clears the draft enable switch.
+
+Save responses are fenced against edits/provider changes/unmounting before they update the form or launch discovery. The automatic request starts only after the form commits the exact successful save response, cleared secrets and matching draft, preventing that commit from cancelling its own discovery request. Existing in-flight discovery fences remain in force.
+
+Regression coverage exercises ordinary Save without any model ID for both settings, automatic list population, disabled-before-selection/explicit enabling, clearing an enabled model, saved-credentials retention after discovery failure, retries, stale save/discovery responses, manual fallback and no inference. The real HTTP/PostgreSQL browser suite injects both Bedrock list operations at the SDK boundary so automatic discovery never reaches live AWS.

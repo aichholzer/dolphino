@@ -1,6 +1,6 @@
 # Classification providers
 
-Choose OpenAI or Amazon Bedrock in Settings. For Bedrock, save credentials and region with classification disabled, then use **Load models** and the searchable chooser, or enter a model identifier manually. OpenAI model IDs remain manual. Model availability, pricing and regional access vary; Bedrock choices are retrieved from AWS on demand rather than maintained as a static model catalogue. Credentials are write-only encrypted settings. Leaving classification disabled still permits the explicit test actions. Import classification is subject to the configured daily request cap and batch limit; jobs are durable and deduplicated. Existing manual, rule and provider categories retain precedence. The master enable switch controls both on-demand and automatic classification; the independent automatic-suggestions switch can pause scanning and automatic jobs while retaining on-demand suggestions. Automatic application is a separate opt-in, and all returned categories must match the supplied allowlist. Saves take effect without a restart.
+Choose OpenAI or Amazon Bedrock in Settings. For Bedrock, enter credentials and region, then save settings to automatically populate the searchable model chooser. Manual model entry remains an optional fallback. OpenAI model IDs remain manual. Model availability, pricing and regional access vary; Bedrock choices are retrieved from AWS on demand rather than maintained as a static model catalogue. Credentials are write-only encrypted settings. Leaving classification disabled still permits the explicit test actions. Import classification is subject to the configured daily request cap and batch limit; jobs are durable and deduplicated. Existing manual, rule and provider categories retain precedence. The master enable switch controls both on-demand and automatic classification; the independent automatic-suggestions switch can pause scanning and automatic jobs while retaining on-demand suggestions. Automatic application is a separate opt-in, and all returned categories must match the supplied allowlist. Saves take effect without a restart.
 
 **Test connection** is read-only: OpenAI retrieves metadata for the selected model; Bedrock calls STS GetCallerIdentity. The AWS result means credentials are valid, not that inference permissions or model availability are sufficient. No account identifier or identity ARN is returned to the browser.
 
@@ -24,14 +24,14 @@ Official references checked during implementation:
 
 ## Bedrock model discovery
 
-Classification and assistant Settings each have an independent **Load models** control. To configure a new Bedrock provider:
+Classification and assistant Settings each automatically discover models after a successful save. To configure a new Bedrock provider:
 
-1. Select Bedrock and an AWS region, enter its permanent access key and secret, and leave the provider disabled. A model ID may be blank at this stage.
-2. Save settings. The keys are encrypted in PostgreSQL and cleared from the input fields.
-3. Choose **Load models**, search by name, provider, ID or region, and select a foundation model or inference profile. Selection fills the editable ID field; it does not enable or invoke anything.
-4. Save the chosen ID. Arrange model access separately in AWS and use the explicit synthetic model test if desired before enabling.
+1. Select Bedrock and an AWS region, then enter its permanent access key and secret. No model ID is required to save credentials.
+2. Save settings. The keys are encrypted in PostgreSQL and cleared from the input fields; the model list loads automatically with that saved revision. An incomplete Bedrock configuration is explicitly saved disabled.
+3. Search by name, provider, ID or region and select a foundation model or inference profile from the visible dropdown. Selection does not enable or invoke anything. The optional manual-entry disclosure supports missing/custom IDs.
+4. Save the selected model. Enable only when ready; the enable switch is unavailable without a model. Arrange model access separately in AWS and use the explicit synthetic model test if desired. If discovery fails, saved credentials remain intact and **Retry loading models** is available without re-entering them.
 
-Discovery calls only the regional control-plane `ListFoundationModels` and `ListInferenceProfiles` APIs using that section's saved credentials. It does not use the runtime API, send financial data, test inference, grant access or accept a model agreement. Loading does not incur inference charges. Unsaved provider/region/credential changes must be saved first; the browser never sends keys to the discovery endpoint.
+Discovery calls only the regional control-plane `ListFoundationModels` and `ListInferenceProfiles` APIs using that section's saved credentials. It does not use the runtime API, send financial data, test inference, grant access or accept a model agreement. Loading does not incur inference charges. Each ordinary Bedrock Save first persists provider/region/credential changes, then automatically requests discovery. The browser never sends keys to the discovery endpoint. No separate Load models button is needed.
 
 Grant `bedrock:ListFoundationModels` and `bedrock:ListInferenceProfiles` with `Resource: "*"` to permit both lists. These read actions do not support resource-level scoping in the AWS service authorization table. Existing runtime availability/invocation permissions remain separate. If one list is denied or unavailable, the other can still be shown with an incomplete-list warning. A denied list does not prove there are no usable models. Manual entry remains available if discovery fails or a custom foundation/profile ID is missing.
 

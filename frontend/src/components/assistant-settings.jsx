@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Button } from './ui/button';
 import { BedrockModelPicker } from './bedrock-model-picker';
 export function AssistantSettings({ api, demo }) {
@@ -18,7 +18,23 @@ export function AssistantSettings({ api, demo }) {
     [clears, setClears] = useState({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useState(''),
+    [loadAfterSave, setLoadAfterSave] = useState(null);
+  const saveContext = useMemo(() => ({}), [values, secrets, clears, data]);
+  const latestSaveContext = useRef(null);
+  const activeSave = useRef(null);
+  useLayoutEffect(() => {
+    latestSaveContext.current = saveContext;
+    return () => {
+      latestSaveContext.current = null;
+    };
+  }, [saveContext]);
+  useEffect(
+    () => () => {
+      activeSave.current = null;
+    },
+    []
+  );
   useEffect(() => {
     api('/settings/assistant')
       .then((d) => {
@@ -54,9 +70,17 @@ export function AssistantSettings({ api, demo }) {
       <form
         onSubmit={async (e) => {
           e.preventDefault();
+          if (busy || activeSave.current || demo) {
+            return;
+          }
+          const request = {};
+          activeSave.current = request;
+          const submittedContext = saveContext;
+          const incompleteBedrock = values.provider === 'bedrock' && !values.model.trim();
           setBusy(true);
           setError('');
           setNotice('');
+          setLoadAfterSave(null);
           try {
             const payload = Object.fromEntries(
               [
@@ -71,6 +95,9 @@ export function AssistantSettings({ api, demo }) {
                 'maxOutputTokens'
               ].map((k) => [k, values[k]])
             );
+            if (incompleteBedrock) {
+              payload.enabled = false;
+            }
             if (values.provider !== 'bedrock') {
               delete payload.region;
             }
@@ -81,20 +108,44 @@ export function AssistantSettings({ api, demo }) {
                 payload[k] = secrets[k];
               }
             }
-            await api('/settings/assistant', {
+            const d = await api('/settings/assistant', {
               method: 'PUT',
               body: JSON.stringify(payload)
             });
-            const d = await api('/settings/assistant');
+            if (activeSave.current !== request) {
+              return;
+            }
+            if (latestSaveContext.current !== submittedContext) {
+              setNotice('Settings saved, but the form changed while saving. Save your current changes to load models.');
+              return;
+            }
+            d.tools = data?.tools;
+            const nextValues = { ...values, ...d };
             setData(d);
-            setValues((v) => ({ ...v, ...d }));
+            setValues(nextValues);
             setSecrets({});
             setClears({});
-            setNotice('Assistant settings saved.');
+            setNotice(
+              incompleteBedrock
+                ? 'Credentials and settings saved. The assistant is disabled until you choose a model and enable it.'
+                : 'Assistant settings saved.'
+            );
+            if (d.provider === 'bedrock') {
+              setLoadAfterSave({ saved: d, draft: nextValues });
+            }
           } catch (e) {
-            setError(e.message);
+            if (activeSave.current === request && latestSaveContext.current) {
+              setError(
+                latestSaveContext.current === submittedContext
+                  ? e.message
+                  : 'Settings were not saved. Your current changes are retained; save again to retry.'
+              );
+            }
           } finally {
-            setBusy(false);
+            if (activeSave.current === request) {
+              activeSave.current = null;
+              setBusy(false);
+            }
           }
         }}
       >
@@ -129,10 +180,10 @@ export function AssistantSettings({ api, demo }) {
             clearsDirty={Object.values(clears).some(Boolean)}
             draft={values}
             model={values.model}
-            onModelChange={(model) => setValues({ ...values, model })}
+            onModelChange={(model) => setValues({ ...values, model, enabled: !!model.trim() && values.enabled })}
             modelLabel="Assistant model ID"
             purpose="assistant"
-            required={values.enabled}
+            loadAfterSave={loadAfterSave}
             busy={busy}
             demo={demo}
           />
@@ -217,10 +268,14 @@ export function AssistantSettings({ api, demo }) {
           <input
             type="checkbox"
             checked={!!values.enabled}
+            disabled={values.provider === 'bedrock' && !values.model.trim()}
             onChange={(e) => setValues({ ...values, enabled: e.target.checked })}
           />
           Enable the household assistant
         </label>
+        {values.provider === 'bedrock' && !values.model.trim() && (
+          <p className="footnote">Choose a model before enabling. Saving without a model pauses the assistant.</p>
+        )}
         <div className="settings-row">
           {[
             ['dailyRequestsPerUser', 'Daily requests per user', 1, 100],

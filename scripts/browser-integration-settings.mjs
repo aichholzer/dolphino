@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
+import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from '@aws-sdk/client-bedrock';
 import { Store } from '../backend/src/store.js';
 import { createApp } from '../backend/src/app.js';
 import { ensureDeploymentMode } from '../backend/src/deployment-mode.js';
@@ -45,6 +46,7 @@ const errors = [],
   evidence = [];
 let server, browser, base;
 let providerCalls = 0,
+  bedrockDiscoveryCalls = 0,
   redbarkCalls = 0;
 const forbiddenOutbound = async () => {
   throw Error('Unexpected outbound provider operation in isolated browser fixture');
@@ -194,6 +196,31 @@ try {
     telegram,
     importHealth,
     providerDependencies: {
+      bedrockControlClient: {
+        send: async (command) => {
+          bedrockDiscoveryCalls++;
+          if (command instanceof ListFoundationModelsCommand) {
+            return {
+              modelSummaries: [
+                {
+                  modelId: 'synthetic.bedrock-model',
+                  modelName: 'Synthetic Bedrock model',
+                  providerName: 'Synthetic',
+                  inputModalities: ['TEXT'],
+                  outputModalities: ['TEXT'],
+                  inferenceTypesSupported: ['ON_DEMAND'],
+                  modelLifecycle: { status: 'ACTIVE' }
+                }
+              ]
+            };
+          }
+          assert(
+            command instanceof ListInferenceProfilesCommand,
+            'Discovery must not invoke AWS or accept model agreements'
+          );
+          return { inferenceProfileSummaries: [] };
+        }
+      },
       fetchImpl: async (url) => {
         assert.equal(new URL(url).origin, 'https://api.openai.com');
         providerCalls++;
@@ -388,10 +415,24 @@ try {
 
   await page.getByLabel('Provider', { exact: true }).selectOption('bedrock');
   await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
-  await page.getByLabel('Model or inference profile ID / ARN', { exact: true }).fill('synthetic.bedrock-model');
   await page.getByLabel('AWS access key ID', { exact: true }).fill('AKIASYNTHETICONLY0000');
   await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-bedrock-secret-key');
   await save('Save provider settings', '/api/settings/provider');
+  const bedrockChoices = page.getByLabel('Available classification Bedrock models', { exact: true });
+  await expect(bedrockChoices).toBeEnabled();
+  assert.equal(bedrockDiscoveryCalls, 2, 'Saving credentials automatically calls both read-only catalog APIs');
+  assert.equal((await settings.getProviderConfig()).llmModel, '', 'No model ID needed before credentials save');
+  assert.equal(
+    (await settings.getProviderConfig()).llmEnabled,
+    false,
+    'Credentials-first save never enables inference'
+  );
+  await bedrockChoices.selectOption('synthetic.bedrock-model');
+  assert.equal(
+    (await settings.getProviderConfig()).llmModel,
+    '',
+    'Selecting a model does not silently save or enable it'
+  );
   assert.equal((await settings.getProviderConfig()).llmProvider, 'bedrock');
   assert.equal((await settings.getProviderConfig()).llmRegion, 'ap-southeast-2');
   assert.equal((await settings.getProviderConfig()).llmEnabled, false);
@@ -416,7 +457,7 @@ try {
   assert.equal((await settings.getProviderConfig()).llmEnabled, true);
   assert.equal((await api('/api/settings/provider')).credentials.accessKeyId.configured, false);
   proof(
-    'Bedrock selection validates/stores region and separate write-only keys; switching back preserves the original OpenAI key'
+    'Bedrock Save stores credentials without a model and automatically loads the mocked catalog; selection stays disabled and switching back preserves the original OpenAI key'
   );
 
   await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant-model');
@@ -426,6 +467,27 @@ try {
   assert.equal((await assistantSettings.getPublic()).configured, true);
   assert.equal(await page.getByLabel('Assistant OpenAI API key', { exact: true }).inputValue(), '');
   proof('Fresh assistant OpenAI save succeeds independently against the real schema');
+
+  await page.getByLabel('Assistant provider', { exact: true }).selectOption('bedrock');
+  await page.getByLabel('Assistant AWS region', { exact: true }).selectOption('ap-southeast-2');
+  await page.getByLabel('Assistant AWS access key ID', { exact: true }).fill('AKIASYNTHETICASSISTANT');
+  await page.getByLabel('Assistant AWS secret access key', { exact: true }).fill('synthetic-assistant-bedrock-key');
+  await save('Save assistant settings', '/api/settings/assistant');
+  const assistantChoices = page.getByLabel('Available assistant Bedrock models', { exact: true });
+  await expect(assistantChoices).toBeEnabled();
+  assert.equal((await assistantSettings.getRuntimeConfig()).llmModel, '');
+  assert.equal((await assistantSettings.getRuntimeConfig()).llmEnabled, false);
+  assert.equal((await assistantSettings.getRuntimeConfig()).llmAccessKeyId, 'AKIASYNTHETICASSISTANT');
+  await assistantChoices.selectOption('synthetic.bedrock-model');
+  await save('Save assistant settings', '/api/settings/assistant');
+  await expect.poll(() => bedrockDiscoveryCalls).toBe(6);
+  assert.equal((await assistantSettings.getRuntimeConfig()).llmEnabled, false);
+  await page.getByLabel('Assistant provider', { exact: true }).selectOption('openai');
+  await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant-model');
+  await save('Save assistant settings', '/api/settings/assistant');
+  proof(
+    'Separate assistant credentials save without a model and automatically populate the selector without enabling inference'
+  );
 
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

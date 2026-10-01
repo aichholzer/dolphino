@@ -22,7 +22,7 @@ export function BedrockModelPicker({
   onModelChange,
   modelLabel,
   purpose,
-  required,
+  loadAfterSave,
   busy,
   disabled = false,
   demo
@@ -32,6 +32,7 @@ export function BedrockModelPicker({
     [search, setSearch] = useState(''),
     [loading, setLoading] = useState(false);
   const active = useRef(null);
+  const handledSave = useRef(null);
   // A fresh saved object also fences refreshes that return the same revision.
   const context = useMemo(
     () => ({}),
@@ -70,6 +71,18 @@ export function BedrockModelPicker({
       .includes(query)
   );
   const selected = catalog?.models.find((item) => item.id === model);
+
+  // The form commits the public PUT response, cleared secrets and busy state
+  // together. Start discovery only after that commit, so our own save does not
+  // invalidate the new request. A different saved object or draft cancels it.
+  useLayoutEffect(() => {
+    if (loadAfterSave && handledSave.current !== loadAfterSave && !busy) {
+      handledSave.current = loadAfterSave;
+      if (loadAfterSave.saved === saved && loadAfterSave.draft === draft && !blocked) {
+        loadModels();
+      }
+    }
+  }, [loadAfterSave, saved, draft, busy, blocked, context]);
 
   async function loadModels() {
     // Fence repeated clicks synchronously, before React disables the button.
@@ -115,24 +128,32 @@ export function BedrockModelPicker({
   return (
     <div className="bedrock-model-picker">
       <p className="footnote">
-        Save credentials, then load models. Leave the model ID blank while disabled to save your AWS keys and region
-        first. Loading uses only saved credentials and does not invoke a model or incur inference charges.
+        Enter your AWS keys and region, then save settings to automatically load models. You can save without a model;
+        the provider stays disabled until you choose one and explicitly enable it. Loading does not invoke a model or
+        incur inference charges.
       </p>
-      <Button type="button" variant="outline" disabled={!!blocked || loading} onClick={loadModels}>
-        {loading ? 'Loading models…' : 'Load models'}
-      </Button>
+      {loading && (
+        <p role="status" className="footnote">
+          Loading models from your saved credentials…
+        </p>
+      )}
       {demo ? (
         <p className="footnote">Model discovery is unavailable in the fictional demo.</p>
       ) : unavailable ? (
         <p className="footnote">
-          Save credentials first. Discovery requires saved, usable AWS access and secret keys and the saved region. Save
-          any provider, region, credential or Clear changes before loading models.
+          Save your AWS access and secret keys and region below. Choices load automatically after saving usable
+          credentials.
         </p>
       ) : null}
       {error?.context === context && (
-        <p role="alert" className="alert alert-error">
-          {error.message}
-        </p>
+        <>
+          <p role="alert" className="alert alert-error">
+            {error.message} Your saved settings and credentials are retained.
+          </p>
+          <Button type="button" variant="outline" disabled={!!blocked || loading} onClick={loadModels}>
+            Retry loading models
+          </Button>
+        </>
       )}
       {catalog && (
         <>
@@ -152,27 +173,6 @@ export function BedrockModelPicker({
             Search {purpose} Bedrock models
             <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
-          <label>
-            Available {purpose} Bedrock models
-            <select
-              aria-label={`Available ${purpose} Bedrock models`}
-              value=""
-              disabled={!!blocked || !matches.length}
-              onChange={(event) => {
-                if (event.target.value) {
-                  onModelChange(event.target.value);
-                }
-              }}
-            >
-              <option value="">Choose a model to fill the ID below</option>
-              {matches.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.provider || 'Provider unknown'} · {kinds[item.kind] || 'Inference profile'} ·{' '}
-                  {item.lifecycle} · Unverified · {item.id}
-                </option>
-              ))}
-            </select>
-          </label>
           {!matches.length && (
             <p className="footnote">
               {catalog.models.length ? 'No models match this search.' : 'No matching models were returned.'} Your
@@ -182,15 +182,45 @@ export function BedrockModelPicker({
         </>
       )}
       <label>
-        {modelLabel}
-        <input
-          required={required}
-          maxLength={500}
-          value={model}
-          placeholder="Choose above or enter a model or inference profile ID / ARN"
-          onChange={(event) => onModelChange(event.target.value)}
-        />
+        Available {purpose} Bedrock models
+        <select
+          aria-label={`Available ${purpose} Bedrock models`}
+          value={matches.some((item) => item.id === model) ? model : ''}
+          disabled={!!blocked || !matches.length}
+          onChange={(event) => {
+            if (event.target.value) {
+              onModelChange(event.target.value);
+            }
+          }}
+        >
+          <option value="">
+            {catalog
+              ? 'Choose a model or inference profile'
+              : loading
+                ? 'Loading models…'
+                : 'Save settings to load models'}
+          </option>
+          {matches.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name} · {item.provider || 'Provider unknown'} · {kinds[item.kind] || 'Inference profile'} ·{' '}
+              {item.lifecycle} · Unverified · {item.id}
+            </option>
+          ))}
+        </select>
       </label>
+      <details>
+        <summary>Enter a model or inference profile ID manually (optional)</summary>
+        <label>
+          {modelLabel}
+          <input
+            maxLength={500}
+            value={model}
+            placeholder="Optional model or inference profile ID / ARN"
+            onChange={(event) => onModelChange(event.target.value)}
+          />
+        </label>
+      </details>
+      {model && <p className="footnote">Selected model or profile: {model}</p>}
       {selected ? (
         <p className="footnote">
           {selected.name} · {kinds[selected.kind] || 'Inference profile'} · {selected.lifecycle} · Access and

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { BedrockModelPicker } from './bedrock-model-picker';
 
@@ -27,7 +27,23 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
     [baseUrl, setBaseUrl] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useState(''),
+    [loadAfterSave, setLoadAfterSave] = useState(null);
+  const saveContext = useMemo(() => ({}), [values, secrets, clears, settings]);
+  const latestSaveContext = useRef(null);
+  const activeSave = useRef(null);
+  useLayoutEffect(() => {
+    latestSaveContext.current = saveContext;
+    return () => {
+      latestSaveContext.current = null;
+    };
+  }, [saveContext]);
+  useEffect(
+    () => () => {
+      activeSave.current = null;
+    },
+    []
+  );
   async function load() {
     const [p, w, r] = await Promise.all([
       api('/settings/provider'),
@@ -256,6 +272,13 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
         <form
           onSubmit={async (e) => {
             e.preventDefault();
+            if (busy || activeSave.current || demo) {
+              return;
+            }
+            const request = {};
+            activeSave.current = request;
+            const submittedContext = saveContext;
+            const incompleteBedrock = values.provider === 'bedrock' && !values.model.trim();
             const writeSecrets = {};
             for (const [key] of secretFields) {
               if (clears[key]) {
@@ -264,26 +287,67 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
                 writeSecrets[key] = secrets[key];
               }
             }
-            if (
-              await action(() =>
-                api('/settings/provider', {
-                  method: 'PUT',
-                  body: JSON.stringify({
-                    provider: values.provider,
-                    model: values.model,
-                    ...(values.provider === 'bedrock' ? { region: values.region } : {}),
-                    enabled: values.enabled,
-                    autoClassify: values.autoClassify,
-                    autoApply: values.autoApply,
-                    dailyRequestLimit: Number(values.dailyRequestLimit),
-                    batchSize: Number(values.batchSize),
-                    ...writeSecrets
-                  })
+            setBusy(true);
+            setError('');
+            setNotice('');
+            setLoadAfterSave(null);
+            try {
+              const saved = await api('/settings/provider', {
+                method: 'PUT',
+                body: JSON.stringify({
+                  provider: values.provider,
+                  model: values.model,
+                  ...(values.provider === 'bedrock' ? { region: values.region } : {}),
+                  enabled: incompleteBedrock ? false : values.enabled,
+                  autoClassify: values.autoClassify,
+                  autoApply: values.autoApply,
+                  dailyRequestLimit: Number(values.dailyRequestLimit),
+                  batchSize: Number(values.batchSize),
+                  ...writeSecrets
                 })
-              )
-            ) {
+              });
+              if (activeSave.current !== request) {
+                return;
+              }
+              if (latestSaveContext.current !== submittedContext) {
+                setNotice(
+                  'Settings saved, but the form changed while saving. Save your current changes to load models.'
+                );
+                return;
+              }
+              const nextValues = { ...values, ...saved };
+              setSettings(saved);
+              setValues(nextValues);
               setSecrets({});
               setClears({});
+              setNotice(
+                incompleteBedrock
+                  ? 'Credentials and settings saved. AI classification is disabled until you choose a model and enable it.'
+                  : 'Settings updated.'
+              );
+              if (saved.provider === 'bedrock') {
+                setLoadAfterSave({ saved, draft: nextValues });
+              }
+              try {
+                await onUpdated?.();
+              } catch {
+                if (activeSave.current === request && latestSaveContext.current) {
+                  setError('Settings saved, but the workspace status could not be refreshed.');
+                }
+              }
+            } catch (error) {
+              if (activeSave.current === request && latestSaveContext.current) {
+                setError(
+                  latestSaveContext.current === submittedContext
+                    ? error.message
+                    : 'Settings were not saved. Your current changes are retained; save again to retry.'
+                );
+              }
+            } finally {
+              if (activeSave.current === request) {
+                activeSave.current = null;
+                setBusy(false);
+              }
             }
           }}
         >
@@ -318,10 +382,10 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
               clearsDirty={Object.values(clears).some(Boolean)}
               draft={values}
               model={values.model}
-              onModelChange={(model) => setValues({ ...values, model })}
+              onModelChange={(model) => setValues({ ...values, model, enabled: !!model.trim() && values.enabled })}
               modelLabel="Model or inference profile ID / ARN"
               purpose="classification"
-              required={values.enabled}
+              loadAfterSave={loadAfterSave}
               busy={busy}
               demo={demo}
             />
@@ -394,11 +458,15 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
             <input
               type="checkbox"
               checked={!!values.enabled}
+              disabled={values.provider === 'bedrock' && !values.model.trim()}
               onChange={(e) => setValues({ ...values, enabled: e.target.checked })}
             />
             Enable AI classification
           </label>
           <p className="footnote">
+            {values.provider === 'bedrock' &&
+              !values.model.trim() &&
+              'Choose a model before enabling. Saving without a model pauses classification. '}
             Turning this off pauses both on-demand and automatic classification. Saved credentials and existing
             suggestions are retained.
           </p>
