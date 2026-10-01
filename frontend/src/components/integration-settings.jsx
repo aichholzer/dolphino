@@ -27,8 +27,7 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
     [baseUrl, setBaseUrl] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState(''),
-    [loadAfterSave, setLoadAfterSave] = useState(null);
+    [notice, setNotice] = useState('');
   const saveContext = useMemo(() => ({}), [values, secrets, clears, settings]);
   const latestSaveContext = useRef(null);
   const activeSave = useRef(null);
@@ -290,7 +289,6 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
             setBusy(true);
             setError('');
             setNotice('');
-            setLoadAfterSave(null);
             try {
               const saved = await api('/settings/provider', {
                 method: 'PUT',
@@ -325,9 +323,6 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
                   ? 'Credentials and settings saved. AI classification is disabled until you choose a model and enable it.'
                   : 'Settings updated.'
               );
-              if (saved.provider === 'bedrock') {
-                setLoadAfterSave({ saved, draft: nextValues });
-              }
               try {
                 await onUpdated?.();
               } catch {
@@ -380,12 +375,10 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
               region={values.region}
               credentialsDirty={Object.values(secrets).some(Boolean)}
               clearsDirty={Object.values(clears).some(Boolean)}
-              draft={values}
               model={values.model}
               onModelChange={(model) => setValues({ ...values, model, enabled: !!model.trim() && values.enabled })}
               modelLabel="Model or inference profile ID / ARN"
               purpose="classification"
-              loadAfterSave={loadAfterSave}
               busy={busy}
               demo={demo}
             />

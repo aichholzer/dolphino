@@ -28,7 +28,8 @@
     "format": "prettier --write .",
     "test:browser:theme": "node scripts/browser-theme.mjs",
     "test:browser:settings-mocked": "node frontend/test/integration-settings.browser.mjs",
-    "test:browser:workspace": "node frontend/test/workspace.browser.mjs"
+    "test:browser:workspace": "node frontend/test/workspace.browser.mjs",
+    "test:browser:bedrock-models": "node scripts/browser-bedrock-models.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",

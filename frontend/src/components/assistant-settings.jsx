@@ -18,8 +18,7 @@ export function AssistantSettings({ api, demo }) {
     [clears, setClears] = useState({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState(''),
-    [loadAfterSave, setLoadAfterSave] = useState(null);
+    [notice, setNotice] = useState('');
   const saveContext = useMemo(() => ({}), [values, secrets, clears, data]);
   const latestSaveContext = useRef(null);
   const activeSave = useRef(null);
@@ -80,7 +79,6 @@ export function AssistantSettings({ api, demo }) {
           setBusy(true);
           setError('');
           setNotice('');
-          setLoadAfterSave(null);
           try {
             const payload = Object.fromEntries(
               [
@@ -130,9 +128,6 @@ export function AssistantSettings({ api, demo }) {
                 ? 'Credentials and settings saved. The assistant is disabled until you choose a model and enable it.'
                 : 'Assistant settings saved.'
             );
-            if (d.provider === 'bedrock') {
-              setLoadAfterSave({ saved: d, draft: nextValues });
-            }
           } catch (e) {
             if (activeSave.current === request && latestSaveContext.current) {
               setError(
@@ -178,12 +173,10 @@ export function AssistantSettings({ api, demo }) {
             region={values.region}
             credentialsDirty={Object.values(secrets).some(Boolean)}
             clearsDirty={Object.values(clears).some(Boolean)}
-            draft={values}
             model={values.model}
             onModelChange={(model) => setValues({ ...values, model, enabled: !!model.trim() && values.enabled })}
             modelLabel="Assistant model ID"
             purpose="assistant"
-            loadAfterSave={loadAfterSave}
             busy={busy}
             demo={demo}
           />

@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useBedrockModels } from '../hooks/use-bedrock-models.js';
 import { Button } from './ui/button';
 
 const kinds = {
@@ -6,9 +7,6 @@ const kinds = {
   'system-profile': 'System inference profile',
   'application-profile': 'Application inference profile'
 };
-const discoveryError =
-  'Unable to load models. Check your saved credentials and region, and IAM permissions for bedrock:ListFoundationModels and bedrock:ListInferenceProfiles. If settings changed, save or refresh them before retrying. You can still enter a model or profile ID manually.';
-
 export function BedrockModelPicker({
   api,
   endpoint,
@@ -17,41 +15,15 @@ export function BedrockModelPicker({
   region,
   credentialsDirty,
   clearsDirty,
-  draft,
   model,
   onModelChange,
   modelLabel,
   purpose,
-  loadAfterSave,
   busy,
   disabled = false,
   demo
 }) {
-  const [result, setResult] = useState(null),
-    [error, setError] = useState(null),
-    [search, setSearch] = useState(''),
-    [loading, setLoading] = useState(false);
-  const active = useRef(null);
-  const handledSave = useRef(null);
-  // A fresh saved object also fences refreshes that return the same revision.
-  const context = useMemo(
-    () => ({}),
-    [saved, provider, region, credentialsDirty, clearsDirty, busy, disabled, demo, api, endpoint]
-  );
-  const requestScope = useMemo(() => ({}), [context, model, draft]);
-  useLayoutEffect(() => {
-    setResult(null);
-    setError(null);
-    setSearch('');
-  }, [context]);
-  useLayoutEffect(() => {
-    setLoading(false);
-    return () => {
-      active.current?.controller.abort();
-      active.current = null;
-    };
-  }, [requestScope]);
-
+  const [search, setSearch] = useState('');
   const dirty = credentialsDirty || clearsDirty || saved?.provider !== provider || saved?.region !== region;
   const credentialsReady =
     saved?.provider === 'bedrock' &&
@@ -62,7 +34,13 @@ export function BedrockModelPicker({
     /^[a-f0-9]{64}$/i.test(saved?.discoveryRevision || '');
   const unavailable = dirty || !credentialsReady || !region || provider !== 'bedrock';
   const blocked = unavailable || busy || disabled || demo;
-  const catalog = result?.context === context ? result : null;
+  const { key, catalog, loading, error, retry } = useBedrockModels({
+    api,
+    endpoint,
+    saved,
+    eligible: !unavailable && !disabled && !demo
+  });
+  useEffect(() => setSearch(''), [key]);
   const query = search.trim().toLowerCase();
   const matches = (catalog?.models || []).filter((item) =>
     [item.id, item.name, item.provider, kinds[item.kind], item.lifecycle, ...(item.regions || [])]
@@ -72,65 +50,12 @@ export function BedrockModelPicker({
   );
   const selected = catalog?.models.find((item) => item.id === model);
 
-  // The form commits the public PUT response, cleared secrets and busy state
-  // together. Start discovery only after that commit, so our own save does not
-  // invalidate the new request. A different saved object or draft cancels it.
-  useLayoutEffect(() => {
-    if (loadAfterSave && handledSave.current !== loadAfterSave && !busy) {
-      handledSave.current = loadAfterSave;
-      if (loadAfterSave.saved === saved && loadAfterSave.draft === draft && !blocked) {
-        loadModels();
-      }
-    }
-  }, [loadAfterSave, saved, draft, busy, blocked, context]);
-
-  async function loadModels() {
-    // Fence repeated clicks synchronously, before React disables the button.
-    if (blocked || active.current) {
-      return;
-    }
-    const request = { controller: new AbortController() };
-    active.current = request;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const response = await api(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({ revision: saved.discoveryRevision }),
-        signal: request.controller.signal
-      });
-      if (active.current !== request) {
-        return;
-      }
-      if (
-        response.revision !== saved.discoveryRevision ||
-        response.region !== saved.region ||
-        !Array.isArray(response.models) ||
-        !response.models.every((item) => typeof item.id === 'string' && typeof item.name === 'string')
-      ) {
-        throw new Error('Invalid or stale discovery result');
-      }
-      setResult({ ...response, context });
-    } catch {
-      if (active.current === request) {
-        // Do not reflect provider error text, which could contain credentials.
-        setError({ context, message: discoveryError });
-      }
-    } finally {
-      if (active.current === request) {
-        active.current = null;
-        setLoading(false);
-      }
-    }
-  }
-
   return (
     <div className="bedrock-model-picker">
       <p className="footnote">
-        Enter your AWS keys and region, then save settings to automatically load models. You can save without a model;
-        the provider stays disabled until you choose one and explicitly enable it. Loading does not invoke a model or
-        incur inference charges.
+        Enter your AWS keys and region, then save settings to automatically load models. Saved credentials also load
+        models when you reopen Settings. You can save without a model; the provider stays disabled until you choose one
+        and explicitly enable it. Loading does not invoke a model or incur inference charges.
       </p>
       {loading && (
         <p role="status" className="footnote">
@@ -145,12 +70,12 @@ export function BedrockModelPicker({
           credentials.
         </p>
       ) : null}
-      {error?.context === context && (
+      {error && (
         <>
           <p role="alert" className="alert alert-error">
-            {error.message} Your saved settings and credentials are retained.
+            {error} Your saved settings and credentials are retained.
           </p>
-          <Button type="button" variant="outline" disabled={!!blocked || loading} onClick={loadModels}>
+          <Button type="button" variant="outline" disabled={!!blocked || loading} onClick={retry}>
             Retry loading models
           </Button>
         </>
@@ -198,7 +123,9 @@ export function BedrockModelPicker({
               ? 'Choose a model or inference profile'
               : loading
                 ? 'Loading models…'
-                : 'Save settings to load models'}
+                : error
+                  ? 'Models could not be loaded'
+                  : 'Save credentials and region to load models'}
           </option>
           {matches.map((item) => (
             <option key={item.id} value={item.id}>

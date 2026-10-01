@@ -76,9 +76,12 @@ const assistant = {
 let failSave = false,
   demo = false,
   discoveryMode = 'success',
-  saveMode = 'success';
+  saveMode = 'success',
+  connectionMode = 'success';
 const pendingDiscovery = [],
-  pendingSave = [];
+  pendingSave = [],
+  pendingConnection = [];
+let explicitConnectionTests = 0;
 const models = [
   {
     id: 'synthetic.text-v1',
@@ -174,7 +177,11 @@ await page.route('**/api/**', async (route) => {
     }
   } else if (path === '/api/settings/provider/models' || path === '/api/settings/assistant/models') {
     const target = path.includes('/assistant/') ? assistant : provider;
-    assert.deepEqual(body, { revision: target.discoveryRevision }, 'discovery sends only saved revision');
+    assert.deepEqual(Object.keys(body), ['revision'], 'discovery sends only a saved revision');
+    assert.match(body.revision, /^[a-f0-9]{64}$/);
+    if (body.revision !== target.discoveryRevision) {
+      return route.fulfill({ status: 409, json: { error: 'Saved configuration changed. Refresh settings.' } });
+    }
     data = {
       revision: target.discoveryRevision,
       region: target.region,
@@ -192,6 +199,11 @@ await page.route('**/api/**', async (route) => {
       data.revision = 'f'.repeat(64);
     } else if (discoveryMode === 'deferred') {
       await new Promise((resolve) => pendingDiscovery.push(resolve));
+    }
+  } else if (path === '/api/settings/provider/test-connection') {
+    data = { message: 'Synthetic saved connection tested.' };
+    if (connectionMode === 'deferred') {
+      await new Promise((resolve) => pendingConnection.push(resolve));
     }
   } else if (path === '/api/settings/provider') {
     if (request.method() === 'PUT') {
@@ -361,6 +373,7 @@ try {
       secretLabel: 'AWS secret access key',
       saveLabel: 'Save provider settings',
       enableLabel: 'Enable AI classification',
+      limitLabel: 'Requests per UTC day',
       path: '/api/settings/provider',
       target: provider
     },
@@ -374,6 +387,7 @@ try {
       secretLabel: 'Assistant AWS secret access key',
       saveLabel: 'Save assistant settings',
       enableLabel: 'Enable the household assistant',
+      limitLabel: 'Daily requests per user',
       path: '/api/settings/assistant',
       target: assistant
     }
@@ -390,6 +404,7 @@ try {
     const region = section.getByLabel(config.regionLabel, { exact: true });
     const providerSelect = section.getByLabel(config.providerLabel, { exact: true });
     const enable = section.getByRole('checkbox', { name: config.enableLabel, exact: true });
+    const limit = section.getByLabel(config.limitLabel, { exact: true });
     const clear = section.getByRole('checkbox', { name: 'Clear saved value', exact: true }).first();
     const button = section.getByRole('button', { name: config.saveLabel, exact: true });
     const retry = section.getByRole('button', { name: 'Retry loading models', exact: true });
@@ -417,7 +432,7 @@ try {
       await expect.poll(() => pendingDiscovery.length).toBe(1);
       await expect(choices).toBeDisabled();
     };
-    const endDeferred = async ({ stale = true } = {}) => {
+    const endDeferred = async ({ stale = false, busy = false } = {}) => {
       const release = pendingDiscovery.shift();
       const count = responses.length;
       release();
@@ -425,7 +440,20 @@ try {
       if (stale) {
         await expect(choices).toBeDisabled();
         await expect(choices.locator('option')).toHaveCount(1);
+      } else {
+        await expect(choices.locator('option')).toHaveCount(5);
+        if (!busy) {
+          await expect(choices).toBeEnabled();
+        }
       }
+    };
+    const assertCatalogReady = async () => {
+      await expect(choices).toBeEnabled();
+      await expect(choices.locator('option')).toHaveCount(5);
+    };
+    const testConnection = async () => {
+      explicitConnectionTests++;
+      await section.getByRole('button', { name: 'Test saved connection', exact: true }).click();
     };
 
     // An enabled OpenAI configuration can switch to Bedrock and save keys with
@@ -435,7 +463,7 @@ try {
     await region.selectOption('ap-southeast-2');
     await expect(choices).toBeVisible();
     await expect(choices).toBeDisabled();
-    await expect(choices).toContainText('Save settings to load models');
+    await expect(choices).toContainText('Save credentials and region to load models');
     await expect(model).toBeHidden();
     await section.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
     await expect(model).toHaveValue('');
@@ -509,6 +537,24 @@ try {
       await expect(model).toHaveValue('synthetic.legacy-v1');
       await expect(model).toBeEditable();
       assert.equal(config.target.credentials.accessKeyId.configured, true);
+      const beforeErrorEdits = discoveryCount();
+      await model.fill('manual-model-after-error');
+      await enable.check();
+      await limit.fill('14');
+      await expect(section.getByRole('alert')).toContainText('Unable to load models');
+      await expect(retry).toBeEnabled();
+      await expect(model).toHaveValue('manual-model-after-error');
+      await model.fill('synthetic.legacy-v1');
+      await enable.uncheck();
+      if (config.purpose === 'classification') {
+        await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+        await expect(button).toBeEnabled();
+        await expect(section.getByRole('alert')).toContainText('Unable to load models');
+      }
+      // Allow effects and network work to settle: failures must wait for an
+      // explicit Retry or a changed discovery key, even after other rerenders.
+      await page.waitForTimeout(150);
+      assert.equal(discoveryCount(), beforeErrorEdits, 'errors remain visible without automatic retry loops');
       const puts = calls.filter((call) => call.path === config.path && call.method === 'PUT').length;
       discoveryMode = 'success';
       await retry.click();
@@ -531,19 +577,48 @@ try {
     saveMode = 'success';
     await loadSuccessful();
 
-    // Any unsaved credential, clear or region change invalidates existing choices.
-    await key.fill('synthetic-unsaved-key');
-    await expect(choices).toBeDisabled();
-    await expect(choices.locator('option')).toHaveCount(1);
-    await key.fill('');
-    await clear.check();
-    await expect(choices).toBeDisabled();
-    await clear.uncheck();
-    await region.selectOption('us-east-1');
-    await region.selectOption('ap-southeast-2');
-    await expect(choices).toBeDisabled();
+    // Model selection, enable flags and ordinary limits do not change discovery identity.
+    const beforeFormEdits = discoveryCount();
+    await model.fill('catalog-preserved-model');
+    await enable.check();
+    await limit.fill('12');
+    await assertCatalogReady();
+    await choices.selectOption('synthetic.text-v1');
+    await assertCatalogReady();
+    await enable.uncheck();
+    assert.equal(discoveryCount(), beforeFormEdits, 'irrelevant form edits never refetch the catalog');
+
+    // Dirty credentials, clear flags and regions hide old choices. Returning to
+    // the saved configuration recovers automatically without another Save.
+    for (const change of ['key', 'secret', 'clear', 'region']) {
+      const beforeDirty = discoveryCount();
+      if (change === 'key') {
+        await key.fill('synthetic-unsaved-key');
+      } else if (change === 'secret') {
+        await secret.fill('synthetic-unsaved-secret');
+      } else if (change === 'clear') {
+        await clear.check();
+      } else {
+        await region.selectOption('us-east-1');
+      }
+      await expect(choices).toBeDisabled();
+      await expect(choices.locator('option')).toHaveCount(1);
+      assert.equal(discoveryCount(), beforeDirty, 'dirty credentials and regions cannot start discovery');
+      if (change === 'key') {
+        await key.fill('');
+      } else if (change === 'secret') {
+        await secret.fill('');
+      } else if (change === 'clear') {
+        await clear.uncheck();
+      } else {
+        await region.selectOption('ap-southeast-2');
+      }
+      await assertCatalogReady();
+      assert.equal(discoveryCount(), beforeDirty + 1, 'returning to saved settings automatically reloads');
+    }
 
     // Double Save and double Retry are fenced before React disables controls.
+    // Model edits preserve a pending catalog request and are never overwritten.
     discoveryMode = 'deferred';
     const beforeDouble = discoveryCount();
     await button.evaluate((element) => {
@@ -555,6 +630,7 @@ try {
     await model.fill('manual-model-after-request');
     await endDeferred();
     await expect(model).toHaveValue('manual-model-after-request');
+    assert.equal(discoveryCount(), beforeDouble + 1, 'manual input retains the original pending request');
     discoveryMode = 'permission';
     await save();
     await expect(retry).toBeEnabled();
@@ -567,35 +643,53 @@ try {
     await expect.poll(() => pendingDiscovery.length).toBe(1);
     assert.equal(discoveryCount(), beforeRetry + 1);
     await model.fill('second-manual-model');
-    await endDeferred();
-
-    await beginDeferred();
     await enable.check();
+    await limit.fill('13');
     await endDeferred();
+    await expect(model).toHaveValue('second-manual-model');
+    await expect(enable).toBeChecked();
+    assert.equal(discoveryCount(), beforeRetry + 1, 'model, enable and limit edits preserve pending discovery');
     await enable.uncheck();
-    await beginDeferred();
-    await secret.fill('synthetic-unsaved-secret');
-    await endDeferred();
-    await secret.fill('');
-    await beginDeferred();
-    await clear.check();
-    await endDeferred();
-    await clear.uncheck();
-    await beginDeferred();
-    await region.selectOption('us-east-1');
-    await region.selectOption('ap-southeast-2');
-    await endDeferred();
+
+    // Late discovery from a dirty configuration cannot repopulate the picker.
+    // A clean return starts a new request, and the old request cannot win it.
+    for (const change of ['secret', 'clear', 'region', 'provider']) {
+      await beginDeferred();
+      const beforeDirty = discoveryCount();
+      if (change === 'secret') {
+        await secret.fill('synthetic-unsaved-secret');
+      } else if (change === 'clear') {
+        await clear.check();
+      } else if (change === 'region') {
+        await region.selectOption('us-east-1');
+      } else {
+        await providerSelect.selectOption('openai');
+      }
+      if (change === 'secret') {
+        await secret.fill('');
+      } else if (change === 'clear') {
+        await clear.uncheck();
+      } else if (change === 'region') {
+        await region.selectOption('ap-southeast-2');
+      } else {
+        await providerSelect.selectOption('bedrock');
+      }
+      await expect.poll(() => pendingDiscovery.length).toBe(2);
+      assert.equal(discoveryCount(), beforeDirty + 1, 'a clean return replaces cancelled discovery');
+      await endDeferred({ stale: true });
+      await endDeferred();
+      if (change === 'provider') {
+        await section.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
+        await expect(model).toHaveValue('');
+      } else {
+        await expect(model).toHaveValue('second-manual-model');
+      }
+    }
+    await model.fill('second-manual-model');
     await beginDeferred();
     await loadSuccessful();
-    await endDeferred({ stale: false });
-    await expect(choices).toBeEnabled();
-    await expect(model).toHaveValue('second-manual-model');
-    await beginDeferred();
-    await providerSelect.selectOption('openai');
-    await providerSelect.selectOption('bedrock');
     await endDeferred();
-    await expect(model).toHaveValue('');
-    await section.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
+    await expect(model).toHaveValue('second-manual-model');
 
     // Late PUT responses cannot overwrite newer region, provider or credential
     // edits, and cannot launch discovery with the stale response's revision.
@@ -667,14 +761,48 @@ try {
     if (config.purpose === 'assistant') {
       await expect(section.getByText('the assistant also requires tool use', { exact: false })).toBeVisible();
     } else {
+      // Shared busy flags and same-key settings GETs retain an existing catalog.
+      const beforeConnection = discoveryCount();
+      connectionMode = 'deferred';
+      await testConnection();
+      await expect.poll(() => pendingConnection.length).toBe(1);
+      await expect(choices).toBeDisabled();
+      await expect(choices.locator('option')).toHaveCount(5);
+      pendingConnection.shift()();
+      await expect(button).toBeEnabled();
+      await assertCatalogReady();
+      assert.equal(discoveryCount(), beforeConnection, 'connection status never clears or refetches choices');
+
+      // Discovery may finish during an unrelated busy operation, then become
+      // selectable when that operation and its unchanged settings GET finish.
       await beginDeferred();
+      const beforePendingConnection = discoveryCount();
+      await testConnection();
+      await expect.poll(() => pendingConnection.length).toBe(1);
+      await endDeferred({ busy: true });
+      await expect(choices).toBeDisabled();
+      pendingConnection.shift()();
+      await expect(button).toBeEnabled();
+      await assertCatalogReady();
+      assert.equal(discoveryCount(), beforePendingConnection, 'connection test preserves pending discovery');
+      connectionMode = 'success';
+
+      await beginDeferred();
+      const beforeRefresh = discoveryCount();
       await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
       await expect(page.getByRole('status').filter({ hasText: 'Registration status refreshed.' })).toBeVisible();
+      await expect(button).toBeEnabled();
       await endDeferred();
+      assert.equal(discoveryCount(), beforeRefresh, 'status refresh preserves pending discovery');
+      await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+      await expect(button).toBeEnabled();
+      await assertCatalogReady();
+      assert.equal(discoveryCount(), beforeRefresh, 'status refresh preserves a loaded catalog');
     }
   }
 
-  // Unmounting Settings disposes of both discoveries. Returning starts clean.
+  // Unmounting cancels pending requests. Returning automatically rediscovers
+  // both saved configurations, with no new Save and no browser persistence.
   discoveryMode = 'deferred';
   await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
   await expect.poll(() => pendingDiscovery.length).toBe(1);
@@ -684,10 +812,31 @@ try {
   while (pendingDiscovery.length) {
     pendingDiscovery.shift()();
   }
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByLabel(/Available .* Bedrock models/)).toHaveCount(2);
-  for (const select of await page.getByLabel(/Available .* Bedrock models/).all()) {
-    await expect(select).toBeDisabled();
+  discoveryMode = 'success';
+  const allDiscoveryCount = () => calls.filter((call) => call.path.endsWith('/models')).length;
+  const assertBothLoaded = async () => {
+    await expect(page.getByLabel(/Available .* Bedrock models/)).toHaveCount(2);
+    for (const select of await page.getByLabel(/Available .* Bedrock models/).all()) {
+      await expect(select).toBeEnabled();
+      await expect(select.locator('option')).toHaveCount(5);
+    }
+  };
+  for (const lifecycle of ['return', 'same-page refresh', 'browser reload']) {
+    const beforeMount = allDiscoveryCount();
+    if (lifecycle === 'browser reload') {
+      await page.reload();
+    }
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await assertBothLoaded();
+    assert.equal(allDiscoveryCount(), beforeMount + 2, `${lifecycle} automatically discovers each saved provider`);
+    for (const config of pickerCases) {
+      const section = page
+        .locator('section')
+        .filter({ has: page.getByRole('heading', { name: config.heading, exact: true }) });
+      await expect(section.getByLabel(config.keyLabel, { exact: true })).toHaveValue('');
+      await expect(section.getByLabel(config.secretLabel, { exact: true })).toHaveValue('');
+      await expect(section.getByLabel(config.modelLabel, { exact: true })).toHaveValue('saved-manual-profile');
+    }
   }
   await expect(page.getByRole('button', { name: 'Load models', exact: true })).toHaveCount(0);
 
@@ -745,9 +894,14 @@ try {
     );
   }
   assert.equal(
-    calls.some((call) => /test-model|test-connection/.test(call.path)),
+    calls.some((call) => /test-model/.test(call.path)),
     false,
-    'model discovery never invokes connection or inference tests'
+    'discovery never invokes inference tests'
+  );
+  assert.equal(
+    calls.filter((call) => /test-connection/.test(call.path)).length,
+    explicitConnectionTests,
+    'connection tests run only when explicitly clicked, never as a discovery side effect'
   );
   assert.equal(await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth), true);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -759,7 +913,7 @@ try {
   assert.deepEqual(errors, []);
   await assertPageStorageUnused();
   console.log(
-    'Database Settings browser checks passed: Redbark write-only save/preserve/clear, signing-secret controls, failed-save retry, OpenAI first save, independent classification flags/limits, Bedrock ordinary-save automatic discovery and model-free setup for classification and assistant, searchable foundation/profile choices, manual/legacy preservation, empty/partial results, permission/stale failures, dirty drafts, failed-save and failed-discovery retries, repeated Save/Retry, stale PUT and region/provider/save/refresh/unmount races, demo controls, no inference, no secret disclosure, webhook registration and responsive layout. All APIs mocked.'
+    'Database Settings browser checks passed: Redbark write-only save/preserve/clear, signing-secret controls, failed-save retry, OpenAI first save, independent classification flags/limits, Bedrock saved-configuration automatic discovery across Save, clean return, Settings remount and browser reload, model-free setup for classification and assistant, searchable foundation/profile choices, manual/legacy preservation, empty/partial results, permission/stale failures, dirty drafts, failed-save and failed-discovery retries, repeated Save/Retry, stale PUT and credential/region/provider/save/unmount races, catalog and in-flight preservation across model/enable/limit edits and unrelated connection/status refreshes, demo controls, no inference, no secret disclosure, webhook registration and responsive layout. All APIs mocked.'
   );
 } finally {
   await browser.close();
