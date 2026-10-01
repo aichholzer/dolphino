@@ -58,6 +58,7 @@ test(
       pool,
       store,
       config,
+      getRedbarkConfig: async () => ({ ...config }),
       fetchImpl,
     });
     const make = () => createImportHealth({ pool, store, config, integration });

@@ -369,6 +369,7 @@ export async function sendAssistantTurn(
           secretAccessKey: config.llmSecretAccessKey,
         },
         maxAttempts: 1,
+        ignoreConfiguredEndpointUrls: true,
         ...(deps.bedrockRequestHandler
           ? { requestHandler: deps.bedrockRequestHandler }
           : {}),

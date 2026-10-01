@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import pg from "pg";
+import { redbarkAccountFingerprint } from "../src/redbark-settings.js";
 import { createRedbarkIntegration } from "../src/worker.js";
 
 test(
@@ -30,6 +31,7 @@ test(
         pool,
         store: { ingestBatch: async () => {} },
         config,
+        getRedbarkConfig: async () => ({ ...config }),
         fetchImpl,
       });
     const signed = (body) => {
@@ -143,11 +145,8 @@ test(
     const integration = createRedbarkIntegration({
       pool,
       store: { ingestBatch: async (batch) => batches.push(batch) },
-      config: {
-        mode: "live",
-        redbarkApiKey: "fake",
-        timezone: "Australia/Brisbane",
-      },
+      config: { mode: "live", timezone: "Australia/Brisbane" },
+      getRedbarkConfig: async () => ({ redbarkApiKey: "fake" }),
       fetchImpl,
     });
     try {
@@ -162,7 +161,8 @@ test(
         1,
       );
       await pool.query(
-        "INSERT INTO redbark_jobs(dedupe_key) VALUES('manual-1'),('manual-2')",
+        "INSERT INTO redbark_jobs(dedupe_key,account_fingerprint) VALUES('manual-1',$1),('manual-2',$1)",
+        [redbarkAccountFingerprint("fake")],
       );
       limited = true;
       await integration.tick();

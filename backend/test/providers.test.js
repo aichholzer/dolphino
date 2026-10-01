@@ -242,3 +242,40 @@ test("maintained Bedrock catalogue exposes commercial regions with Sydney defaul
   for (const { id } of BEDROCK_REGIONS)
     assert.equal(isProviderConfigured({ ...bedrock, llmRegion: id }), true);
 });
+
+test("all internally constructed AWS clients reject environment endpoint overrides", async (t) => {
+  const { BedrockClient } = await import("@aws-sdk/client-bedrock");
+  const { BedrockRuntimeClient } = await import(
+    "@aws-sdk/client-bedrock-runtime"
+  );
+  const { STSClient } = await import("@aws-sdk/client-sts");
+  const previous = process.env.AWS_ENDPOINT_URL;
+  process.env.AWS_ENDPOINT_URL = "http://127.0.0.1:1/never-send-secrets";
+  t.after(() => {
+    if (previous === undefined) delete process.env.AWS_ENDPOINT_URL;
+    else process.env.AWS_ENDPOINT_URL = previous;
+  });
+  const seen = new Set();
+  for (const [Client, name, response] of [
+    [BedrockClient, "control", (command) => bedrockControlClient.send(command)],
+    [
+      BedrockRuntimeClient,
+      "runtime",
+      () => ({ output: { message: { content: [{ text: answer }] } } }),
+    ],
+    [STSClient, "identity", () => ({ Account: "synthetic" })],
+  ]) {
+    const original = Client.prototype.send;
+    Client.prototype.send = function (command) {
+      assert.equal(this.config.ignoreConfiguredEndpointUrls, true);
+      seen.add(name);
+      return Promise.resolve(response(command));
+    };
+    t.after(() => {
+      Client.prototype.send = original;
+    });
+  }
+  await testProvider(bedrock);
+  await testProviderConnection(bedrock);
+  assert.deepEqual([...seen].sort(), ["control", "identity", "runtime"]);
+});

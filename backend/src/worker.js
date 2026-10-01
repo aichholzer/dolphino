@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import {
+  REDBARK_SETTINGS_LOCK,
+  redbarkAccountFingerprint,
+} from "./redbark-settings.js";
+import {
   RedbarkClient,
   RedbarkError,
   REDBARK_VERSION,
@@ -16,6 +20,7 @@ export async function ensureRedbarkSchema(pool) {
     CREATE TABLE IF NOT EXISTS redbark_receipts (event_id text PRIMARY KEY, body bytea NOT NULL, body_hash text NOT NULL, received_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS redbark_jobs (id bigserial PRIMARY KEY, dedupe_key text UNIQUE NOT NULL, status text NOT NULL DEFAULT 'queued', attempts integer NOT NULL DEFAULT 0, available_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz, last_error text);
     ALTER TABLE redbark_jobs ADD COLUMN IF NOT EXISTS params jsonb NOT NULL DEFAULT '{}';
+    ALTER TABLE redbark_jobs ADD COLUMN IF NOT EXISTS account_fingerprint text;
     CREATE TABLE IF NOT EXISTS redbark_fetches (id bigserial PRIMARY KEY, account_id text NOT NULL, fetched_at timestamptz NOT NULL, raw jsonb NOT NULL);
     CREATE OR REPLACE FUNCTION reject_redbark_evidence_changes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Redbark evidence is immutable'; END; $$;
     DROP TRIGGER IF EXISTS immutable_redbark_fetches ON redbark_fetches;
@@ -29,91 +34,133 @@ export function createRedbarkIntegration({
   store,
   config,
   fetchImpl,
-  getWebhookSecret = async () => config.redbarkWebhookSecret,
+  getRedbarkConfig = async () => ({}),
   now = Date.now,
   timerIntervalMs = 15000,
 }) {
-  const client = new RedbarkClient({
-    apiKey: config.redbarkApiKey,
-    version: config.redbarkVersion || REDBARK_VERSION,
-    fetchImpl,
-  });
-  const fingerprint = configurationFingerprint(config);
+  async function runtime(db = pool) {
+    const value = await getRedbarkConfig(db);
+    return {
+      ...value,
+      redbarkFingerprint: configurationFingerprint(value),
+      redbarkAccountFingerprint: redbarkAccountFingerprint(value.redbarkApiKey),
+    };
+  }
+  const clientFor = (value) =>
+    new RedbarkClient({
+      apiKey: value.redbarkApiKey,
+      version: value.redbarkVersion || REDBARK_VERSION,
+      fetchImpl,
+    });
   let timer;
   let busy = false;
   const idleWaiters = [];
-  const configured = () =>
-    config.mode === "live" && Boolean(config.redbarkApiKey);
+  const configured = (value) =>
+    config.mode === "live" &&
+    Boolean(value.redbarkApiKey) &&
+    !value.redbarkCredentialsUnavailable;
   async function status() {
+    const current = await runtime();
     const {
       rows: [state],
     } = await pool.query("SELECT * FROM redbark_state WHERE id=1");
     const {
       rows: [counts],
     } = await pool.query(
-      "SELECT count(*)::integer AS pending FROM redbark_jobs WHERE status='queued'",
+      "SELECT count(*)::integer AS pending, count(*) FILTER(WHERE account_fingerprint IS DISTINCT FROM $1)::integer AS paused FROM redbark_jobs WHERE status='queued'",
+      [current.redbarkAccountFingerprint || null],
     );
-    let webhookConfigured = false;
-    try {
-      webhookConfigured = Boolean(await getWebhookSecret());
-    } catch {
-      /* Credential failure must not block stored-data/status access. */
-    }
     return {
-      configured: configured(),
-      verified: configured() && state?.fingerprint === fingerprint,
-      version: config.redbarkVersion || REDBARK_VERSION,
-      webhookConfigured,
+      configured: configured(current),
+      verified:
+        configured(current) &&
+        state?.fingerprint === current.redbarkFingerprint,
+      version: current.redbarkVersion || REDBARK_VERSION,
+      webhookConfigured: !!current.redbarkWebhookSecret,
+      credentialsAvailable: !current.redbarkCredentialsUnavailable,
       testedAt: state?.tested_at,
       lastSuccess: state?.last_success,
       lastPollAt: state?.last_success,
       lastError: state?.last_error,
       queuedJobs: counts.pending,
+      pausedJobs: counts.paused,
+      pauseReason: counts.paused
+        ? "Prior-account or unbound jobs are retained and cannot run with these credentials"
+        : null,
       pollHours: 4,
     };
   }
   async function testConnection() {
-    if (!configured())
+    const current = await runtime();
+    if (!configured(current))
       throw new RedbarkError("live_redbark_not_configured", 409);
+    const client = clientFor(current);
+    let problem;
     try {
       const response = await client.request("accounts?limit=1");
       if (!Array.isArray(response.body?.data))
         throw new RedbarkError("invalid_provider_list");
-      await pool.query(
-        "UPDATE redbark_state SET fingerprint=$1,tested_at=now(),last_error=NULL WHERE id=1",
-        [fingerprint],
-      );
-      return { ok: true, version: client.version };
     } catch (error) {
-      await pool.query(
-        "UPDATE redbark_state SET fingerprint=NULL,tested_at=now(),last_error=$1 WHERE id=1",
-        [error instanceof RedbarkError ? error.code : "connection_test_failed"],
-      );
-      throw error;
+      problem = error;
     }
-  }
-  async function receiveWebhook(rawBody, headers) {
-    let webhookSecret;
-    try {
-      webhookSecret = await getWebhookSecret();
-    } catch {
-      throw new RedbarkError("webhook_credentials_unavailable", 503);
-    }
-    if (!configured() || !webhookSecret)
-      throw new RedbarkError("webhook_not_configured", 503);
-    if (
-      !verifyRedbarkSignature(
-        headers["redbark-signature"],
-        rawBody,
-        webhookSecret,
-      )
-    )
-      throw new RedbarkError("invalid_signature", 401);
-    const event = parseThinEvent(rawBody);
-    const hash = createHash("sha256").update(rawBody).digest("hex");
     const db = await pool.connect();
     try {
       await db.query("BEGIN");
+      await db.query("SELECT pg_advisory_xact_lock($1)", [
+        REDBARK_SETTINGS_LOCK,
+      ]);
+      const latest = await runtime(db);
+      if (latest.redbarkFingerprint !== current.redbarkFingerprint)
+        throw new RedbarkError("configuration_changed_retest_required", 409);
+      await db.query(
+        "UPDATE redbark_state SET fingerprint=$1,tested_at=now(),last_error=$2,next_attempt=NULL WHERE id=1",
+        [
+          problem ? null : current.redbarkFingerprint,
+          problem
+            ? problem instanceof RedbarkError
+              ? problem.code
+              : "connection_test_failed"
+            : null,
+        ],
+      );
+      await db.query("COMMIT");
+    } catch (error) {
+      await db.query("ROLLBACK");
+      throw error;
+    } finally {
+      db.release();
+    }
+    if (problem)
+      throw problem instanceof RedbarkError
+        ? problem
+        : new RedbarkError("connection_test_failed");
+    return { ok: true, version: client.version };
+  }
+  async function receiveWebhook(rawBody, headers) {
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query("SELECT pg_advisory_xact_lock($1)", [
+        REDBARK_SETTINGS_LOCK,
+      ]);
+      const current = await runtime(db);
+      if (
+        current.redbarkWebhookUnavailable ||
+        current.redbarkCredentialsUnavailable
+      )
+        throw new RedbarkError("webhook_credentials_unavailable", 503);
+      if (!configured(current) || !current.redbarkWebhookSecret)
+        throw new RedbarkError("webhook_not_configured", 503);
+      if (
+        !verifyRedbarkSignature(
+          headers["redbark-signature"],
+          rawBody,
+          current.redbarkWebhookSecret,
+        )
+      )
+        throw new RedbarkError("invalid_signature", 401);
+      const event = parseThinEvent(rawBody);
+      const hash = createHash("sha256").update(rawBody).digest("hex");
       const inserted = await db.query(
         "INSERT INTO redbark_receipts(event_id,body,body_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING event_id",
         [event.id, Buffer.from(rawBody), hash],
@@ -130,8 +177,8 @@ export function createRedbarkIntegration({
       }
       if (event.type !== "event_destination.ping")
         await db.query(
-          "INSERT INTO redbark_jobs(dedupe_key) VALUES($1) ON CONFLICT DO NOTHING",
-          [`event:${event.id}`],
+          "INSERT INTO redbark_jobs(dedupe_key,account_fingerprint) VALUES($1,$2) ON CONFLICT DO NOTHING",
+          [`event:${event.id}`, current.redbarkAccountFingerprint],
         );
       await db.query("COMMIT");
       return { accepted: true, duplicate: !inserted.rowCount };
@@ -142,7 +189,8 @@ export function createRedbarkIntegration({
       db.release();
     }
   }
-  async function sync(params = {}) {
+  async function sync(current, params = {}) {
+    const client = clientFor(current);
     const accounts = await client.accounts();
     const timezone = config.timezone || "Australia/Brisbane";
     const to =
@@ -153,7 +201,7 @@ export function createRedbarkIntegration({
         month: "2-digit",
         day: "2-digit",
       }).format(new Date());
-    const days = Number(config.redbarkBackfillDays || 90);
+    const days = Number(current.redbarkBackfillDays || 90);
     if (!Number.isInteger(days) || days < 1 || days > 2555)
       throw new RedbarkError("invalid_backfill_days");
     const from =
@@ -238,10 +286,11 @@ export function createRedbarkIntegration({
     }
   }
   async function tick() {
-    if (busy || !configured()) return;
+    if (busy || config.mode !== "live") return;
     busy = true;
     let db;
-    let locked = false;
+    let locked = false,
+      settingsLocked = false;
     try {
       db = await pool.connect();
       // Session lock serializes poll/webhook work across processes. Disconnect releases it.
@@ -250,30 +299,38 @@ export function createRedbarkIntegration({
       );
       locked = lock.rows[0].acquired;
       if (!locked) return;
+      await db.query("SELECT pg_advisory_lock($1)", [REDBARK_SETTINGS_LOCK]);
+      settingsLocked = true;
+      const current = await runtime(db);
+      if (!configured(current)) return;
       const {
         rows: [state],
       } = await db.query(
         "SELECT fingerprint,next_attempt FROM redbark_state WHERE id=1",
       );
       if (
-        state.fingerprint !== fingerprint ||
+        state.fingerprint !== current.redbarkFingerprint ||
         (state.next_attempt &&
           new Date(state.next_attempt).getTime() > Date.now())
       )
         return;
       const bucket = Math.floor(now() / (4 * 3600000));
       await db.query(
-        "INSERT INTO redbark_jobs(dedupe_key) VALUES($1) ON CONFLICT DO NOTHING",
-        [`poll:${bucket}`],
+        "INSERT INTO redbark_jobs(dedupe_key,account_fingerprint) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [
+          `poll:${current.redbarkAccountFingerprint}:${bucket}`,
+          current.redbarkAccountFingerprint,
+        ],
       );
       const {
         rows: [job],
       } = await db.query(
-        "SELECT * FROM redbark_jobs WHERE status='queued' AND available_at<=now() ORDER BY id LIMIT 1",
+        "SELECT * FROM redbark_jobs WHERE status='queued' AND available_at<=now() AND account_fingerprint=$1 ORDER BY id LIMIT 1",
+        [current.redbarkAccountFingerprint],
       );
       if (!job) return;
       try {
-        await sync(job.params || {});
+        await sync(current, job.params || {});
         await db.query(
           "UPDATE redbark_jobs SET status='completed', completed_at=now(),attempts=attempts+1,last_error=NULL WHERE id=$1",
           [job.id],
@@ -297,10 +354,16 @@ export function createRedbarkIntegration({
         );
       }
     } finally {
+      if (settingsLocked)
+        await db
+          .query("SELECT pg_advisory_unlock($1)", [REDBARK_SETTINGS_LOCK])
+          .catch(() => {});
       if (locked)
-        await db.query(
-          "SELECT pg_advisory_unlock(73426712, hashtext(current_schema()))",
-        );
+        await db
+          .query(
+            "SELECT pg_advisory_unlock(73426712, hashtext(current_schema()))",
+          )
+          .catch(() => {});
       db?.release();
       busy = false;
       for (const resolve of idleWaiters.splice(0)) resolve();
@@ -312,6 +375,39 @@ export function createRedbarkIntegration({
     testConnection,
     receiveWebhook,
     tick,
+    async queueBackfill(params, key) {
+      const db = await pool.connect();
+      try {
+        await db.query("BEGIN");
+        await db.query("SELECT pg_advisory_xact_lock($1)", [
+          REDBARK_SETTINGS_LOCK,
+        ]);
+        const current = await runtime(db);
+        const state = (
+          await db.query("SELECT fingerprint FROM redbark_state WHERE id=1")
+        ).rows[0];
+        if (
+          !configured(current) ||
+          state?.fingerprint !== current.redbarkFingerprint
+        )
+          throw new RedbarkError("configuration_changed_retest_required", 409);
+        const result = await db.query(
+          "INSERT INTO redbark_jobs(dedupe_key,params,account_fingerprint) VALUES($1,$2,$3) ON CONFLICT(dedupe_key) DO UPDATE SET dedupe_key=excluded.dedupe_key RETURNING *",
+          [
+            key + ":" + current.redbarkAccountFingerprint,
+            params,
+            current.redbarkAccountFingerprint,
+          ],
+        );
+        await db.query("COMMIT");
+        return result.rows[0];
+      } catch (error) {
+        await db.query("ROLLBACK");
+        throw error;
+      } finally {
+        db.release();
+      }
+    },
     start() {
       if (!timer) {
         timer = setInterval(() => {

@@ -53,12 +53,13 @@ export function createAssistantSettings({ pool, appSecret }) {
     pool,
     appSecret,
     providerNamespace: "assistant.llm",
-    allowEnvironmentFallback: false,
     settingsSchema: assistantSettingsSchema,
+    defaultSettings: { provider: "openai", model: "", ...defaults },
   });
   async function getPublic() {
     const value = await store.getPublicProvider();
     const state = { ...defaults, ...value };
+    delete state.autoClassify;
     delete state.autoApply;
     delete state.dailyRequestLimit;
     delete state.batchSize;
@@ -77,8 +78,9 @@ export function createAssistantSettings({ pool, appSecret }) {
     return state;
   }
   async function getRuntimeConfig() {
-    const runtime = await store.getProviderConfig();
-    const value = { ...defaults, ...(await store.getValue("assistant.llm")) };
+    const snapshot = await store.getProviderSnapshot();
+    const runtime = snapshot.config;
+    const value = { ...defaults, ...snapshot.value };
     const enabled =
       value.enabled === true &&
       value.dataSharingAcknowledged === true &&

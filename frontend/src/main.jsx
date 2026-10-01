@@ -317,79 +317,81 @@ function App() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menu ? "sidebar-open" : ""}`}>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("Overview");
-          }}
-        >
-          <BrandMark />
-        </a>
-        <div className="workspace">
-          <div className="workspace-avatar">S</div>
-          <div>
-            <strong>My personal finances</strong>
-            <small>Your space. Your pace.</small>
-          </div>
-        </div>
-        <div className="nav-label">WORKSPACE</div>
-        <nav>
-          {Object.entries(icons)
-            .filter(([name]) => canNavigate(name))
-            .map(([name, Icon]) => (
-              <button
-                key={name}
-                className={`nav-item ${page === name ? "active" : ""}`}
-                onClick={() => navigate(name)}
-              >
-                <Icon size={19} />
-                <span>{name}</span>
-                {name === "Overview" && <span className="nav-active-dot" />}
-              </button>
-            ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="privacy">
-            <ShieldCheck size={19} />
+        <div className="sidebar-inner">
+          <a
+            className="brand"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("Overview");
+            }}
+          >
+            <BrandMark />
+          </a>
+          <div className="workspace">
+            <div className="workspace-avatar">S</div>
             <div>
-              <strong>Financially yours.</strong>
-              <p>
-                Private by design.
-                <br />
-                At home on your own server.
-              </p>
+              <strong>My personal finances</strong>
+              <small>Your space. Your pace.</small>
             </div>
           </div>
-          <div className="profile">
-            <div className="profile-avatar">S</div>
-            <div>
-              <strong>{session?.user?.name || "Personal workspace"}</strong>
-              <small>
-                {session?.demo ? "Demo environment" : "Self-hosted"}
-              </small>
+          <div className="nav-label">WORKSPACE</div>
+          <nav>
+            {Object.entries(icons)
+              .filter(([name]) => canNavigate(name))
+              .map(([name, Icon]) => (
+                <button
+                  key={name}
+                  className={`nav-item ${page === name ? "active" : ""}`}
+                  onClick={() => navigate(name)}
+                >
+                  <Icon size={19} />
+                  <span>{name}</span>
+                  {name === "Overview" && <span className="nav-active-dot" />}
+                </button>
+              ))}
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="privacy">
+              <ShieldCheck size={19} />
+              <div>
+                <strong>Financially yours.</strong>
+                <p>
+                  Private by design.
+                  <br />
+                  At home on your own server.
+                </p>
+              </div>
             </div>
-            {!session?.demo && (
-              <button
-                aria-label="Change password"
-                title="Change password"
-                onClick={() => setChangePassword(true)}
-              >
-                <ShieldCheck size={17} />
-              </button>
-            )}
-            {!session?.demo && (
-              <button
-                aria-label="Sign out"
-                onClick={async () => {
-                  await api("/logout", { method: "POST" });
-                  setSession({ authenticated: false });
-                }}
-              >
-                <LogOut size={17} />
-              </button>
-            )}
+            <div className="profile">
+              <div className="profile-avatar">S</div>
+              <div>
+                <strong>{session?.user?.name || "Personal workspace"}</strong>
+                <small>
+                  {session?.demo ? "Demo environment" : "Self-hosted"}
+                </small>
+              </div>
+              {!session?.demo && (
+                <button
+                  aria-label="Change password"
+                  title="Change password"
+                  onClick={() => setChangePassword(true)}
+                >
+                  <ShieldCheck size={17} />
+                </button>
+              )}
+              {!session?.demo && (
+                <button
+                  aria-label="Sign out"
+                  onClick={async () => {
+                    await api("/logout", { method: "POST" });
+                    setSession({ authenticated: false });
+                  }}
+                >
+                  <LogOut size={17} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </aside>
@@ -627,7 +629,7 @@ function App() {
                       value={money(data.netMinor, currency)}
                       subtitle="Income minus spending"
                       icon={ChartNoAxesCombined}
-                      color="purple"
+                      color="ocean"
                       onClick={() =>
                         drill({
                           ids: [
@@ -649,7 +651,12 @@ function App() {
                           </p>
                         </div>
                       </div>
-                      <div className="table-wrap">
+                      <div
+                        className="table-wrap monthly-comparison-scroll"
+                        role="region"
+                        aria-label="Month-by-month comparison. Scroll horizontally to view all columns."
+                        tabIndex={0}
+                      >
                         <table>
                           <thead>
                             <tr>
@@ -713,6 +720,10 @@ function App() {
                           </tbody>
                         </table>
                       </div>
+                      <p className="table-scroll-hint">
+                        <ArrowLeftRight size={14} aria-hidden="true" />
+                        Scroll sideways to compare all columns
+                      </p>
                     </section>
                   )}
                   <div className="chart-grid">
@@ -1109,7 +1120,7 @@ function App() {
                   {!accounts.length && (
                     <Empty
                       title="No accounts yet"
-                      detail="Configure Redbark in your server environment, then test the connection in Settings."
+                      detail="Ask an administrator to configure Redbark and test the connection in Settings."
                     />
                   )}
                   <p className="footnote">
@@ -1347,8 +1358,8 @@ function App() {
                       <div>
                         <h2>Redbark connection</h2>
                         <p>
-                          Server-side configuration keeps credentials out of
-                          your browser.
+                          Manage encrypted credentials and import settings
+                          below. Test your saved connection before importing.
                         </p>
                       </div>
                       <span
@@ -1405,14 +1416,13 @@ function App() {
                     <div className="setup-note">
                       <ShieldCheck size={20} />
                       <div>
-                        <strong>Connect from your server</strong>
+                        <strong>Configure in Settings</strong>
                         <p>
-                          Set REDBARK_API_KEY (or its Docker secret file) and
-                          the API version in your server configuration. Restart
-                          dolphino, then test your connection. Register your
-                          signed event destination below after its public
-                          callback is reachable. Never enter credentials into
-                          chat.
+                          Save your Redbark API key and API version below, then
+                          test your connection. Changes take effect without a
+                          restart. Register your signed event destination after
+                          its public callback is reachable. Never enter
+                          credentials into chat.
                         </p>
                       </div>
                     </div>
@@ -1430,13 +1440,17 @@ function App() {
                       </p>
                     )}
                   </section>
+                  <IntegrationSettings
+                    api={api}
+                    demo={session?.demo}
+                    onUpdated={async () => setData(await api("/settings"))}
+                  />
                   <AssistantSettings api={api} demo={session?.demo} />
                   <UsersSettings
                     api={api}
                     session={session}
                     onSession={setSession}
                   />
-                  <IntegrationSettings api={api} demo={session?.demo} />
                   <NotificationSettings api={api} demo={session?.demo} />
                   <ImportHealth api={api} demo={session?.demo} />
                   <section className="card settings-card">
@@ -1677,7 +1691,14 @@ function CashChart({ rows, currency }) {
   );
 }
 function CategoryChart({ rows, currency, onSelect }) {
-  const colors = ["#7061d8", "#a094e5", "#bfb5f0", "#ddd6f8", "#b8c9c3"];
+  const colors = [
+    "var(--chart-ocean)",
+    "var(--chart-sea)",
+    "var(--chart-coral)",
+    "var(--chart-sky)",
+    "var(--chart-sun)",
+    "var(--chart-tide)",
+  ];
   const max = Math.max(
     1,
     ...rows.map((r) => Math.abs(Number(r.amountMinor || 0))),

@@ -93,6 +93,7 @@ export function createApp({
   classification,
   config,
   settings,
+  redbarkSettings,
   registration,
   providerDependencies,
   notifications,
@@ -669,17 +670,13 @@ export function createApp({
     llm: settings
       ? await settings.getPublicProvider()
       : {
-          enabled: !!(config.llmApiKey && config.llmBaseUrl && config.llmModel),
-          configured: !!(
-            config.llmApiKey &&
-            config.llmBaseUrl &&
-            config.llmModel
-          ),
-          automaticClassification:
-            !!(config.llmApiKey && config.llmBaseUrl && config.llmModel) &&
-            config.llmAutoClassify !== false,
-          automaticApplication: config.llmAutoApply === true,
-          dailyRequestLimit: config.llmDailyRequestLimit ?? 20,
+          enabled: false,
+          configured: false,
+          autoClassify: false,
+          autoApply: false,
+          dailyRequestLimit: 20,
+          batchSize: 5,
+          source: "database",
         },
   }));
   // Demo is intentionally unauthenticated: credential storage and external actions require live auth.
@@ -703,6 +700,11 @@ export function createApp({
     recent.push(now);
     sensitiveCalls.set(action, recent);
   }
+  route("get", "/api/settings/redbark", () => redbarkSettings.getPublic());
+  route("put", "/api/settings/redbark", async (req) => {
+    sensitive("save-redbark");
+    return redbarkSettings.save(await body(req));
+  });
   route("get", "/api/settings/provider", () => settings.getPublicProvider());
   route("put", "/api/settings/provider", async (req) => {
     sensitive("save-provider");
@@ -825,7 +827,10 @@ export function createApp({
       sessionId: pairingSession(req),
     });
   });
-  route("post", "/api/connection/test", () => integration.testConnection());
+  route("post", "/api/connection/test", () => {
+    sensitive("redbark-test");
+    return integration.testConnection();
+  });
   route(
     "post",
     "/api/webhooks/redbark",

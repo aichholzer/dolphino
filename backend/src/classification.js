@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { suggestCategory, isProviderConfigured } from "./llm.js";
+import { disabledProviderConfig } from "./settings.js";
 
 const error = (message, status) =>
   Object.assign(Error(message), { status, expose: true });
@@ -10,7 +11,7 @@ export function createClassificationIntegration({
   pool,
   store,
   config: baseConfig,
-  getProviderConfig = async () => baseConfig,
+  getProviderConfig = async () => ({ ...disabledProviderConfig }),
   fetchImpl = fetch,
 }) {
   let timer;
@@ -25,7 +26,7 @@ export function createClassificationIntegration({
   async function runtimeConfig() {
     // Resolve encrypted settings before taking a dedicated pool connection.
     return {
-      ...baseConfig,
+      ...disabledProviderConfig,
       ...(await getProviderConfig()),
       mode: baseConfig.mode,
     };

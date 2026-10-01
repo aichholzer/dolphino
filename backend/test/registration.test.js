@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { randomUUID, randomBytes } from "node:crypto";
 import pg from "pg";
 import { callbackUrl, createRegistration } from "../src/registration.js";
+import { createRedbarkSettings } from "../src/redbark-settings.js";
+import { ensureRedbarkSchema } from "../src/worker.js";
+import { configurationFingerprint } from "../src/redbark.js";
 import { createSettingsStore } from "../src/settings.js";
 
 test("webhook callback accepts only public HTTPS origins, never arbitrary fetch paths", () => {
@@ -39,15 +42,23 @@ test(
       options: `-c search_path=${schema}`,
     });
     try {
+      const appSecret = randomBytes(32).toString("hex");
       const settings = createSettingsStore({
         pool,
-        appSecret: randomBytes(32).toString("hex"),
+        appSecret,
         envConfig: {},
       });
       await settings.init();
-      await pool.query(
-        "CREATE TABLE redbark_receipts(event_id text primary key)",
-      );
+      await ensureRedbarkSchema(pool);
+      const redbarkSettings = createRedbarkSettings({
+        pool,
+        settings,
+        appSecret,
+      });
+      await redbarkSettings.save({ apiKey: "synthetic" });
+      await pool.query("UPDATE redbark_state SET fingerprint=$1 WHERE id=1", [
+        configurationFingerprint(await redbarkSettings.getRuntimeConfig()),
+      ]);
       let remoteDest = null,
         creates = 0,
         rotations = 0,
@@ -113,7 +124,8 @@ test(
       const args = {
         pool,
         settings,
-        config: { mode: "live", redbarkApiKey: "synthetic" },
+        config: { mode: "live" },
+        getRedbarkConfig: redbarkSettings.getRuntimeConfig,
         client,
         lookupImpl: async () => [{ address: "93.184.216.34" }],
       };
@@ -135,7 +147,9 @@ test(
       );
       const ping = await registration.test();
       assert.equal(ping.pingReceived, false);
-      await pool.query("INSERT INTO redbark_receipts VALUES('evt_synthetic')");
+      await pool.query(
+        "INSERT INTO redbark_receipts(event_id,body,body_hash) VALUES('evt_synthetic','{}','synthetic-hash')",
+      );
       assert.equal((await registration.status()).pingReceived, true);
       await settings.clearSecret("redbark.webhook.signingSecret", "redbark");
       await assert.rejects(
@@ -161,14 +175,20 @@ test(
       );
       await registration.register({ ...input, recoverSigningSecret: true });
       assert.equal(creates, 2);
+      const wrongSecret = randomBytes(32).toString("hex");
       const wrongSettings = createSettingsStore({
         pool,
-        appSecret: randomBytes(32).toString("hex"),
+        appSecret: wrongSecret,
         envConfig: {},
       });
       const wrong = createRegistration({
         ...args,
         settings: wrongSettings,
+        getRedbarkConfig: createRedbarkSettings({
+          pool,
+          settings: wrongSettings,
+          appSecret: wrongSecret,
+        }).getRuntimeConfig,
         config: { ...args.config, redbarkWebhookSecret: "must-not-fallback" },
       });
       await assert.rejects(wrong.runtimeSigningSecret());
@@ -187,7 +207,7 @@ test(
   },
 );
 
-test("worker encrypted secret failures close ingress without querying storage", async () => {
+test("worker without a database resolver never falls back to config credentials", async () => {
   const { createRedbarkIntegration } = await import("../src/worker.js");
   const integration = createRedbarkIntegration({
     pool: {
@@ -198,15 +218,12 @@ test("worker encrypted secret failures close ingress without querying storage", 
     store: {},
     config: {
       mode: "live",
-      redbarkApiKey: "synthetic",
+      redbarkApiKey: "must-not-fallback",
       redbarkWebhookSecret: "must-not-fallback",
-    },
-    getWebhookSecret: async () => {
-      throw Error("synthetic decryption failure");
     },
   });
   await assert.rejects(
-    integration.receiveWebhook(Buffer.from("{}"), {}),
-    /webhook_credentials_unavailable/,
+    integration.testConnection(),
+    /live_redbark_not_configured/,
   );
 });

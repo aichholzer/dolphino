@@ -17,7 +17,7 @@ test("LLM disabled by default and minimises configured payload, suggestions requ
     ["Food"],
     {
       llmApiKey: "fictional",
-      llmBaseUrl: "https://example.com/v1",
+      llmProvider: "openai",
       llmModel: "small",
     },
     async (_url, options) => {
@@ -34,10 +34,10 @@ test("LLM disabled by default and minimises configured payload, suggestions requ
   assert.deepEqual(Object.keys(payload), ["description", "categories"]);
   assert(!payload.description.includes("12345678"));
 });
-test("LLM rejects invalid category, invalid response and HTTP endpoint", async () => {
+test("LLM rejects invalid category and legacy arbitrary endpoints", async () => {
   const config = {
     llmApiKey: "fictional",
-    llmBaseUrl: "https://example.com/v1/",
+    llmProvider: "openai",
     llmModel: "small",
   };
   await assert.rejects(
@@ -53,8 +53,9 @@ test("LLM rejects invalid category, invalid response and HTTP endpoint", async (
   await assert.rejects(
     suggestCategory({ description: "Shop" }, ["Food"], {
       ...config,
-      llmBaseUrl: "http://example.com",
+      llmProvider: undefined,
+      llmBaseUrl: "https://example.com",
     }),
-    /HTTPS/,
+    /disabled/,
   );
 });

@@ -25,7 +25,6 @@ try {
   const settings = createSettingsStore({
     pool,
     appSecret: config.appSecret,
-    envConfig: config,
   });
   await settings.init();
   await createRegistration({ pool, settings, config }).init();

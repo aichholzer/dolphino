@@ -16,6 +16,7 @@ import { Store } from "./store.js";
 import { createRedbarkIntegration } from "./worker.js";
 import { createClassificationIntegration } from "./classification.js";
 import { createSettingsStore } from "./settings.js";
+import { createRedbarkSettings } from "./redbark-settings.js";
 import { createRegistration } from "./registration.js";
 import { createApp } from "./app.js";
 const config = readConfig();
@@ -31,16 +32,25 @@ await store.migrate();
 const settings = createSettingsStore({
   pool,
   appSecret: config.appSecret,
-  envConfig: config,
 });
 await settings.init();
-const registration = createRegistration({ pool, settings, config });
+const redbarkSettings = createRedbarkSettings({
+  pool,
+  settings,
+  appSecret: config.appSecret,
+});
+const registration = createRegistration({
+  pool,
+  settings,
+  config,
+  getRedbarkConfig: redbarkSettings.getRuntimeConfig,
+});
 await registration.init();
 const integration = createRedbarkIntegration({
   pool,
   store,
   config,
-  getWebhookSecret: registration.runtimeSigningSecret,
+  getRedbarkConfig: redbarkSettings.getRuntimeConfig,
 });
 await integration.init();
 const classification = createClassificationIntegration({
@@ -92,6 +102,7 @@ const app = createApp({
   classification,
   config,
   settings,
+  redbarkSettings,
   registration,
   notifications,
   telegram,

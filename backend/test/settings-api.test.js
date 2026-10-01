@@ -105,8 +105,15 @@ test(
         headers: { Cookie: cookie, Origin: origin },
         ...(value === undefined ? {} : { body: JSON.stringify(value) }),
       });
+    const fresh = await (await req("/api/settings/provider")).json();
+    assert.equal(fresh.source, "database");
+    assert.equal(fresh.enabled, false);
+    assert.equal(fresh.autoClassify, false);
+    assert.equal(fresh.configured, false);
     const value = {
       provider: "openai",
+      region: "",
+      autoClassify: false,
       model: "synthetic-model",
       apiKey: "synthetic-secret-never-return",
       enabled: false,
@@ -118,7 +125,10 @@ test(
     );
     const saved = await req("/api/settings/provider", "PUT", value);
     assert.equal(saved.status, 200);
-    assert(!JSON.stringify(await saved.json()).includes(value.apiKey));
+    const savedState = await saved.json();
+    assert(!JSON.stringify(savedState).includes(value.apiKey));
+    assert.equal(Object.hasOwn(savedState, "region"), false);
+    assert.equal(savedState.autoClassify, false);
     assert.equal(
       (await req("/api/settings/provider/test-connection", "POST", {})).status,
       200,

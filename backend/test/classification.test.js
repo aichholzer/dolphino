@@ -12,7 +12,12 @@ test("disabled classification never creates a job or calls provider", async () =
   const integration = createClassificationIntegration({
     pool: { query: noCall },
     store: {},
-    config: {},
+    config: {
+      llmProvider: "openai",
+      llmModel: "ignored",
+      llmApiKey: "ignored",
+      llmEnabled: true,
+    },
     fetchImpl: noCall,
   });
   await assert.rejects(integration.suggest("test"), /disabled/);
@@ -40,7 +45,8 @@ test(
     const config = {
       mode: "demo",
       llmApiKey: "fictional-secret-do-not-persist",
-      llmBaseUrl: "https://example.test/v1",
+      llmProvider: "openai",
+      llmEnabled: true,
       llmModel: "inexpensive",
       llmAutoClassify: false,
     };
@@ -73,7 +79,13 @@ test(
       });
     };
     const make = () =>
-      createClassificationIntegration({ pool, store, config, fetchImpl });
+      createClassificationIntegration({
+        pool,
+        store,
+        config,
+        getProviderConfig: async () => ({ ...config }),
+        fetchImpl,
+      });
     try {
       await store.migrate();
       await store.seedDemo();

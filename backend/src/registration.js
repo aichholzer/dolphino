@@ -1,6 +1,11 @@
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
-import { RedbarkClient } from "./redbark.js";
+import { publicSmtpAddress as publicAddress } from "./smtp-network.js";
+import { RedbarkClient, configurationFingerprint } from "./redbark.js";
+import {
+  REDBARK_SETTINGS_LOCK,
+  redbarkAccountFingerprint,
+} from "./redbark-settings.js";
 
 const SECRET = "redbark.webhook.signingSecret";
 const EVENTS = ["sync_run.succeeded", "connection.refreshed"];
@@ -37,40 +42,19 @@ export function callbackUrl(value) {
     throw failure("public_https_origin_required");
   return `${url.origin}/api/webhooks/redbark`;
 }
-function publicAddress(address) {
-  if (isIP(address) === 4) {
-    const [a, b] = address.split(".").map(Number);
-    return !(
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      a >= 224 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && (b === 168 || b === 0)) ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 198 && (b === 18 || b === 19))
-    );
-  }
-  // Require global unicast IPv6, excluding documentation range and mapped addresses.
-  return (
-    isIP(address) === 6 &&
-    /^[23]/.test(address) &&
-    !address.toLowerCase().startsWith("2001:db8:")
-  );
-}
 export function createRegistration({
   pool,
   settings,
   config,
   client,
   lookupImpl = lookup,
+  getRedbarkConfig = async () => ({}),
 }) {
-  const remote =
+  const remoteFor = (current) =>
     client ||
     new RedbarkClient({
-      apiKey: config.redbarkApiKey,
-      version: config.redbarkVersion,
+      apiKey: current.redbarkApiKey,
+      version: current.redbarkVersion,
     });
   async function row(db = pool) {
     return (
@@ -78,11 +62,20 @@ export function createRegistration({
     ).rows[0];
   }
   async function status() {
-    const r = await row();
+    const [stored, current] = await Promise.all([row(), getRedbarkConfig()]);
+    const matchesAccount =
+      !!current.redbarkApiKey &&
+      stored?.account_fingerprint ===
+        redbarkAccountFingerprint(current.redbarkApiKey);
+    const r = matchesAccount ? stored : null;
     let secretConfigured = false,
       credentialsUnavailable = false;
     try {
-      secretConfigured = Boolean(await settings.getSecret(SECRET, "redbark"));
+      secretConfigured = Boolean(current.redbarkWebhookSecret);
+      credentialsUnavailable = !!(
+        current.redbarkCredentialsUnavailable ||
+        current.redbarkWebhookUnavailable
+      );
     } catch {
       credentialsUnavailable = true;
     }
@@ -103,7 +96,11 @@ export function createRegistration({
       callbackUrl: r?.callback_url || null,
       secretConfigured,
       credentialsUnavailable,
-      lastError: r?.last_error || null,
+      lastError:
+        r?.last_error ||
+        (stored && !matchesAccount
+          ? "credentials_changed_re_register_required"
+          : null),
       lastAttempt: r?.updated_at || null,
       pingEventId: r?.ping_event_id || null,
       pingReceived,
@@ -115,16 +112,23 @@ export function createRegistration({
   async function locked(operation) {
     if (config.mode !== "live")
       throw failure("webhook_registration_requires_live_mode");
-    if (!config.redbarkApiKey) throw failure("redbark_api_key_required");
     settings.assertEncryptionReady();
     const db = await pool.connect();
     try {
-      await db.query("SELECT pg_advisory_lock(71903901)");
-      return await operation(db);
+      await db.query("SELECT pg_advisory_lock($1)", [REDBARK_SETTINGS_LOCK]);
+      const current = await getRedbarkConfig(db);
+      if (!current.redbarkApiKey || current.redbarkCredentialsUnavailable)
+        throw failure("redbark_api_key_required");
+      const verified = (
+        await db.query("SELECT fingerprint FROM redbark_state WHERE id=1")
+      ).rows[0];
+      if (verified?.fingerprint !== configurationFingerprint(current))
+        throw failure("configuration_changed_retest_required");
+      return await operation(db, current, remoteFor(current));
     } catch (error) {
       // Never persist provider response text, URLs, tokens, or decrypted secrets.
       const allowed =
-        /^(provider_http_\d{3}|provider_unreachable|signing_secret_recovery_required|duplicate_remote_destinations|invalid_remote_destination|callback_change_requires_manual_cleanup|public_dns_required|registration_required|credentials_unavailable)$/;
+        /^(provider_http_\d{3}|provider_unreachable|signing_secret_recovery_required|duplicate_remote_destinations|invalid_remote_destination|callback_change_requires_manual_cleanup|public_dns_required|registration_required|credentials_unavailable|redbark_api_key_required|configuration_changed_retest_required)$/;
       const code = allowed.test(error.code || "")
         ? error.code
         : "registration_failed";
@@ -134,7 +138,9 @@ export function createRegistration({
       );
       throw failure(code, 409);
     } finally {
-      await db.query("SELECT pg_advisory_unlock(71903901)");
+      await db
+        .query("SELECT pg_advisory_unlock($1)", [REDBARK_SETTINGS_LOCK])
+        .catch(() => {});
       db.release();
     }
   }
@@ -143,18 +149,23 @@ export function createRegistration({
       await pool.query(
         `CREATE TABLE IF NOT EXISTS webhook_registration(singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),callback_url text NOT NULL,destination_id text,state text NOT NULL,last_error text,ping_event_id text,updated_at timestamptz NOT NULL DEFAULT now())`,
       );
+      await pool.query(
+        "ALTER TABLE webhook_registration ADD COLUMN IF NOT EXISTS account_fingerprint text",
+      );
     },
     status,
     async runtimeSigningSecret() {
-      // If encrypted credentials exist but cannot be decrypted, fail closed (no fallback).
-      return (
-        (await settings.getSecret(SECRET, "redbark")) ||
-        config.redbarkWebhookSecret
-      );
+      const current = await getRedbarkConfig();
+      if (
+        current.redbarkWebhookUnavailable ||
+        current.redbarkCredentialsUnavailable
+      )
+        throw failure("credentials_unavailable", 503);
+      return current.redbarkWebhookSecret || "";
     },
     async register({ publicBaseUrl, recoverSigningSecret = false }) {
       const callback = callbackUrl(publicBaseUrl);
-      await locked(async (db) => {
+      await locked(async (db, current, remote) => {
         let addresses;
         try {
           addresses = await lookupImpl(new URL(callback).hostname, {
@@ -168,12 +179,17 @@ export function createRegistration({
           addresses.some((a) => !publicAddress(a.address))
         )
           throw failure("public_dns_required");
-        const previous = await row(db);
+        const stored = await row(db);
+        const accountFingerprint = redbarkAccountFingerprint(
+          current.redbarkApiKey,
+        );
+        const previous =
+          stored?.account_fingerprint === accountFingerprint ? stored : null;
         if (previous && previous.callback_url !== callback)
           throw failure("callback_change_requires_manual_cleanup");
         await db.query(
-          `INSERT INTO webhook_registration(singleton,callback_url,state) VALUES(true,$1,'registering') ON CONFLICT(singleton) DO UPDATE SET state='registering',last_error=null,updated_at=now()`,
-          [callback],
+          `INSERT INTO webhook_registration(singleton,callback_url,state,account_fingerprint) VALUES(true,$1,'registering',$2) ON CONFLICT(singleton) DO UPDATE SET callback_url=EXCLUDED.callback_url,account_fingerprint=EXCLUDED.account_fingerprint,destination_id=CASE WHEN webhook_registration.account_fingerprint=EXCLUDED.account_fingerprint THEN webhook_registration.destination_id ELSE NULL END,ping_event_id=NULL,state='registering',last_error=null,updated_at=now()`,
+          [callback, accountFingerprint],
         );
         const matches = (
           await remote.list("event_destinations?limit=100")
@@ -186,7 +202,7 @@ export function createRegistration({
             throw failure("invalid_remote_destination");
           try {
             if (previous?.destination_id === destination.id)
-              secret = await settings.getSecret(SECRET, "redbark", db);
+              secret = current.redbarkWebhookSecret;
           } catch {
             /* explicit recovery below */
           }
@@ -224,6 +240,11 @@ export function createRegistration({
         await db.query("BEGIN");
         try {
           await settings.setSecret(SECRET, "redbark", secret, db);
+          await settings.setValue(
+            "redbark.webhookBinding",
+            { accountFingerprint },
+            db,
+          );
           await db.query(
             "UPDATE webhook_registration SET destination_id=$1,state='registering',last_error=null,updated_at=now() WHERE singleton=true",
             [destination.id],
@@ -252,10 +273,15 @@ export function createRegistration({
       return status();
     },
     async test() {
-      await locked(async (db) => {
+      await locked(async (db, current, remote) => {
         const r = await row(db);
-        if (!r?.destination_id) throw failure("registration_required");
-        if (!(await settings.getSecret(SECRET, "redbark", db)))
+        if (
+          !r?.destination_id ||
+          r.account_fingerprint !==
+            redbarkAccountFingerprint(current.redbarkApiKey)
+        )
+          throw failure("registration_required");
+        if (!current.redbarkWebhookSecret)
           throw failure("credentials_unavailable");
         const event = (
           await remote.request(`event_destinations/${r.destination_id}/ping`, {

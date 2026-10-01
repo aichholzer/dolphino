@@ -19,6 +19,7 @@ import { createAssistantUsage } from "../backend/src/assistant-usage.js";
 import { createSettingsStore } from "../backend/src/settings.js";
 import { createNotificationIntegration } from "../backend/src/notifications.js";
 import { createRegistration } from "../backend/src/registration.js";
+import { createRedbarkSettings } from "../backend/src/redbark-settings.js";
 import { Store } from "../backend/src/store.js";
 import { ensureRedbarkSchema } from "../backend/src/worker.js";
 import { createClassificationIntegration } from "../backend/src/classification.js";
@@ -171,14 +172,25 @@ try {
   await settings.saveProvider({
     provider: "openai",
     model: "synthetic-rehearsal",
-    enabled: false,
+    enabled: true,
+    autoClassify: false,
+    autoApply: false,
+    dailyRequestLimit: 7,
+    batchSize: 3,
     apiKey: "synthetic-backup-key",
   });
-  await settings.setSecret(
-    "redbark.webhook.signingSecret",
-    "redbark",
-    "synthetic-signing-key",
-  );
+  const redbarkSettings = createRedbarkSettings({
+    pool: srcPool,
+    settings,
+    appSecret: syntheticMasterKey,
+  });
+  await redbarkSettings.save({
+    apiKey: "synthetic-redbark-rehearsal-key",
+    signingSecret: "synthetic-signing-key",
+    version: "2026-10-01.wattle",
+    backfillDays: 45,
+  });
+  const beforeRedbarkConfig = await redbarkSettings.getRuntimeConfig();
   await createNotificationIntegration({
     pool: srcPool,
     settings,
@@ -383,6 +395,34 @@ try {
     (await restoredSettings.getProviderConfig()).llmApiKey,
     "synthetic-backup-key",
   );
+  const restoredClassification = await restoredSettings.getProviderConfig();
+  assert.equal(restoredClassification.llmEnabled, true);
+  assert.equal(restoredClassification.llmAutoClassify, false);
+  assert.equal(restoredClassification.llmAutoApply, false);
+  assert.equal(restoredClassification.llmDailyRequestLimit, 7);
+  assert.equal(restoredClassification.llmBatchSize, 3);
+  const restoredRedbarkSettings = createRedbarkSettings({
+    pool: dstPool,
+    settings: restoredSettings,
+    appSecret: syntheticMasterKey,
+  });
+  assert.deepEqual(
+    await restoredRedbarkSettings.getRuntimeConfig(),
+    beforeRedbarkConfig,
+    "Redbark credentials, signing-key account binding, version and backfill settings survive",
+  );
+  const restoredRedbarkPublic = await restoredRedbarkSettings.getPublic();
+  assert.equal(restoredRedbarkPublic.source, "database");
+  assert.equal(restoredRedbarkPublic.credentials.apiKey.configured, true);
+  assert.equal(restoredRedbarkPublic.signingSecretAssociated, true);
+  assert.equal(restoredRedbarkPublic.backfillDays, 45);
+  assert.equal(restoredRedbarkPublic.version, "2026-10-01.wattle");
+  assert.ok(
+    !JSON.stringify(restoredRedbarkPublic).includes("synthetic-redbark"),
+  );
+  assert.ok(
+    !JSON.stringify(restoredRedbarkPublic).includes("synthetic-signing-key"),
+  );
   assert.equal(
     await restoredSettings.getSecret(
       "redbark.webhook.signingSecret",
@@ -417,6 +457,13 @@ try {
     (await noKeySettings.getProviderConfig()).llmCredentialsUnavailable,
     true,
   );
+  const noKeyRedbark = await createRedbarkSettings({
+    pool: dstPool,
+    settings: noKeySettings,
+  }).getRuntimeConfig();
+  assert.equal(noKeyRedbark.redbarkApiKey, "");
+  assert.equal(noKeyRedbark.redbarkWebhookSecret, "");
+  assert.equal(noKeyRedbark.redbarkCredentialsUnavailable, true);
   assert.deepEqual(
     await snapshot(dstPool),
     before,
@@ -468,6 +515,8 @@ try {
         })),
         checks: [
           "Independent encrypted assistant credentials and durable per-user quota restore without any provider request",
+          "Database-backed Redbark API/signing keys, account binding, version and backfill settings restore without network calls",
+          "Classification enablement and independent automatic-classification switch, apply consent, daily limit and batch size survive",
           "Household users, hashed sessions, hashed invitations, closed bootstrap and independent resource grants survive",
           "Every row in every public table matches exactly",
           "Complete financial reports including budgets/coverage match",

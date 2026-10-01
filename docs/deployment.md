@@ -22,7 +22,7 @@ For named household authentication, follow [restricted first-administrator setup
 
 Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse an account password or bootstrap token. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
 
-Each of `DATABASE_URL`, `DOLPHINO_BOOTSTRAP_TOKEN`, `APP_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
+Each deployment secret `DATABASE_URL`, `DOLPHINO_BOOTSTRAP_TOKEN` and `APP_SECRET` supports a corresponding `_FILE` variable. Integration secrets are configured only through administrator Settings and stored encrypted in PostgreSQL; former integration environment variables and `_FILE` variants are ignored. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
 
 In live mode set:
 
@@ -77,14 +77,20 @@ The override explicitly replaces the database URL with `db:5432` and clears `DAT
 
 ## Connect Redbark yourself
 
-1. Finish HTTPS and live authentication setup against an empty live database.
-2. Place your Redbark API key server-side and restart the app. Never enter it in a frontend form.
+1. Finish HTTPS and live authentication setup. New installations need an empty dedicated live database; upgrades retain the existing live database and APP_SECRET.
+2. In administrator **Settings → Redbark settings**, enter the write-only Redbark API key, API version and rolling backfill days, then save. These values are encrypted/stored in PostgreSQL and applied without a restart.
 3. Use **Test connection** in Settings. The documented v2 beta version is `2026-10-01.wattle`, but availability is not assumed; successful testing is required for your account.
-4. Configure the supported thin event destination and its signing secret as described in [Redbark integration](redbark.md). The destination must be reachable by Redbark over HTTPS; use a controlled reverse proxy or tunnel you configure yourself.
+4. Register/reuse the supported thin event destination in Settings, which saves its encrypted signing secret. For an existing manually configured destination, explicitly enter its signing secret in Settings as described in [Redbark integration](redbark.md). The destination must be reachable by Redbark over HTTPS; use a controlled reverse proxy or tunnel you configure yourself.
 5. A failed connection test pauses integration ingestion only. Imported live data, corrections, budgets and exports remain available during provider downtime.
 6. Review accounts, coverage and freshness. Set an explicit bounded backfill duration before importing history. A sync event or queued refresh does not imply fresh bank activity.
 
 Optional LLM assistance remains disabled until a provider is configured and enabled in Settings. Select OpenAI with a manually entered model and API key, or Bedrock with region, model/inference profile, permanent access key ID and secret key (temporary session credentials are unsupported). Values are encrypted in PostgreSQL with `APP_SECRET`. Choose an inexpensive supported model yourself. Connection checks and synthetic model checks are separate; model tests disclose possible tiny inference costs. Treat the remote provider as a recipient of the minimal context (a truncated description with long digit sequences redacted, and the permitted category names; no amounts, account IDs or credentials); no financial credentials should ever be sent. Rule/manual categories remain usable without it.
+
+## Upgrade environment-only integrations
+
+Follow the [database integration upgrade checklist](database-integration-upgrade.md). Redbark and classification settings are now read only from PostgreSQL. Legacy integration environment variables are ignored, even if database settings are absent. No credentials, versions or limits are silently imported. Re-enter them in the administrator UI and test the saved configuration before enabling imports or AI automation. Existing encrypted settings and registration secrets are retained; missing configuration pauses only the affected integration. Imports, manual overrides, jobs and notification configuration/outbox records remain in the existing database.
+
+Deployment settings remain environment-based: database URL/file, deployment mode, `HOST`/`PORT`, `APP_BIND`, `APP_ORIGIN`, bootstrap proof and `APP_SECRET`. Currency/timezone environment values remain defaults. Do not change these during this migration. Retain the exact APP_SECRET with the matching restored database; generating a new key does not unlock existing ciphertext.
 
 ## Export, backup and restore
 
@@ -123,7 +129,7 @@ Positive category rollover is opt-in and applies only across consecutive configu
 
 Alerts are persisted and deduplicated in-app. Their state is recalculated in the same transaction as ingestion, corrections, accepted classifications and budget/rule changes, including affected rollover months. Dashboard visits are not required; optional Telegram and SMTP delivery use an encrypted configuration and durable outbox; see [notification setup](notifications.md). Push, Slack delivery, multi-user roles, FX conversion, investment accounting, and audited disaster recovery automation are future work. Four-hour discovery and event-driven sync cannot promise instant bank freshness. Review source freshness and coverage before relying on totals.
 
-Configured AI processes unresolved posted imports automatically using durable jobs, after manual overrides, rules and useful provider categories. `LLM_AUTO_CLASSIFY=false` disables automatic processing while keeping on-demand suggestions. `LLM_AUTO_APPLY=false` is the default: automatic category application requires explicit opt-in. `LLM_DAILY_REQUEST_LIMIT=20` and `LLM_BATCH_SIZE=5` bound request volume; see [classification behavior and limits](classification.md).
+When enabled in Settings, AI can process unresolved posted imports automatically using durable jobs, after manual overrides, rules and useful provider categories. The independent automatic-suggestions switch disables automatic processing while keeping on-demand suggestions; the master enable switch pauses both. Automatic category application requires explicit opt-in and is off by default. The Settings request limit (default 20 per UTC day) and batch size (default 5) bound request volume; see [classification behavior and limits](classification.md).
 
 Account labels and descriptions in dolphino are local overrides, retained across provider refreshes. Every connected account remains included in synchronization, classification, the overview and budgets; account disabling is not supported. Clicking an account opens its paginated transaction history, with adjustable dates and an all-imported-history option. This includes only records already stored in dolphino; use Settings → Import health & history for explicit bounded backfill of older provider records. Confirmed internal transfers and card repayments remain excluded from spending, including in an account-scoped list. The overview offers 1, 2, 3, 4 or 6 calendar months ending in the selected month, a monthly comparison and aggregate drilldowns; the current month is marked partial. Monthly budget caps remain scoped to the selected final month.
 

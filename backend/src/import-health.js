@@ -105,11 +105,8 @@ export function createImportHealth({
       "backfill:" +
       createHash("sha256").update(JSON.stringify(params)).digest("hex");
     // One durable identity per account/date range; repeated clicks/restarts never multiply imports.
-    const result = await pool.query(
-      "INSERT INTO redbark_jobs(dedupe_key,params) VALUES($1,$2) ON CONFLICT(dedupe_key) DO UPDATE SET dedupe_key=excluded.dedupe_key RETURNING *",
-      [key, params],
-    );
-    return { job: publicJob(result.rows[0]) };
+    const job = await integration.queueBackfill(params, key);
+    return { job: publicJob(job) };
   }
   async function retry(input) {
     const { jobId } = retryImportSchema.parse(input);

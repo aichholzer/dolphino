@@ -87,7 +87,7 @@ Do not copy these new-install database/volume names over an existing installatio
 
 ## Configuration, sessions and persisted protocol identifiers
 
-New configuration uses `DOLPHINO_MODE`, `DOLPHINO_CURRENCY`, `DOLPHINO_TIMEZONE`, `DOLPHINO_BOOTSTRAP_TOKEN` and their `_FILE` equivalents. Existing `PROFE_*` aliases remain accepted; supplying conflicting old/new values fails closed instead of selecting a different mode or key. `DOLPHINO_RESTORE_CONFIRM` replaces `PROFE_RESTORE_CONFIRM` with the same conflict rule. Database URLs, APP_SECRET and integration-secret environment names are unchanged.
+New configuration uses `DOLPHINO_MODE`, `DOLPHINO_CURRENCY`, `DOLPHINO_TIMEZONE`, `DOLPHINO_BOOTSTRAP_TOKEN` and their `_FILE` equivalents. Existing `PROFE_*` aliases remain accepted; supplying conflicting old/new values fails closed instead of selecting a different mode or key. `DOLPHINO_RESTORE_CONFIRM` replaces `PROFE_RESTORE_CONFIRM` with the same conflict rule. Database URLs and APP_SECRET are unchanged. Redbark and classification integration values are now configured only in administrator Settings; former integration environment values are ignored. Existing environment-only users must explicitly re-enter them after upgrade, as described in the [database integration upgrade checklist](database-integration-upgrade.md).
 
 New logins issue `dolphino_session`; old `profe_session` cookies continue resolving the same hashed PostgreSQL session records until their normal expiration. If both names exist the new name takes precedence, and a malformed new cookie never falls back to the old one. Logout and password changes expire both cookie names. User passwords, grants, invitation hashes and database-mode bindings are unchanged.
 

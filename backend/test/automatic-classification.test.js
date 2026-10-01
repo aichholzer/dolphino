@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import { Store } from "../src/store.js";
-import { readConfig } from "../src/config.js";
+import {
+  createSettingsStore,
+  providerSettingsSchema,
+} from "../src/settings.js";
 import { createClassificationIntegration } from "../src/classification.js";
 
 const connectionString =
@@ -20,7 +23,9 @@ async function fixture(run, max = 1) {
   const store = new Store(pool);
   const config = {
     mode: "demo",
-    llmBaseUrl: "https://example.test/v1",
+    llmProvider: "openai",
+    llmEnabled: true,
+    llmAutoClassify: true,
     llmApiKey: "fictional",
     llmModel: "small",
     llmBatchSize: 5,
@@ -68,20 +73,33 @@ const reply = (category = "Groceries") =>
     ],
   });
 
-test("automatic classification defaults and cost controls validate", () => {
-  const cfg = readConfig({ DATABASE_URL: "postgresql://example.test/demo" });
-  assert.equal(cfg.llmAutoClassify, true);
-  assert.equal(cfg.llmAutoApply, false);
-  assert.equal(cfg.llmDailyRequestLimit, 20);
-  assert.equal(cfg.llmBatchSize, 5);
+test("automatic classification settings default off and independently bound cost controls", () => {
+  const base = { provider: "openai", model: "synthetic-model", region: "" };
+  const defaults = providerSettingsSchema.parse(base);
+  assert.equal(defaults.enabled, false);
+  assert.equal(defaults.autoClassify, false);
+  assert.equal(defaults.autoApply, false);
+  assert.equal(defaults.dailyRequestLimit, 20);
+  assert.equal(defaults.batchSize, 5);
+  assert.equal(defaults.region, undefined);
   for (const patch of [
-    { LLM_BATCH_SIZE: "0" },
-    { LLM_DAILY_REQUEST_LIMIT: "1.5" },
-    { LLM_AUTO_APPLY: "yes" },
+    { batchSize: 0 },
+    { batchSize: 21 },
+    { batchSize: 1.5 },
+    { dailyRequestLimit: 0 },
+    { dailyRequestLimit: 1001 },
+    { dailyRequestLimit: 1.5 },
+    { autoApply: "yes" },
+    { autoClassify: "true" },
   ])
-    assert.throws(() =>
-      readConfig({ DATABASE_URL: "postgresql://example.test/demo", ...patch }),
+    assert.equal(
+      providerSettingsSchema.safeParse({ ...base, ...patch }).success,
+      false,
     );
+  assert.equal(
+    providerSettingsSchema.parse({ ...base, enabled: true }).autoClassify,
+    false,
+  );
 });
 
 test(
@@ -111,10 +129,11 @@ test(
           pool,
           store,
           config,
+          getProviderConfig: async () => ({ ...config }),
           fetchImpl: async (_url, options) => {
             calls++;
             const body = JSON.parse(options.body);
-            assert.equal(body.max_tokens, 150);
+            assert.equal(body.max_completion_tokens, 150);
             assert.deepEqual(
               Object.keys(JSON.parse(body.messages[1].content)),
               ["description", "categories"],
@@ -163,6 +182,7 @@ test(
         pool,
         store,
         config,
+        getProviderConfig: async () => ({ ...config }),
         fetchImpl: async () => reply(),
       });
       await worker.init();
@@ -227,6 +247,7 @@ test(
           pool,
           store,
           config,
+          getProviderConfig: async () => ({ ...config }),
           fetchImpl: async () => {
             calls++;
             maximum = Math.max(maximum, ++active);
@@ -283,6 +304,7 @@ test(
           pool,
           store,
           config,
+          getProviderConfig: async () => ({ ...config }),
           fetchImpl: async () => {
             await otherStore.correctTransaction(tx.id, { category: "Manual" });
             return reply();
@@ -326,6 +348,7 @@ test(
         pool,
         store,
         config,
+        getProviderConfig: async () => ({ ...config }),
         fetchImpl: async () => {
           calls++;
           return fail ? Response.json({}, { status: 503 }) : reply();
@@ -359,5 +382,87 @@ test(
         (await pool.query("SELECT * FROM classification_jobs")).rowCount,
         2,
       );
+    }),
+);
+
+test(
+  "database-only classifier separates disabled, manual-only and automatic modes across restart",
+  { skip: !connectionString },
+  async () =>
+    fixture(async ({ pool, store, config, ingest }) => {
+      const appSecret = randomBytes(32).toString("base64");
+      const settings = createSettingsStore({
+        pool,
+        appSecret,
+        envConfig: config,
+      });
+      await settings.init();
+      let calls = 0;
+      const make = (settingsStore = settings) =>
+        createClassificationIntegration({
+          pool,
+          store,
+          config,
+          getProviderConfig: settingsStore.getProviderConfig,
+          fetchImpl: async () => {
+            calls++;
+            return reply();
+          },
+        });
+      const worker = make();
+      await worker.init();
+      const first = await ingest();
+      await worker.tick();
+      await assert.rejects(worker.suggest(first.id), /disabled/);
+      assert.equal(calls, 0);
+      const saved = {
+        provider: "openai",
+        model: "synthetic-small",
+        enabled: true,
+        autoClassify: false,
+        autoApply: false,
+        batchSize: 2,
+        dailyRequestLimit: 4,
+      };
+      await settings.saveProvider({ ...saved, apiKey: "synthetic-db-only" });
+      await worker.tick();
+      assert.equal(calls, 0);
+      assert.equal((await worker.suggest(first.id)).category, "Groceries");
+      assert.equal(calls, 1);
+      assert.equal(
+        (await store.getTransaction(first.id)).category,
+        "Uncategorized",
+      );
+      await settings.saveProvider({ ...saved, autoClassify: true });
+      const second = await ingest();
+      await worker.tick();
+      assert.equal(calls, 2);
+      assert.equal(
+        (await store.getTransaction(second.id)).category,
+        "Uncategorized",
+      );
+      await settings.saveProvider({
+        ...saved,
+        autoClassify: true,
+        autoApply: true,
+      });
+      const third = await ingest();
+      const restarted = make(createSettingsStore({ pool, appSecret }));
+      await restarted.tick();
+      assert.equal(calls, 3);
+      assert.equal(
+        (await store.getTransaction(third.id)).category,
+        "Groceries",
+      );
+      await settings.saveProvider({
+        ...saved,
+        enabled: false,
+        autoClassify: true,
+        apiKey: null,
+      });
+      await ingest();
+      await restarted.tick();
+      await assert.rejects(restarted.suggest(first.id), /disabled/);
+      assert.equal(calls, 3);
     }),
 );

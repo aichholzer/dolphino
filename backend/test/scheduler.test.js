@@ -63,6 +63,7 @@ test(
       pool,
       store,
       config,
+      getRedbarkConfig: async () => ({ ...config }),
       fetchImpl,
       now: () => clock,
       timerIntervalMs: 10,

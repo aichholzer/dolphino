@@ -28,6 +28,12 @@ Open <http://localhost:3001>. Demo mode is prominently labelled and makes no liv
 
 Amounts travel as integer minor-unit strings; calculations use integer arithmetic. Posted transactions drive actual spending, pending items are separate, refunds reduce spending on their posted date, and transfers/card repayments do not count as expenses. Budget allocations do not create bank transactions. Account balances remain provider snapshots; unsupported reconciliation is explicitly marked rather than repaired with invented entries.
 
+## Integration settings and upgrades
+
+An administrator configures Redbark credentials, API version and rolling backfill window, classification provider/model/credentials and automation limits, the read-only assistant, and notifications in **Settings**. Integration values are stored only in PostgreSQL; credentials are write-only and encrypted with the deployment's `APP_SECRET`. Saved changes apply without restarting the app. OpenAI and Bedrock use fixed secure provider endpoints; custom base URLs are unsupported.
+
+**Existing environment-only installations:** manually re-enter Redbark and classification configuration in Settings after upgrading. Old integration environment variables are ignored, never silently imported or used as a fallback. Unconfigured integrations pause; imported financial data, overrides, queued jobs and notifications remain preserved. Keep the same database/volume and matching `APP_SECRET`. Deployment database selection, mode, `HOST`/`PORT`, `APP_BIND`, origin/bootstrap settings and currency/timezone defaults remain environment-based. Follow the [database integration upgrade checklist](docs/database-integration-upgrade.md).
+
 ## Deployment and verification
 
 See [deployment and backup instructions](docs/deployment.md) and [Redbark integration](docs/redbark.md). Default Compose uses only your configured external PostgreSQL. Bundled PostgreSQL is an explicit override, never an outage fallback.

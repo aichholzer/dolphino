@@ -36,7 +36,7 @@ export function isProviderConfigured(config) {
         config.llmSecretAccessKey,
     );
   if (config.llmProvider === "openai") return Boolean(config.llmApiKey);
-  return !config.llmProvider && Boolean(config.llmApiKey && config.llmBaseUrl);
+  return false;
 }
 
 export async function suggestCategory(
@@ -79,6 +79,7 @@ export async function suggestCategory(
         },
         // Durable jobs own retries and request budgets, not the SDK.
         maxAttempts: 1,
+        ignoreConfiguredEndpointUrls: true,
       });
     try {
       const body = await client.send(
@@ -101,23 +102,8 @@ export async function suggestCategory(
       if (!deps.bedrockClient) client.destroy();
     }
   } else {
-    // Settings-backed OpenAI always uses the official endpoint. Legacy operator
-    // environment endpoints remain supported; they are never accepted from UI.
-    let url;
-    try {
-      const base =
-        config.llmProvider === "openai"
-          ? "https://api.openai.com/v1/"
-          : config.llmBaseUrl.replace(/\/?$/, "/");
-      url = new URL("chat/completions", base);
-      if (url.protocol !== "https:" || url.username || url.password)
-        throw Error();
-    } catch {
-      throw failure(
-        "LLM endpoint must use HTTPS without embedded credentials",
-        400,
-      );
-    }
+    // Provider destinations are fixed; legacy arbitrary base URLs are ignored.
+    const url = new URL("https://api.openai.com/v1/chat/completions");
     try {
       const response = await (deps.fetchImpl ?? fetch)(url, {
         method: "POST",
@@ -129,9 +115,8 @@ export async function suggestCategory(
         },
         body: JSON.stringify({
           model: config.llmModel,
-          ...(config.llmProvider === "openai"
-            ? { max_completion_tokens: 150, store: false }
-            : { max_tokens: 150, temperature: 0 }),
+          max_completion_tokens: 150,
+          store: false,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt },
@@ -188,6 +173,7 @@ function awsOptions(config, region = config.llmRegion) {
   return {
     region,
     maxAttempts: 1,
+    ignoreConfiguredEndpointUrls: true,
     credentials: {
       accessKeyId: config.llmAccessKeyId,
       secretAccessKey: config.llmSecretAccessKey,

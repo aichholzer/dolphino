@@ -70,6 +70,7 @@ export function AssistantSettings({ api, demo }) {
                 "maxOutputTokens",
               ].map((k) => [k, values[k]]),
             );
+            if (values.provider !== "bedrock") delete payload.region;
             for (const [k] of fields) {
               if (clears[k]) payload[k] = null;
               else if (secrets[k]) payload[k] = secrets[k];

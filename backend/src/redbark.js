@@ -145,7 +145,7 @@ export function normalizeTransaction(raw, accountId, fetchedAt) {
 export function configurationFingerprint(config) {
   return createHash("sha256")
     .update(
-      `${config.redbarkApiKey || ""}\0${config.redbarkVersion || REDBARK_VERSION}`,
+      `${config.redbarkApiKey || ""}\0${config.redbarkVersion || REDBARK_VERSION}\0${config.redbarkRevision || ""}`,
     )
     .digest("hex");
 }

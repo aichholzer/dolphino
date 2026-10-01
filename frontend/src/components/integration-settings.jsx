@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 
-export function IntegrationSettings({ api, demo }) {
+export function IntegrationSettings({ api, demo, onUpdated }) {
   const [settings, setSettings] = useState(null),
     [webhook, setWebhook] = useState(null),
+    [redbark, setRedbark] = useState(null),
+    [redbarkValues, setRedbarkValues] = useState({
+      version: "2026-10-01.wattle",
+      backfillDays: 90,
+    }),
+    [redbarkSecrets, setRedbarkSecrets] = useState({}),
+    [redbarkClears, setRedbarkClears] = useState({}),
     [values, setValues] = useState({
       provider: "openai",
       model: "",
       region: "",
       enabled: false,
+      autoClassify: false,
       autoApply: false,
       dailyRequestLimit: 20,
       batchSize: 5,
@@ -20,12 +28,18 @@ export function IntegrationSettings({ api, demo }) {
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   async function load() {
-    const [p, w] = await Promise.all([
+    const [p, w, r] = await Promise.all([
       api("/settings/provider"),
       api("/settings/webhook"),
+      api("/settings/redbark"),
     ]);
     setSettings(p);
     setValues((v) => ({ ...v, ...p }));
+    setRedbark(r);
+    setRedbarkValues({
+      version: r.version || "2026-10-01.wattle",
+      backfillDays: r.backfillDays ?? 90,
+    });
     setWebhook(w);
     setBaseUrl(w.publicBaseUrl || "");
   }
@@ -40,6 +54,7 @@ export function IntegrationSettings({ api, demo }) {
       const result = await fn();
       setNotice(result.message || "Settings updated.");
       await load();
+      await onUpdated?.();
       return true;
     } catch (e) {
       setError(e.message);
@@ -57,6 +72,189 @@ export function IntegrationSettings({ api, demo }) {
       : [["apiKey", "OpenAI API key"]];
   return (
     <>
+      {error && (
+        <p role="alert" className="alert alert-error">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="alert alert-success">
+          {notice}
+        </p>
+      )}
+      <section className="card settings-card integration-settings">
+        <h2>Redbark settings</h2>
+        <p className="muted">
+          Save your API key, API version and rolling import window here.
+          Settings take effect immediately. Credentials are encrypted in
+          PostgreSQL and never returned to this form.
+        </p>
+        {!redbark && <p>Loading Redbark settings…</p>}
+        {redbark && !redbark.encryptionAvailable && (
+          <p role="status" className="setup-note">
+            Credential storage is unavailable. Configure a strong APP_SECRET on
+            the server before entering credentials. Imported data stays
+            available.
+          </p>
+        )}
+        {redbark && !redbark.credentialsAvailable && (
+          <p role="status" className="setup-note">
+            Saved Redbark credentials cannot currently be used. Restore the
+            matching APP_SECRET or replace the saved credentials. Operations
+            that need unavailable credentials remain paused.
+          </p>
+        )}
+        {redbark?.credentials?.signingSecret?.configured &&
+          redbark.signingSecretAssociated === false && (
+            <p role="status" className="setup-note">
+              The saved signing secret is not associated with the current API
+              key. Re-register or recover the destination below, or explicitly
+              re-enter its signing secret. Webhook processing stays paused until
+              the association is verified.
+            </p>
+          )}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const payload = {
+              version: redbarkValues.version,
+              backfillDays: Number(redbarkValues.backfillDays),
+            };
+            for (const key of ["apiKey", "signingSecret"]) {
+              if (redbarkClears[key]) payload[key] = null;
+              else if (redbarkSecrets[key]) payload[key] = redbarkSecrets[key];
+            }
+            await action(async () => {
+              await api("/settings/redbark", {
+                method: "PUT",
+                body: JSON.stringify(payload),
+              });
+              setRedbarkSecrets({});
+              setRedbarkClears({});
+              return {
+                message:
+                  "Redbark settings saved. No restart is needed. Test the connection after changing the API key or version before imports can resume.",
+              };
+            });
+          }}
+        >
+          <div className="settings-row">
+            <label>
+              Redbark API version
+              <input
+                required
+                maxLength={100}
+                value={redbarkValues.version}
+                onChange={(e) =>
+                  setRedbarkValues({
+                    ...redbarkValues,
+                    version: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              Rolling backfill days
+              <input
+                required
+                type="number"
+                min="1"
+                max="2555"
+                step="1"
+                value={redbarkValues.backfillDays}
+                onChange={(e) =>
+                  setRedbarkValues({
+                    ...redbarkValues,
+                    backfillDays: e.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+          {[
+            ["apiKey", "Redbark API key"],
+            ["signingSecret", "Redbark signing secret"],
+          ].map(([key, label]) => {
+            const field = (
+              <div className="secret-setting">
+                <label>
+                  {label}
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    maxLength={key === "signingSecret" ? 4096 : 8192}
+                    minLength={key === "signingSecret" ? 16 : undefined}
+                    value={redbarkSecrets[key] || ""}
+                    disabled={
+                      !!redbarkClears[key] || !redbark?.encryptionAvailable
+                    }
+                    placeholder="Leave blank to preserve saved value"
+                    onChange={(e) =>
+                      setRedbarkSecrets({
+                        ...redbarkSecrets,
+                        [key]: e.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <div className="secret-state">
+                  <span>
+                    {redbark?.credentials?.[key]?.configured
+                      ? "Saved · hidden"
+                      : "No saved value"}
+                  </span>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={!!redbarkClears[key]}
+                      onChange={(e) =>
+                        setRedbarkClears({
+                          ...redbarkClears,
+                          [key]: e.target.checked,
+                        })
+                      }
+                    />
+                    Clear saved{" "}
+                    {key === "apiKey"
+                      ? "Redbark API key"
+                      : "Redbark signing secret"}
+                  </label>
+                </div>
+              </div>
+            );
+            return key === "apiKey" ? (
+              <React.Fragment key={key}>{field}</React.Fragment>
+            ) : (
+              <details key={key}>
+                <summary>Existing destination signing secret</summary>
+                <p className="footnote">
+                  Registration below normally saves the signing secret for you.
+                  Use this only to move an existing destination’s secret into
+                  Settings. Replacing or clearing it changes which webhook
+                  signatures can be verified.
+                </p>
+                {field}
+              </details>
+            );
+          })}
+          <p className="footnote">
+            Blank credential fields preserve saved values; selecting Clear
+            removes that value when you save. API keys need data:read for
+            imports. Existing environment-only configuration is not imported:
+            re-enter it here. Keep the same APP_SECRET when restoring your
+            database.
+          </p>
+          <Button disabled={busy || demo || !redbark}>
+            Save Redbark settings
+          </Button>
+          {demo && (
+            <p className="footnote">
+              Integration credential changes are unavailable in the fictional
+              demo.
+            </p>
+          )}
+        </form>
+      </section>
       <section className="card settings-card integration-settings">
         <h2>Optional AI classification</h2>
         <p className="muted">
@@ -64,16 +262,6 @@ export function IntegrationSettings({ api, demo }) {
           AI to send only a minimal description and permitted categories for
           unresolved posted imports.
         </p>
-        {error && (
-          <p role="alert" className="alert alert-error">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p role="status" className="alert alert-success">
-            {notice}
-          </p>
-        )}
         {!settings && <p>Loading provider settings…</p>}
         {settings && !settings.encryptionAvailable && (
           <p role="status" className="setup-note">
@@ -102,8 +290,11 @@ export function IntegrationSettings({ api, demo }) {
                   body: JSON.stringify({
                     provider: values.provider,
                     model: values.model,
-                    region: values.region,
+                    ...(values.provider === "bedrock"
+                      ? { region: values.region }
+                      : {}),
                     enabled: values.enabled,
+                    autoClassify: values.autoClassify,
                     autoApply: values.autoApply,
                     dailyRequestLimit: Number(values.dailyRequestLimit),
                     batchSize: Number(values.batchSize),
@@ -143,7 +334,7 @@ export function IntegrationSettings({ api, demo }) {
               : "Model"}
             <input
               required
-              maxLength={2048}
+              maxLength={500}
               value={values.model}
               placeholder={
                 values.provider === "bedrock"
@@ -225,8 +416,26 @@ export function IntegrationSettings({ api, demo }) {
                 setValues({ ...values, enabled: e.target.checked })
               }
             />
-            Enable classification of unresolved imports
+            Enable AI classification
           </label>
+          <p className="footnote">
+            Turning this off pauses both on-demand and automatic classification.
+            Saved credentials and existing suggestions are retained.
+          </p>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={!!values.autoClassify}
+              onChange={(e) =>
+                setValues({ ...values, autoClassify: e.target.checked })
+              }
+            />
+            Automatically suggest categories for unresolved imports
+          </label>
+          <p className="footnote">
+            Turn automatic suggestions off to keep only on-demand suggestions
+            while AI classification is enabled. Existing automatic jobs pause.
+          </p>
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -246,6 +455,8 @@ export function IntegrationSettings({ api, demo }) {
               Requests per UTC day
               <input
                 type="number"
+                required
+                step="1"
                 min="1"
                 max="1000"
                 value={values.dailyRequestLimit}
@@ -258,6 +469,8 @@ export function IntegrationSettings({ api, demo }) {
               Maximum import batch
               <input
                 type="number"
+                required
+                step="1"
                 min="1"
                 max="20"
                 value={values.batchSize}

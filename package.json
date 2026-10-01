@@ -20,7 +20,9 @@
     "test:browser:auth": "node scripts/browser-auth.mjs",
     "recover-user": "node scripts/recover-user.js",
     "test:browser:assistant": "node scripts/browser-assistant.mjs",
-    "test:browser:brand": "node scripts/browser-brand.mjs"
+    "test:browser:brand": "node scripts/browser-brand.mjs",
+    "test:browser:integration-settings": "node scripts/browser-integration-settings.mjs",
+    "check:theme": "node scripts/check-theme.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",
