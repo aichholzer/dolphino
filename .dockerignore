@@ -6,6 +6,7 @@ frontend/dist
 .env.*
 !.env.example
 secrets
+postgres-secrets
 backups
 playwright-report
 test-results

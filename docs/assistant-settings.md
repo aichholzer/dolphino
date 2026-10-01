@@ -8,12 +8,12 @@ Administrators must explicitly acknowledge data sharing before enabling the assi
 
 Limits are independent of classification:
 
-| Setting | Default | Allowed range |
-| --- | --- | --- |
-| Provider requests per user per UTC day | 10 | 1–100 |
-| Tool calls per question | 4 | 1–8 |
-| Provider rounds per question | 3 | 1–4 |
-| Maximum output tokens per provider call | 1,024 | 128–2,048 |
+| Setting                                 | Default | Allowed range |
+| --------------------------------------- | ------- | ------------- |
+| Provider requests per user per UTC day  | 10      | 1–100         |
+| Tool calls per question                 | 4       | 1–8           |
+| Provider rounds per question            | 3       | 1–4           |
+| Maximum output tokens per provider call | 1,024   | 128–2,048     |
 
 Multiple provider rounds consume multiple requests. Limits bound activity rather than guaranteeing a currency-denominated price; provider pricing, context size and model behavior affect cost. Configuring a model does not prove availability or tool-calling compatibility. Development uses mocked providers and synthetic settings exclusively. The explicitly requested **Test model** action exercises the actual assistant tool-calling contract: one fixed fictional summary tool and one follow-up response, at most two provider calls with at most 256 output tokens each (or the lower configured token cap). It reads no household finance data, can incur a small inference charge, and requires explicit cost acknowledgement. It does not enable the assistant.
 

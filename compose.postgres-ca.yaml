@@ -1,0 +1,14 @@
+# Optional custom PostgreSQL CA for Docker. PGSSLROOTCERT in .env is the
+# absolute host path; this override maps it to a stable read-only container path.
+# Use only with PGSSLMODE=verify-full, never with PGSSLROOTCERT=system.
+services:
+  app:
+    environment:
+      PGSSLROOTCERT: /run/postgres-ca/root.crt
+    volumes:
+      - type: bind
+        source: '${PGSSLROOTCERT:?Set PGSSLROOTCERT to an absolute host PEM CA path}'
+        target: /run/postgres-ca/root.crt
+        read_only: true
+        bind:
+          create_host_path: false

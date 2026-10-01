@@ -14,4 +14,4 @@ Authenticated, same-origin APIs:
 
 Existing immutable provider observations and canonical identity matching apply to historical imports exactly as they do to polling and webhook-triggered imports. No balancing entries are invented. Ambiguous pending replacements remain in review.
 
-Verification: `DATABASE_URL=<isolated test database> node --test backend/test/import-health.test.js`. Tests use fictional mocked Redbark responses, isolated PostgreSQL schemas, concurrent duplicate submissions, restarted service facades, explicit dates/account scope, and a simulated 429 response. No provider calls are made.
+Verification: `node --test backend/test/import-health.test.js` with `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` and explicit `PGSSLMODE` pointing only to an isolated test database. Tests use fictional mocked Redbark responses, isolated PostgreSQL schemas, concurrent duplicate submissions, restarted service facades, explicit dates/account scope, and a simulated 429 response. No provider calls are made.

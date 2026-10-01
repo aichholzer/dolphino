@@ -1,0 +1,47 @@
+import { useState, useEffect } from 'react';
+import { Button } from '../../components/ui/button';
+import { Dialog } from '../../components/ui/dialog';
+
+export function AccountDialog({ account, close, busy, error, save }) {
+  const [label, setLabel] = useState(''),
+    [description, setDescription] = useState('');
+  useEffect(() => {
+    setLabel(account?.label || account?.name || '');
+    setDescription(account?.description || '');
+  }, [account]);
+  return (
+    <Dialog
+      open={!!account}
+      onOpenChange={(v) => !v && close()}
+      title="Your account details"
+      description="Local details remain unchanged when your bank updates."
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          save({ label, description });
+        }}
+      >
+        <label>
+          Account label
+          <input maxLength={120} required value={label} onChange={(e) => setLabel(e.target.value)} />
+        </label>
+        <label>
+          Description
+          <input maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </label>
+        {error && (
+          <p role="alert" className="negative">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button disabled={busy}>Save account</Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}

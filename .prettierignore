@@ -1,0 +1,15 @@
+# Dependencies, generated bundles and verification output
+**/node_modules/
+**/dist/
+**/coverage/
+**/test-results/
+**/playwright-report/
+artifacts/
+package-lock.json
+
+# Local deployment data and credentials
+.env
+.env.*
+!.env.example
+secrets/
+*.log

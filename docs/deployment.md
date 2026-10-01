@@ -2,7 +2,7 @@
 
 ## Database selection and isolation
 
-Use a dedicated database and database role. Default deployment uses `DATABASE_URL` (or `DATABASE_URL_FILE`) pointing to your LAN PostgreSQL. Restrict network access to the application host; use PostgreSQL TLS when traffic crosses an untrusted network. An unavailable database produces an error; the app never silently substitutes another database. Startup applies schema migrations; `npm run migrate` also runs them explicitly. Back up before upgrading.
+Use a dedicated database and database role. Default deployment uses the standard individual `PGHOST`, `PGPORT` (default `5432`), `PGDATABASE`, `PGUSER` and `PGPASSWORD` settings pointing to your PostgreSQL server. All identity fields and a nonempty password are required; `PGPASSWORD_FILE` can supply the password. Restrict network access to the application host and explicitly choose transport security for off-host connections as described below. `DATABASE_URL` and `DATABASE_URL_FILE` are rejected with migration guidance, even when individual settings are also present. An unavailable database produces an error; the app never silently substitutes another database. Startup applies schema migrations; `npm run migrate` also runs them explicitly. Back up before upgrading.
 
 Use distinct databases for `DOLPHINO_MODE=demo` and `DOLPHINO_MODE=live`. Demo fixtures are fictional and seeding is explicit. Never seed a database that contains real financial data. The demo is for local evaluation and should not be exposed publicly.
 
@@ -22,7 +22,7 @@ For named household authentication, follow [restricted first-administrator setup
 
 Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse an account password or bootstrap token. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
 
-Each deployment secret `DATABASE_URL`, `DOLPHINO_BOOTSTRAP_TOKEN` and `APP_SECRET` supports a corresponding `_FILE` variable. Integration secrets are configured only through administrator Settings and stored encrypted in PostgreSQL; former integration environment variables and `_FILE` variants are ignored. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
+Each deployment secret `PGPASSWORD`, `DOLPHINO_BOOTSTRAP_TOKEN` and `APP_SECRET` supports a corresponding `_FILE` variable. Integration secrets are configured only through administrator Settings and stored encrypted in PostgreSQL; former integration environment variables and `_FILE` variants are ignored. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Bundled PostgreSQL password files are the exception: use the dedicated `./postgres-secrets` mount described in the bundled section, keeping APP_SECRET and bootstrap secrets out of the database container. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
 
 In live mode set:
 
@@ -31,13 +31,19 @@ DOLPHINO_MODE=live
 APP_ORIGIN=https://dolphino.example.home
 DOLPHINO_CURRENCY=AUD
 DOLPHINO_TIMEZONE=Australia/Brisbane
-DATABASE_URL_FILE=/run/secrets/database_url
+PGHOST=postgres.example.home
+PGPORT=5432
+PGDATABASE=dolphino
+PGUSER=dolphino
+PGPASSWORD_FILE=/run/secrets/postgres_password
+PGSSLMODE=verify-full
+# PGSSLROOTCERT is optional: system/public roots are the default.
 DOLPHINO_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token
 # Remove the bootstrap variable/file after first administrator setup.
 APP_SECRET_FILE=/run/secrets/app_secret
 ```
 
-Configure a trusted HTTPS reverse proxy (for example Caddy or nginx) to forward to `127.0.0.1:3001`, preserving the Host header. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Named account passwords and session revocation are managed through the app; legacy shared-password cookies are invalid after upgrading. Keep the service private to your home network or VPN.
+Configure a trusted HTTPS reverse proxy (for example Caddy or nginx), preserving the Host header. A same-host proxy can forward to `127.0.0.1:3001`; a separate-host proxy needs a deliberate `APP_BIND` and network access policy. Set `TRUST_PROXY` to the immediate Caddy/proxy peer address observed by the app, and read [trusted proxies and forwarded addresses](reverse-proxy.md) before enabling upstream chains. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Named account passwords and session revocation are managed through the app; legacy shared-password cookies are invalid after upgrading. Keep the service private to your home network or VPN.
 
 ## Default: existing LAN PostgreSQL
 
@@ -47,7 +53,7 @@ Set the database and other values in `.env` and create the `secrets` directory b
 docker compose up -d --build
 ```
 
-The default Compose publishes only loopback port 3001. Connect the reverse proxy on that host. To use another proxy host, deliberately configure a private bind address and firewall; do not expose an unauthenticated demo.
+The default Compose publishes only loopback port 3001 through `${APP_BIND:-127.0.0.1}`. For another proxy host, set `APP_BIND` to the app host’s reachable private address (or deliberately `0.0.0.0`) and restrict access to the proxy. The app speaks plain HTTP and Docker-published ports may bypass a host firewall’s ordinary INPUT rules. Do not expose an unauthenticated demo. `TRUST_PROXY` changes header trust, not reachability.
 
 For a demo only, populate fixtures after the container starts:
 
@@ -55,11 +61,38 @@ For a demo only, populate fixtures after the container starts:
 docker compose exec app npm run seed
 ```
 
+## PostgreSQL TLS
+
+For external PostgreSQL, set `PGSSLMODE` explicitly. The app never retries with weaker TLS or plain TCP after a connection or certificate error.
+
+- `verify-full` is recommended: TLS 1.2 or newer, a trusted certificate chain, and a certificate name/IP SAN matching `PGHOST`. Unset `PGSSLROOTCERT` and `PGSSLROOTCERT=system` both use Node’s bundled public CA roots plus the **runtime system** trust store. A publicly issued server certificate (including Neon’s) needs no custom CA file. A certificate being installed on a LAN database alone does not make a private/self-signed issuer trusted.
+- `require` requests encryption only. It deliberately does **not** authenticate the server and emits a startup warning: an active attacker can impersonate PostgreSQL. This follows libpq’s encryption-only meaning rather than relying on node-postgres URL-parser behavior. To avoid libpq’s historical ambiguity, Dolphino rejects `PGSSLROOTCERT` with `require`; use `verify-full` to validate a CA/name, or remove the root setting only if unauthenticated TLS is intentional.
+- `disable` deliberately uses plain TCP and rejects `PGSSLROOTCERT`. Use it only for a trusted isolated network. Loopback addresses/`localhost` default to this mode if unset; off-host addresses, including arbitrary Docker service names, require an explicit choice. The bundled override separately selects it when TLS variables are unset.
+
+Dolphino does not implement `allow`, `prefer` or `verify-ca`. Verification failures, unsupported modes and missing/unreadable/invalid CA files stop startup/connection. Use the certificate’s DNS name as `PGHOST`, or ensure its IP SAN matches the configured IP. Do not disable verification to fix a hostname mismatch.
+
+For a private CA, set `PGSSLROOTCERT` to an **absolute path** to its readable PEM trust bundle. This explicit bundle replaces the system/public roots for PostgreSQL only. It must contain certificates, never private keys; the maximum file size is 1 MiB. Native Node uses the path directly. For Docker, the system store means the container’s store, not the host’s. Use the supplied custom-CA override to mount a host file read-only:
+
+```dotenv
+PGSSLMODE=verify-full
+PGSSLROOTCERT=/absolute/host/path/postgres-root-ca.pem
+```
+
+```sh
+docker compose -f compose.yaml -f compose.postgres-ca.yaml up -d --build
+```
+
+The override maps that exact host file to `/run/postgres-ca/root.crt`; it never creates a missing source directory. Ensure UID 1000 can read it. Do not add this override for `PGSSLROOTCERT=system` or when no custom file is needed. A file already in the existing `./secrets` mount can instead use its absolute container path `/run/secrets/<file>` with the default Compose file. Neither route changes host trust settings.
+
+These settings are applied identically by the server, migrations, demo seed, user recovery and key-rotation commands. PostgreSQL CLI tools use their own libpq semantics: when running backup/restore with public roots, explicitly set `PGSSLMODE=verify-full PGSSLROOTCERT=system` (PostgreSQL 16+) or a CA path supported by your CLI. The app’s `PGPASSWORD_FILE` convention is not automatically interpreted by libpq; use its protected `.pgpass` or an explicitly supplied environment password for those tools.
+
+References: [PostgreSQL TLS modes](https://www.postgresql.org/docs/current/libpq-ssl.html), [node-postgres SSL options](https://node-postgres.com/features/ssl), [Node CA stores](https://nodejs.org/api/tls.html#tlsgetcacertificatestype), and [Neon’s TLS guidance](https://neon.com/blog/postgres-needs-better-connection-security-defaults).
+
 ## Explicit alternative: bundled PostgreSQL
 
 Only use this override if you choose a local database instead of your LAN instance. **Existing installations must first follow [the rename upgrade instructions](rename-upgrade.md)** and retain the actual existing volume/database/user. Do not create a replacement volume for an upgrade.
 
-For a **new installation only**, generate a URL-safe password with `openssl rand -hex 32`, set `POSTGRES_PASSWORD`, `POSTGRES_VOLUME=dolphino_postgres`, `POSTGRES_DB=dolphino` and `POSTGRES_USER=dolphino` in `.env`, then explicitly create the volume:
+For a **new installation only**, generate a strong password with `openssl rand -hex 32`, set `PGPASSWORD` (or `PGPASSWORD_FILE`, leaving the direct value empty), `POSTGRES_VOLUME=dolphino_postgres`, `PGDATABASE=dolphino` and `PGUSER=dolphino` in `.env`, and leave `PGSSLMODE`/`PGSSLROOTCERT` unset. Passwords no longer need URI encoding. Then explicitly create the volume:
 
 ```sh
 docker volume create dolphino_postgres
@@ -73,7 +106,7 @@ docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
 docker compose -f compose.yaml -f compose.postgres.yaml exec app npm run seed
 ```
 
-The override explicitly replaces the database URL with `db:5432` and clears `DATABASE_URL_FILE`. PostgreSQL has no published port and uses the exact external volume named by required `POSTGRES_VOLUME`. Compose refuses a missing volume and never automatically creates a replacement under a new project name. `POSTGRES_DB` and `POSTGRES_USER` are also required; preserve existing values on upgrades. It is not a fallback database. Do not use `docker compose down -v` unless you intend to delete that volume and have verified backups. An existing volume retains its original password; changing `POSTGRES_PASSWORD` alone does not rotate an initialized database password.
+The override explicitly selects `PGHOST=db` and `PGPORT=5432`, using the same `PGDATABASE`, `PGUSER` and `PGPASSWORD`/`PGPASSWORD_FILE` for the app and PostgreSQL container. The official PostgreSQL image requires exactly one nonempty password source. For a bundled password file, put only that password in `./postgres-secrets/password`, set `PGPASSWORD_FILE=/run/postgres-secrets/password` and leave `PGPASSWORD` empty. The bundled override mounts this dedicated directory read-only into both containers; it never gives the database access to the app’s `./secrets` directory or APP_SECRET. Use a single-line bundled password, with at most one final LF/CRLF in the file: the official image/initdb removes line endings differently from the external app’s exact-byte password handling. When TLS variables are unset, this explicit bundled override sets `PGSSLMODE=disable` for its private Docker network; arbitrary service names and LAN hosts never receive that exemption. Explicit TLS settings are retained, so requesting TLS against the unconfigured bundled server fails instead of falling back. PostgreSQL has no published port and uses the exact external volume named by required `POSTGRES_VOLUME`. Compose refuses a missing volume and never automatically creates a replacement under a new project name. `PGDATABASE` and `PGUSER` are also required; preserve existing values on upgrades. It is not a fallback database. Do not use `docker compose down -v` unless you intend to delete that volume and have verified backups. An existing volume retains its original password; changing `PGPASSWORD` alone does not rotate an initialized database password.
 
 ## Connect Redbark yourself
 
@@ -90,7 +123,7 @@ Optional LLM assistance remains disabled until a provider is configured and enab
 
 Follow the [database integration upgrade checklist](database-integration-upgrade.md). Redbark and classification settings are now read only from PostgreSQL. Legacy integration environment variables are ignored, even if database settings are absent. No credentials, versions or limits are silently imported. Re-enter them in the administrator UI and test the saved configuration before enabling imports or AI automation. Existing encrypted settings and registration secrets are retained; missing configuration pauses only the affected integration. Imports, manual overrides, jobs and notification configuration/outbox records remain in the existing database.
 
-Deployment settings remain environment-based: database URL/file, deployment mode, `HOST`/`PORT`, `APP_BIND`, `APP_ORIGIN`, bootstrap proof and `APP_SECRET`. Currency/timezone environment values remain defaults. Do not change these during this migration. Retain the exact APP_SECRET with the matching restored database; generating a new key does not unlock existing ciphertext.
+Deployment settings remain environment-based: PostgreSQL `PG*` connection/TLS settings, deployment mode, `HOST`/`PORT`, `APP_BIND`, `TRUST_PROXY`, `APP_ORIGIN`, bootstrap proof and `APP_SECRET`. Currency/timezone environment values remain defaults. Do not change these during this migration. Retain the exact APP_SECRET with the matching restored database; generating a new key does not unlock existing ciphertext.
 
 ## Export, backup and restore
 
@@ -119,7 +152,7 @@ Restore into a **new empty database**, with the app stopped or pointed elsewhere
 PGHOST=your-db PGUSER=dolphino PGDATABASE=dolphino_restore DOLPHINO_RESTORE_CONFIRM=dolphino_restore scripts/restore.sh backups/dolphino.dump
 ```
 
-For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's database URL and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process. A disposable loopback-only rehearsal script and the successful test evidence are documented in [restore evidence](restore-evidence.md).
+For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's explicit `PGDATABASE`/connection settings and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process. A disposable loopback-only rehearsal script and the successful test evidence are documented in [restore evidence](restore-evidence.md).
 
 ## Policies and limits
 

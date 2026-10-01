@@ -4,7 +4,7 @@ A self-hosted, household personal finance service: React, Tailwind and accessibl
 
 ## Run the fictional demo
 
-Requirements: Node.js 24+, npm, and an explicitly configured PostgreSQL database. Copy `.env.example` to `.env` and set `DATABASE_URL` to a **dedicated demo database**. The commands below load `.env` explicitly. Never point the demo seed at your live database.
+Requirements: Node.js 24+, npm, and an explicitly configured PostgreSQL database. Copy `.env.example` to `.env` and set `PGHOST`, `PGPORT` (default `5432`), `PGDATABASE`, `PGUSER` and `PGPASSWORD` for a **dedicated demo database**. For off-host PostgreSQL explicitly select `PGSSLMODE=verify-full` (recommended), `require` (encryption only) or `disable` (plain TCP); see [PostgreSQL TLS](docs/deployment.md#postgresql-tls). The commands below load `.env` explicitly. Never point the demo seed at your live database.
 
 ```sh
 npm ci
@@ -36,15 +36,28 @@ An administrator configures Redbark credentials, API version and rolling backfil
 
 ## Deployment and verification
 
-See [deployment and backup instructions](docs/deployment.md) and [Redbark integration](docs/redbark.md). Default Compose uses only your configured external PostgreSQL. Bundled PostgreSQL is an explicit override, never an outage fallback.
+See [deployment and backup instructions](docs/deployment.md) and [Redbark integration](docs/redbark.md). Default Compose uses only your configured external PostgreSQL. Bundled PostgreSQL is an explicit override, never an outage fallback. `DATABASE_URL`/`DATABASE_URL_FILE` are retired: move the same host/database/user/password into the individual `PG*` settings before upgrading. `PGPASSWORD_FILE` remains available for a mounted password secret. Optional `TRUST_PROXY` accepts only explicit proxy IPs/CIDRs; see [reverse-proxy configuration](docs/reverse-proxy.md).
 
 ```sh
 npm test
 npm run build
 npm run lint
+npm run format:check
 # Run PostgreSQL integration checks using a disposable database:
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/dolphino_test npm test
+# Set PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD for a disposable database,
+# plus PGSSLMODE for off-host connections; keep passwords out of shell history.
+npm test
 ```
+
+`npm run check` runs lint, formatting checks, tests and the production build. The synthetic TLS tests require the `openssl` executable. Database-dependent tests skip without a configured disposable PostgreSQL database; browser checks remain separate.
+
+### Code style and static checks
+
+Run `npm run lint:fix` to apply safe ESLint fixes, then `npm run format` to format source, tests, documentation and supported configuration files. Both tools exclude dependencies, build output and generated verification artifacts; Prettier also leaves the generated lockfile untouched.
+
+`eslint.config.js` applies ESLint's recommended rules, requires braces for every conditional and loop, and rejects unused variables. Intentionally unused arguments may start with `_`, and object-rest omissions are allowed. Node and browser globals are scoped to their respective files. ESLint 10 tracks JSX component references natively, so unused-variable checking remains enabled for React code without an extra compatibility plugin.
+
+`.prettierrc.json` defines 120-column lines, two-space indentation, single quotes, semicolons, no trailing commas, bracket spacing and parentheses around arrow-function parameters. Formatting checks cover the repository rather than a narrow source-only file list.
 
 The service is an MVP for a trusted household homelab. Put live mode behind HTTPS and maintain tested encrypted backups. No production deployment, real financial connection, external account creation, or external permission change is needed to try the demo.
 
@@ -65,3 +78,5 @@ Upgrading an existing installation? Read [rename compatibility and volume preser
 ### Optional SimpleFIN
 
 An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from Settings. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).
+
+See [code organization and maintenance](docs/architecture.md) for module boundaries, route-access contracts and the development checks.

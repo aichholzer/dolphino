@@ -22,7 +22,6 @@ Official references checked during implementation:
 - [GetFoundationModelAvailability](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetFoundationModelAvailability.html)
 - [GetInferenceProfile](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetInferenceProfile.html)
 
-
 ## Region catalogue maintenance
 
 Settings serves the region dropdown from `backend/src/provider-regions.js`, verified on 2026-09-30 against the **bedrock-runtime** column in the [AWS regional endpoint guide](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.html), cross-checked with the [AWS endpoints reference](https://docs.aws.amazon.com/general/latest/gr/bedrock.html). The regional guide lists newer runtime regions than the general runtime table. This 32-region commercial catalogue includes only documented runtime endpoints, not every control-plane region. A listed region does not guarantee any particular model supports Converse there: model availability and permissions are still checked before inference.

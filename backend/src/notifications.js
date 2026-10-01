@@ -1,255 +1,107 @@
-import { z } from "zod";
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
-import { publicSmtpAddress } from "./smtp-network.js";
-import { readFile } from "node:fs/promises";
-import nodemailer from "nodemailer";
-import { minorToDecimal } from "../../shared/money.js";
-const invalid = () =>
-  Object.assign(Error("Invalid notification settings"), { status: 400 });
-const email = z
-  .string()
-  .max(254)
-  .email()
-  .refine((v) => !/[\r\n]/.test(v));
-const secret = z.preprocess(
-  (v) => (v === "" ? undefined : v),
-  z.string().min(1).max(8192).nullable().optional(),
-);
-const defaultFields = ["category", "period", "amount", "remaining"];
+import { z } from 'zod';
+import { readFile } from 'node:fs/promises';
+import { minorToDecimal } from '../../shared/money.js';
+import { smtpEmailSchema as email, smtpOptions, sendSmtp } from './smtp-transport.js';
+
+// Preserve the existing notification-module imports for callers.
+export { smtpOptions, sendSmtp } from './smtp-transport.js';
+const invalid = () => Object.assign(Error('Invalid notification settings'), { status: 400 });
+const secret = z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).max(8192).nullable().optional());
+const defaultFields = ['category', 'period', 'amount', 'remaining'];
 const schema = z
   .object({
     audienceConfirmed: z.boolean().optional(),
     summaryFields: z
-      .array(z.enum(["category", "period", "amount", "remaining"]))
+      .array(z.enum(['category', 'period', 'amount', 'remaining']))
       .min(1)
       .max(4)
       .optional(),
     smtp: z
       .object({
         enabled: z.boolean(),
-        from: email.or(z.literal("")),
+        from: email.or(z.literal('')),
         recipients: z.array(email).max(10),
-        smtpUrl: secret,
+        smtpUrl: secret
       })
       .strict()
       .optional(),
-    telegram: z
-      .object({ enabled: z.boolean(), token: secret })
-      .strict()
-      .optional(),
+    telegram: z.object({ enabled: z.boolean(), token: secret }).strict().optional()
   })
   .strict();
-export function smtpOptions(value) {
-  try {
-    const url = new URL(value);
-    if (
-      !["smtp:", "smtps:"].includes(url.protocol) ||
-      url.search ||
-      url.hash ||
-      (url.pathname && url.pathname !== "/") ||
-      !url.hostname ||
-      isIP(url.hostname) ||
-      url.hostname.includes(":") ||
-      !/^[a-z0-9.-]+$/i.test(url.hostname) ||
-      !url.hostname.includes(".") ||
-      /(^|\.)(localhost|local|internal|lan|home|test|invalid|example)$/i.test(
-        url.hostname,
-      ) ||
-      url.hostname.endsWith(".") ||
-      !url.username ||
-      !url.password ||
-      /[\r\n]/.test(value)
-    )
-      throw invalid();
-    const port = Number(url.port || (url.protocol === "smtps:" ? 465 : 587));
-    if (![465, 587, 2525].includes(port)) throw invalid();
-    if ((port === 465) !== (url.protocol === "smtps:")) throw invalid();
-    return {
-      host: url.hostname,
-      port,
-      secure: url.protocol === "smtps:",
-      requireTLS: true,
-      opportunisticTLS: false,
-      ignoreTLS: false,
-      tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
-      auth: {
-        user: decodeURIComponent(url.username),
-        pass: decodeURIComponent(url.password),
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-      dnsTimeout: 10000,
-      logger: false,
-      debug: false,
-      disableFileAccess: true,
-      disableUrlAccess: true,
-      pool: false,
-    };
-  } catch {
-    throw invalid();
-  }
-}
-export async function sendSmtp(
-  {
-    smtpUrl,
-    from,
-    to,
-    text,
-    messageId,
-    subject = "Dolphino budget notification",
-  },
-  createTransport = nodemailer.createTransport,
-  lookupImpl = lookup,
-) {
-  if (!email.safeParse(from).success || !email.safeParse(to).success)
-    throw invalid();
-  if (
-    typeof subject !== "string" ||
-    subject.length > 150 ||
-    /[\r\n]/.test(subject)
-  )
-    throw invalid();
-  const options = smtpOptions(smtpUrl);
-  let transport;
-  let timer;
-  try {
-    const addresses = await Promise.race([
-      lookupImpl(options.host, { all: true, verbatim: true }),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error("DNS timeout")), 10000);
-      }),
-    ]);
-    clearTimeout(timer);
-    if (
-      !addresses.length ||
-      addresses.some(({ address }) => !publicSmtpAddress(address))
-    )
-      throw invalid();
-    // Pin the checked IP; a second DNS lookup cannot redirect SMTP into the LAN.
-    // Keep the original DNS name for SNI and certificate hostname verification.
-    transport = createTransport({
-      ...options,
-      host: addresses[0].address,
-      servername: options.host,
-      tls: { ...options.tls, servername: options.host },
-    });
-    await Promise.race([
-      transport.sendMail({
-        from,
-        to,
-        subject,
-        text,
-        messageId,
-        disableFileAccess: true,
-        disableUrlAccess: true,
-      }),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          transport.close();
-          reject(Error("timeout"));
-        }, 20000);
-      }),
-    ]);
-  } catch {
-    throw Object.assign(
-      Error(
-        "SMTP delivery failed; verify configuration and provider availability",
-      ),
-      { status: 502 },
-    );
-  } finally {
-    clearTimeout(timer);
-    transport?.close();
-  }
-}
 export function notificationText(payload, fields = defaultFields) {
-  const amount = BigInt(payload.amountMinor || "0");
+  const amount = BigInt(payload.amountMinor || '0');
   const decimal = minorToDecimal(amount.toString(), payload.currency);
   const values = {
     category: String(payload.category).slice(0, 100),
     period: `period ${payload.month}`,
-    amount: `overspend ${payload.currency} ${payload.state === "resolved" ? minorToDecimal("0", payload.currency) : decimal}`,
-    remaining: `remaining budget ${payload.state === "resolved" ? "no longer negative" : `-${decimal} ${payload.currency}`}`,
+    amount: `overspend ${payload.currency} ${payload.state === 'resolved' ? minorToDecimal('0', payload.currency) : decimal}`,
+    remaining: `remaining budget ${payload.state === 'resolved' ? 'no longer negative' : `-${decimal} ${payload.currency}`}`
   };
   return `Dolphino budget ${payload.state}: ${fields
     .map((f) => values[f])
     .filter(Boolean)
-    .join("; ")}. Open Dolphino to review.`;
+    .join('; ')}. Open Dolphino to review.`;
 }
 export function createNotificationIntegration({
   pool,
   settings,
-  mode = "live",
+  mode = 'live',
   sendTelegram,
   sendSmtpImpl = sendSmtp,
-  timerIntervalMs = 15000,
+  timerIntervalMs = 15000
 }) {
   let timer,
     busy = false;
   const defaults = {
-    smtp: { enabled: false, from: "", recipients: [] },
-    telegram: { enabled: false },
+    smtp: { enabled: false, from: '', recipients: [] },
+    telegram: { enabled: false }
   };
   async function config(channel, client = pool) {
-    return (
-      (await settings.getValue(`notifications.${channel}`, client)) ||
-      defaults[channel]
-    );
+    return (await settings.getValue(`notifications.${channel}`, client)) || defaults[channel];
   }
   async function getPublicSettings() {
-    const smtp = await config("smtp"),
-      telegram = await config("telegram");
+    const smtp = await config('smtp'),
+      telegram = await config('telegram');
     const has = async (setting, provider) =>
-      (
-        await pool.query(
-          "SELECT 1 FROM encrypted_credentials WHERE setting=$1 AND provider=$2",
-          [setting, provider],
-        )
-      ).rowCount > 0;
-    const smtpConfigured = await has("notifications.smtp.url", "smtp"),
-      telegramConfigured = await has(
-        "notifications.telegram.botToken",
-        "telegram",
-      );
+      (await pool.query('SELECT 1 FROM encrypted_credentials WHERE setting=$1 AND provider=$2', [setting, provider]))
+        .rowCount > 0;
+    const smtpConfigured = await has('notifications.smtp.url', 'smtp'),
+      telegramConfigured = await has('notifications.telegram.botToken', 'telegram');
     const counts = (
       await pool.query(
-        "SELECT o.status,count(*)::int count FROM notification_outbox o JOIN notification_events e ON e.id=o.event_id WHERE e.mode=$1 GROUP BY o.status",
-        [mode],
+        'SELECT o.status,count(*)::int count FROM notification_outbox o JOIN notification_events e ON e.id=o.event_id WHERE e.mode=$1 GROUP BY o.status',
+        [mode]
       )
     ).rows;
     const recentFailures = (
       await pool.query(
         'SELECT o.id::text,channel,attempts,error,o.updated_at AS "updatedAt" FROM notification_outbox o JOIN notification_events e ON e.id=o.event_id WHERE e.mode=$1 AND error IS NOT NULL ORDER BY o.updated_at DESC LIMIT 10',
-        [mode],
+        [mode]
       )
     ).rows;
-    const audience = (await settings.getValue("notifications.audience")) || {
-      confirmed: false,
+    const audience = (await settings.getValue('notifications.audience')) || {
+      confirmed: false
     };
-    const summaryFields =
-      (await settings.getValue("notifications.summaryFields"))?.fields ||
-      defaultFields;
+    const summaryFields = (await settings.getValue('notifications.summaryFields'))?.fields || defaultFields;
     return {
       audienceConfirmed: audience.confirmed === true,
       summaryFields,
       summaryPreview: notificationText(
         {
-          category: "Dining",
-          month: "2026-09",
-          currency: "AUD",
-          amountMinor: "1234",
-          state: "opened",
+          category: 'Dining',
+          month: '2026-09',
+          currency: 'AUD',
+          amountMinor: '1234',
+          state: 'opened'
         },
-        summaryFields,
+        summaryFields
       ),
       smtp: {
         enabled: smtp.enabled && audience.confirmed === true,
         from: smtp.from,
         recipients: smtp.recipients,
         configured: smtpConfigured,
-        credentialConfigured: smtpConfigured,
+        credentialConfigured: smtpConfigured
       },
       telegram: {
         enabled: telegram.enabled && audience.confirmed === true,
@@ -257,24 +109,23 @@ export function createNotificationIntegration({
         chatConfigured: !!telegram.chatId,
         configured: telegramConfigured,
         credentialConfigured: telegramConfigured,
-        chatTitle: telegram.chatTitle || null,
+        chatTitle: telegram.chatTitle || null
       },
-      pendingCount: counts.find((r) => r.status === "pending")?.count || 0,
-      failedCount: counts.find((r) => r.status === "failed")?.count || 0,
-      recentFailures,
+      pendingCount: counts.find((r) => r.status === 'pending')?.count || 0,
+      failedCount: counts.find((r) => r.status === 'failed')?.count || 0,
+      recentFailures
     };
   }
   async function saveSettings(input) {
     const parsed = schema.safeParse(input);
-    if (!parsed.success) throw invalid();
+    if (!parsed.success) {
+      throw invalid();
+    }
     const c = await pool.connect();
     try {
-      await c.query("BEGIN");
-      await c.query("SELECT pg_advisory_xact_lock(17092382)");
-      const priorAudience = (await settings.getValue(
-        "notifications.audience",
-        c,
-      )) || { confirmed: false };
+      await c.query('BEGIN');
+      await c.query('SELECT pg_advisory_xact_lock(17092382)');
+      const priorAudience = (await settings.getValue('notifications.audience', c)) || { confirmed: false };
       const audience =
         parsed.data.audienceConfirmed === undefined
           ? priorAudience
@@ -283,108 +134,79 @@ export function createNotificationIntegration({
               confirmedAt:
                 priorAudience.confirmed === parsed.data.audienceConfirmed
                   ? priorAudience.confirmedAt
-                  : new Date().toISOString(),
+                  : new Date().toISOString()
             };
-      if (parsed.data.audienceConfirmed !== undefined)
-        await settings.setValue("notifications.audience", audience, c);
-      if (
-        (parsed.data.smtp?.enabled || parsed.data.telegram?.enabled) &&
-        !audience.confirmed
-      )
-        throw Object.assign(
-          Error(
-            "Confirm the whole-household notification audience before enabling delivery",
-          ),
-          { status: 409 },
-        );
-      if (parsed.data.summaryFields)
-        await settings.setValue(
-          "notifications.summaryFields",
-          { fields: [...new Set(parsed.data.summaryFields)] },
-          c,
-        );
+      if (parsed.data.audienceConfirmed !== undefined) {
+        await settings.setValue('notifications.audience', audience, c);
+      }
+      if ((parsed.data.smtp?.enabled || parsed.data.telegram?.enabled) && !audience.confirmed) {
+        throw Object.assign(Error('Confirm the whole-household notification audience before enabling delivery'), {
+          status: 409
+        });
+      }
+      if (parsed.data.summaryFields) {
+        await settings.setValue('notifications.summaryFields', { fields: [...new Set(parsed.data.summaryFields)] }, c);
+      }
       if (parsed.data.smtp) {
         const { smtpUrl, ...v } = parsed.data.smtp;
-        const previous = await config("smtp", c);
+        const previous = await config('smtp', c);
         if (smtpUrl !== undefined) {
-          if (smtpUrl !== null) smtpOptions(smtpUrl);
-          await settings.setSecret(
-            "notifications.smtp.url",
-            "smtp",
-            smtpUrl,
-            c,
-          );
+          if (smtpUrl !== null) {
+            smtpOptions(smtpUrl);
+          }
+          await settings.setSecret('notifications.smtp.url', 'smtp', smtpUrl, c);
         }
         if (
           v.enabled &&
-          (!v.from ||
-            !v.recipients.length ||
-            !(await settings.getSecret("notifications.smtp.url", "smtp", c)))
-        )
-          throw Object.assign(
-            Error("Configure SMTP URL, sender and recipient before enabling"),
-            { status: 409 },
-          );
+          (!v.from || !v.recipients.length || !(await settings.getSecret('notifications.smtp.url', 'smtp', c)))
+        ) {
+          throw Object.assign(Error('Configure SMTP URL, sender and recipient before enabling'), { status: 409 });
+        }
         await settings.setValue(
-          "notifications.smtp",
+          'notifications.smtp',
           {
             ...v,
             recipients: [...new Set(v.recipients)],
             enabledAt:
               previous.enabled === v.enabled &&
               previous.from === v.from &&
-              JSON.stringify(previous.recipients) ===
-                JSON.stringify([...new Set(v.recipients)])
+              JSON.stringify(previous.recipients) === JSON.stringify([...new Set(v.recipients)])
                 ? previous.enabledAt
-                : new Date().toISOString(),
+                : new Date().toISOString()
           },
-          c,
+          c
         );
       }
       if (parsed.data.telegram) {
         const { token, enabled } = parsed.data.telegram;
-        let previous = await config("telegram", c);
+        let previous = await config('telegram', c);
         if (token !== undefined) {
-          if (token !== null && !/^\d+:[A-Za-z0-9_-]{20,}$/.test(token))
+          if (token !== null && !/^\d+:[A-Za-z0-9_-]{20,}$/.test(token)) {
             throw invalid();
-          await settings.setSecret(
-            "notifications.telegram.botToken",
-            "telegram",
-            token,
-            c,
-          );
+          }
+          await settings.setSecret('notifications.telegram.botToken', 'telegram', token, c);
           previous = { enabled: false };
-          await settings.setValue("telegram.pairing", {}, c);
+          await settings.setValue('telegram.pairing', {}, c);
         }
         if (
           enabled &&
-          (!previous.chatId ||
-            !(await settings.getSecret(
-              "notifications.telegram.botToken",
-              "telegram",
-              c,
-            )))
-        )
-          throw Object.assign(
-            Error("Pair and confirm a Telegram chat before enabling"),
-            { status: 409 },
-          );
+          (!previous.chatId || !(await settings.getSecret('notifications.telegram.botToken', 'telegram', c)))
+        ) {
+          throw Object.assign(Error('Pair and confirm a Telegram chat before enabling'), { status: 409 });
+        }
         await settings.setValue(
-          "notifications.telegram",
+          'notifications.telegram',
           {
             ...previous,
             enabled,
-            enabledAt:
-              previous.enabled === enabled
-                ? previous.enabledAt
-                : new Date().toISOString(),
+            enabledAt: previous.enabled === enabled ? previous.enabledAt : new Date().toISOString()
           },
-          c,
+          c
         );
       }
-      await c.query("COMMIT");
+      await c.query('COMMIT');
     } catch (e) {
-      await c.query("ROLLBACK");
+      await c.query('ROLLBACK');
       throw e;
     } finally {
       c.release();
@@ -394,15 +216,12 @@ export function createNotificationIntegration({
   async function scan() {
     const c = await pool.connect();
     try {
-      await c.query("BEGIN");
-      const audience = (await settings.getValue(
-        "notifications.audience",
-        c,
-      )) || { confirmed: false };
+      await c.query('BEGIN');
+      const audience = (await settings.getValue('notifications.audience', c)) || { confirmed: false };
       const events = (
         await c.query(
-          "SELECT * FROM notification_events WHERE scanned_at IS NULL AND mode=$1 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED",
-          [mode],
+          'SELECT * FROM notification_events WHERE scanned_at IS NULL AND mode=$1 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED',
+          [mode]
         )
       ).rows;
       for (const event of events) {
@@ -411,32 +230,26 @@ export function createNotificationIntegration({
           audience.confirmed &&
           new Date(event.created_at) >= new Date(audience.confirmedAt || 0)
         ) {
-          for (const channel of ["smtp", "telegram"]) {
+          for (const channel of ['smtp', 'telegram']) {
             const value = await config(channel, c);
-            if (
-              !value.enabled ||
-              !value.enabledAt ||
-              new Date(event.created_at) < new Date(value.enabledAt)
-            )
+            if (!value.enabled || !value.enabledAt || new Date(event.created_at) < new Date(value.enabledAt)) {
               continue;
-            const recipients =
-              channel === "smtp" ? value.recipients : [value.chatId];
-            for (const recipient of recipients.filter(Boolean))
+            }
+            const recipients = channel === 'smtp' ? value.recipients : [value.chatId];
+            for (const recipient of recipients.filter(Boolean)) {
               await c.query(
-                "INSERT INTO notification_outbox(event_id,channel,recipient) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-                [event.id, channel, recipient],
+                'INSERT INTO notification_outbox(event_id,channel,recipient) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+                [event.id, channel, recipient]
               );
+            }
           }
         }
-        await c.query(
-          "UPDATE notification_events SET scanned_at=now() WHERE id=$1",
-          [event.id],
-        );
+        await c.query('UPDATE notification_events SET scanned_at=now() WHERE id=$1', [event.id]);
       }
-      await c.query("COMMIT");
+      await c.query('COMMIT');
       return events.length;
     } catch (e) {
-      await c.query("ROLLBACK");
+      await c.query('ROLLBACK');
       throw e;
     } finally {
       c.release();
@@ -444,59 +257,49 @@ export function createNotificationIntegration({
   }
   async function send(channel, recipient, text, id, client = pool) {
     const value = await config(channel, client);
-    if (channel === "smtp")
+    if (channel === 'smtp') {
       return sendSmtpImpl({
-        smtpUrl: await settings.getSecret(
-          "notifications.smtp.url",
-          "smtp",
-          client,
-        ),
+        smtpUrl: await settings.getSecret('notifications.smtp.url', 'smtp', client),
         from: value.from,
         to: recipient,
         text,
         // Persistent retry identity: retain the historical brand in SMTP Message-ID.
-        messageId: `<profe-notification-${id}@profe.local>`,
+        messageId: `<profe-notification-${id}@profe.local>`
       });
-    if (!sendTelegram) throw Error("Telegram adapter unavailable");
+    }
+    if (!sendTelegram) {
+      throw Error('Telegram adapter unavailable');
+    }
     return sendTelegram({
-      token: await settings.getSecret(
-        "notifications.telegram.botToken",
-        "telegram",
-        client,
-      ),
+      token: await settings.getSecret('notifications.telegram.botToken', 'telegram', client),
       chatId: recipient,
-      text,
+      text
     });
   }
   async function processPending() {
-    if (busy || mode !== "live") return;
+    if (busy || mode !== 'live') {
+      return;
+    }
     busy = true;
     let lock;
     try {
       await scan();
       lock = await pool.connect();
       if (
-        !(
-          await lock.query(
-            "SELECT pg_try_advisory_lock(hashtext(current_schema()),17092383) locked",
-          )
-        ).rows[0].locked
-      )
+        !(await lock.query('SELECT pg_try_advisory_lock(hashtext(current_schema()),17092383) locked')).rows[0].locked
+      ) {
         return;
+      }
       const jobs = (
         await lock.query(
           "SELECT o.*,e.payload,e.created_at AS event_at FROM notification_outbox o JOIN notification_events e ON e.id=o.event_id WHERE e.mode=$1 AND o.status='pending' AND o.next_attempt_at<=now() ORDER BY o.id LIMIT 5",
-          [mode],
+          [mode]
         )
       ).rows;
       for (const job of jobs) {
         const value = await config(job.channel, lock);
-        const audience = (await settings.getValue(
-          "notifications.audience",
-          lock,
-        )) || { confirmed: false };
-        const recipients =
-          job.channel === "smtp" ? value.recipients : [value.chatId];
+        const audience = (await settings.getValue('notifications.audience', lock)) || { confirmed: false };
+        const recipients = job.channel === 'smtp' ? value.recipients : [value.chatId];
         if (
           !audience.confirmed ||
           new Date(job.event_at) < new Date(audience.confirmedAt || 0) ||
@@ -504,37 +307,34 @@ export function createNotificationIntegration({
           !recipients.includes(job.recipient) ||
           new Date(job.event_at) < new Date(value.enabledAt || 0)
         ) {
-          await lock.query(
-            "UPDATE notification_outbox SET status='cancelled',updated_at=now() WHERE id=$1",
-            [job.id],
-          );
+          await lock.query("UPDATE notification_outbox SET status='cancelled',updated_at=now() WHERE id=$1", [job.id]);
           continue;
         }
-        if (job.channel === "telegram") {
+        if (job.channel === 'telegram') {
           const recent = (
             await lock.query(
               "SELECT max(updated_at) last FROM notification_outbox WHERE channel='telegram' AND recipient=$1 AND attempts>0",
-              [job.recipient],
+              [job.recipient]
             )
           ).rows[0].last;
           if (recent && Date.now() - new Date(recent).getTime() < 3100) {
-            await lock.query(
-              "UPDATE notification_outbox SET next_attempt_at=$2 WHERE id=$1",
-              [job.id, new Date(new Date(recent).getTime() + 3100)],
-            );
+            await lock.query('UPDATE notification_outbox SET next_attempt_at=$2 WHERE id=$1', [
+              job.id,
+              new Date(new Date(recent).getTime() + 3100)
+            ]);
             continue;
           }
         }
         if (job.attempts >= 5) {
           await lock.query(
             "UPDATE notification_outbox SET status='failed',error='Delivery outcome uncertain after restart; review before retry',updated_at=now() WHERE id=$1",
-            [job.id],
+            [job.id]
           );
           continue;
         }
         await lock.query(
           "UPDATE notification_outbox SET attempts=attempts+1,next_attempt_at=now()+interval '1 minute',updated_at=now(),error='Delivery in progress; outcome may be uncertain after restart' WHERE id=$1",
-          [job.id],
+          [job.id]
         );
         try {
           await send(
@@ -542,91 +342,86 @@ export function createNotificationIntegration({
             job.recipient,
             notificationText(
               job.payload,
-              (await settings.getValue("notifications.summaryFields", lock))
-                ?.fields || defaultFields,
+              (await settings.getValue('notifications.summaryFields', lock))?.fields || defaultFields
             ),
             job.id,
-            lock,
+            lock
           );
-          await lock.query(
-            "UPDATE notification_outbox SET status='sent',error=NULL,updated_at=now() WHERE id=$1",
-            [job.id],
-          );
+          await lock.query("UPDATE notification_outbox SET status='sent',error=NULL,updated_at=now() WHERE id=$1", [
+            job.id
+          ]);
         } catch (error) {
-          if (error?.code === "telegram_group_migrated_repair_required") {
+          if (error?.code === 'telegram_group_migrated_repair_required') {
             await lock.query(
               "UPDATE notification_outbox SET status='failed',error='Telegram group migrated; pair and confirm the new group before retry',updated_at=now() WHERE id=$1",
-              [job.id],
+              [job.id]
             );
             continue;
           }
-          const retryAfter = Math.max(
-            0,
-            Math.min(86400, Number(error?.retryAfter) || 0),
-          );
+          const retryAfter = Math.max(0, Math.min(86400, Number(error?.retryAfter) || 0));
           await lock.query(
             "UPDATE notification_outbox SET status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END,error=$2,next_attempt_at=now()+make_interval(secs=>greatest($3::int,least(3600,60*power(2,attempts))::int)),updated_at=now() WHERE id=$1",
             [
               job.id,
-              `${job.channel === "smtp" ? "SMTP" : "Telegram"} delivery failed; verify configuration and provider availability`,
-              Math.ceil(retryAfter),
-            ],
+              `${job.channel === 'smtp' ? 'SMTP' : 'Telegram'} delivery failed; verify configuration and provider availability`,
+              Math.ceil(retryAfter)
+            ]
           );
         }
       }
     } finally {
       if (lock) {
-        await lock.query(
-          "SELECT pg_advisory_unlock(hashtext(current_schema()),17092383)",
-        );
+        await lock.query('SELECT pg_advisory_unlock(hashtext(current_schema()),17092383)');
         lock.release();
       }
       busy = false;
     }
   }
   async function testChannel(channel) {
-    if (!["smtp", "telegram"].includes(channel)) throw invalid();
+    if (!['smtp', 'telegram'].includes(channel)) {
+      throw invalid();
+    }
     const value = await config(channel);
-    const recipients = channel === "smtp" ? value.recipients : [value.chatId];
-    if (!recipients?.length || recipients.some((r) => !r))
-      throw Object.assign(Error("Configure notification destination first"), {
-        status: 409,
+    const recipients = channel === 'smtp' ? value.recipients : [value.chatId];
+    if (!recipients?.length || recipients.some((r) => !r)) {
+      throw Object.assign(Error('Configure notification destination first'), {
+        status: 409
       });
-    for (const recipient of recipients)
+    }
+    for (const recipient of recipients) {
       await send(
         channel,
         recipient,
-        "Dolphino synthetic test: notifications are configured. No transactions or account information are included.",
-        `test-${Date.now()}`,
+        'Dolphino synthetic test: notifications are configured. No transactions or account information are included.',
+        `test-${Date.now()}`
       );
-    return { ok: true, message: "Synthetic notification sent" };
+    }
+    return { ok: true, message: 'Synthetic notification sent' };
   }
   async function deliveries() {
     return (
       await pool.query(
         'SELECT o.id::text,channel,status,attempts,error,o.created_at AS "createdAt",o.updated_at AS "updatedAt",next_attempt_at AS "nextAttemptAt" FROM notification_outbox o JOIN notification_events e ON e.id=o.event_id WHERE e.mode=$1 ORDER BY o.id DESC LIMIT 100',
-        [mode],
+        [mode]
       )
     ).rows;
   }
   async function retry(id) {
-    if (!/^\d+$/.test(String(id))) throw invalid();
+    if (!/^\d+$/.test(String(id))) {
+      throw invalid();
+    }
     const row = await pool.query(
       "UPDATE notification_outbox SET status='pending',attempts=0,next_attempt_at=now(),error=NULL WHERE id=$1 AND status='failed' AND event_id IN (SELECT id FROM notification_events WHERE mode=$2) RETURNING id",
-      [id, mode],
+      [id, mode]
     );
-    if (!row.rowCount)
-      throw Object.assign(Error("Failed delivery not found"), { status: 404 });
+    if (!row.rowCount) {
+      throw Object.assign(Error('Failed delivery not found'), { status: 404 });
+    }
     return { ok: true };
   }
   return {
     init: async () =>
-      pool.query(
-        await readFile(
-          new URL("../migrations/007_notifications.sql", import.meta.url),
-          "utf8",
-        ),
-      ),
+      pool.query(await readFile(new URL('../migrations/007_notifications.sql', import.meta.url), 'utf8')),
     getPublicSettings,
     saveSettings,
     scan,
@@ -636,17 +431,16 @@ export function createNotificationIntegration({
     retry,
     start() {
       if (!timer) {
-        timer = setInterval(
-          () => processPending().catch(() => {}),
-          timerIntervalMs,
-        );
+        timer = setInterval(() => processPending().catch(() => {}), timerIntervalMs);
         timer.unref();
       }
     },
     async stop() {
       clearInterval(timer);
       timer = null;
-      while (busy) await new Promise((r) => setTimeout(r, 10));
-    },
+      while (busy) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
   };
 }

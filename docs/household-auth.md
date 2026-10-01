@@ -46,12 +46,12 @@ Password hashes are one-way; provider credentials remain reversibly encrypted wi
 
 Administrators have full household financial access and manage users, grants, settings, integrations and global rules. Newly invited members have no financial access until an administrator assigns grants. Account and budget permissions are independent:
 
-| Grant | Allows | Does not grant |
-| --- | --- | --- |
-| Account view | The selected account, its transactions, permitted history, scoped overview/charts and exports | Other accounts, editing, budget access or settings |
-| Account edit | Account view plus local account edits, corrections, splits and permitted review actions | Other accounts, budgets, global rules or settings |
-| Budget view | The selected category/currency/month budget row and its full household category spending/remaining/rollover summary | Underlying accounts, transaction drilldowns or editing |
-| Budget edit | Budget view plus editing/deleting that existing budget row | Other budgets, accounts, transactions, creating arbitrary new budgets or settings |
+| Grant        | Allows                                                                                                              | Does not grant                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Account view | The selected account, its transactions, permitted history, scoped overview/charts and exports                       | Other accounts, editing, budget access or settings                                |
+| Account edit | Account view plus local account edits, corrections, splits and permitted review actions                             | Other accounts, budgets, global rules or settings                                 |
+| Budget view  | The selected category/currency/month budget row and its full household category spending/remaining/rollover summary | Underlying accounts, transaction drilldowns or editing                            |
+| Budget edit  | Budget view plus editing/deleting that existing budget row                                                          | Other budgets, accounts, transactions, creating arbitrary new budgets or settings |
 
 A budget grant intentionally reveals the whole-household aggregate for that budget, even when some contributing accounts are hidden. It does not reveal those accounts or their transactions. Overview/chart totals remain scoped to granted accounts and may therefore differ from explicitly granted budget totals. Budget grants address specific month rows; a future month's new row is not automatically granted. Edit includes view. On-demand remote AI classification remains administrator-only because the classifier uses the household category vocabulary; members can manually correct transactions they may edit. Revoked grants are checked by subsequent API requests rather than trusting stale frontend state. Hidden resources return a non-disclosing not-found response.
 

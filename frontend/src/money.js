@@ -1,1 +1,1 @@
-export * from "../../shared/money.js";
+export * from '../../shared/money.js';

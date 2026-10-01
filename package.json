@@ -8,14 +8,14 @@
   "scripts": {
     "dev": "node --watch backend/src/server.js",
     "start": "node backend/src/server.js",
-    "test": "node --test --test-concurrency=1 backend/test/*.test.js",
+    "test": "node --test --test-concurrency=1 backend/test/*.test.js frontend/test/*.test.js",
     "build": "npm run build --workspace frontend",
     "seed": "node backend/src/seed.js",
-    "check": "npm test && npm run build",
+    "check": "npm run lint && npm run format:check && npm test && npm run build",
     "migrate": "node backend/src/migrate.js",
-    "lint": "node scripts/check-syntax.js",
+    "lint": "eslint . --max-warnings=0",
     "test:browser": "node scripts/browser-check.mjs",
-    "format:check": "prettier --check \"backend/**/*.js\" \"frontend/src/**/*.{js,jsx,css}\" \"scripts/*.{js,mjs}\" \"shared/**/*.js\"",
+    "format:check": "prettier --check .",
     "test:browser:enhancements": "node scripts/browser-enhancements.mjs",
     "test:browser:auth": "node scripts/browser-auth.mjs",
     "recover-user": "node scripts/recover-user.js",
@@ -23,7 +23,12 @@
     "test:browser:brand": "node scripts/browser-brand.mjs",
     "test:browser:integration-settings": "node scripts/browser-integration-settings.mjs",
     "check:theme": "node scripts/check-theme.mjs",
-    "test:browser:simplefin": "node scripts/browser-simplefin.mjs"
+    "test:browser:simplefin": "node scripts/browser-simplefin.mjs",
+    "lint:fix": "eslint . --fix --max-warnings=0",
+    "format": "prettier --write .",
+    "test:browser:theme": "node scripts/browser-theme.mjs",
+    "test:browser:settings-mocked": "node frontend/test/integration-settings.browser.mjs",
+    "test:browser:workspace": "node frontend/test/workspace.browser.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",
@@ -35,7 +40,10 @@
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.1",
+    "eslint": "^10.11.0",
+    "globals": "^17.13.0",
     "prettier": "^3.6.2"
   },
   "engines": {

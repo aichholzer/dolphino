@@ -4,8 +4,17 @@
 services:
   app:
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:?Set the existing or new POSTGRES_USER explicitly}:${POSTGRES_PASSWORD:?Set a URL-safe POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set the existing or new POSTGRES_DB explicitly}"
-      DATABASE_URL_FILE: ""
+      PGHOST: db
+      PGPORT: '5432'
+      PGDATABASE: '${PGDATABASE:?Set the existing or new PGDATABASE explicitly}'
+      PGUSER: '${PGUSER:?Set the existing or new PGUSER explicitly}'
+      PGPASSWORD: '${PGPASSWORD:-}'
+      PGPASSWORD_FILE: '${PGPASSWORD_FILE:-}'
+      # Deliberate bundled-network default; external hosts never infer this.
+      PGSSLMODE: '${PGSSLMODE:-disable}'
+      PGSSLROOTCERT: '${PGSSLROOTCERT:-}'
+    volumes:
+      - ./postgres-secrets:/run/postgres-secrets:ro
     depends_on:
       db:
         condition: service_healthy
@@ -13,13 +22,17 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "${POSTGRES_DB:?Set the existing or new POSTGRES_DB explicitly}"
-      POSTGRES_USER: "${POSTGRES_USER:?Set the existing or new POSTGRES_USER explicitly}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: '${PGDATABASE:?Set the existing or new PGDATABASE explicitly}'
+      POSTGRES_USER: '${PGUSER:?Set the existing or new PGUSER explicitly}'
+      # The official image requires exactly one nonempty password source.
+      POSTGRES_PASSWORD: '${PGPASSWORD:-}'
+      POSTGRES_PASSWORD_FILE: '${PGPASSWORD_FILE:-}'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Never expose APP_SECRET/bootstrap files to the database container.
+      - ./postgres-secrets:/run/postgres-secrets:ro
     healthcheck:
-      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       timeout: 5s
       retries: 12
@@ -28,4 +41,4 @@ services:
 volumes:
   postgres_data:
     external: true
-    name: "${POSTGRES_VOLUME:?Set POSTGRES_VOLUME to the exact existing Docker volume, or explicitly create one for a new installation}"
+    name: '${POSTGRES_VOLUME:?Set POSTGRES_VOLUME to the exact existing Docker volume, or explicitly create one for a new installation}'

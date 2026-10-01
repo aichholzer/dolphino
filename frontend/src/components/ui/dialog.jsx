@@ -1,6 +1,5 @@
-import React from "react";
-import * as Primitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import * as Primitive from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 export function Dialog({ open, onOpenChange, title, description, children }) {
   return (
     <Primitive.Root open={open} onOpenChange={onOpenChange}>
@@ -8,9 +7,7 @@ export function Dialog({ open, onOpenChange, title, description, children }) {
         <Primitive.Overlay className="dialog-overlay" />
         <Primitive.Content className="dialog-content">
           <Primitive.Title className="dialog-title">{title}</Primitive.Title>
-          <Primitive.Description className="muted">
-            {description}
-          </Primitive.Description>
+          <Primitive.Description className="muted">{description}</Primitive.Description>
           <Primitive.Close className="dialog-close" aria-label="Close">
             <X size={19} />
           </Primitive.Close>

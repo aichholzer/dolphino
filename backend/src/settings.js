@@ -1,21 +1,20 @@
-import { z } from "zod";
-import { BEDROCK_REGION_CATALOG, isBedrockRegion } from "./provider-regions.js";
-import { readFile } from "node:fs/promises";
-import { canEncrypt, encryptSecret, decryptSecret } from "./crypto.js";
+import { z } from 'zod';
+import { BEDROCK_REGION_CATALOG, isBedrockRegion } from './provider-regions.js';
+import { readFile } from 'node:fs/promises';
+import { canEncrypt, encryptSecret, decryptSecret } from './crypto.js';
 const credential = z.preprocess(
-  (value) =>
-    typeof value === "string" && value.trim() === "" ? undefined : value,
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
   z
     .string()
     .min(1)
     .max(8192)
     .regex(/^[^\r\n\0]+$/)
     .nullable()
-    .optional(),
+    .optional()
 );
 export const providerSettingsSchema = z
   .object({
-    provider: z.enum(["openai", "bedrock"]),
+    provider: z.enum(['openai', 'bedrock']),
     model: z
       .string()
       .trim()
@@ -23,11 +22,8 @@ export const providerSettingsSchema = z
       .max(500)
       .regex(/^[a-zA-Z0-9._:/-]+$/),
     region: z.preprocess(
-      (value) => (value === "" ? undefined : value),
-      z
-        .string()
-        .refine(isBedrockRegion, "Choose a supported Bedrock region")
-        .optional(),
+      (value) => (value === '' ? undefined : value),
+      z.string().refine(isBedrockRegion, 'Choose a supported Bedrock region').optional()
     ),
     enabled: z.boolean().default(false),
     autoClassify: z.boolean().default(false),
@@ -36,101 +32,97 @@ export const providerSettingsSchema = z
     batchSize: z.number().int().min(1).max(20).default(5),
     apiKey: credential,
     accessKeyId: credential,
-    secretAccessKey: credential,
+    secretAccessKey: credential
   })
   .strict()
   .superRefine((v, ctx) => {
-    if (v.provider === "bedrock" && v.accessKeyId?.startsWith("ASIA"))
+    if (v.provider === 'bedrock' && v.accessKeyId?.startsWith('ASIA')) {
       ctx.addIssue({
-        code: "custom",
-        message: "Temporary AWS credentials are not supported",
-        path: ["accessKeyId"],
+        code: 'custom',
+        message: 'Temporary AWS credentials are not supported',
+        path: ['accessKeyId']
       });
-    if (v.provider === "bedrock" && !v.region)
+    }
+    if (v.provider === 'bedrock' && !v.region) {
       ctx.addIssue({
-        code: "custom",
-        message: "AWS region is required",
-        path: ["region"],
+        code: 'custom',
+        message: 'AWS region is required',
+        path: ['region']
       });
+    }
   });
-const fields = ["apiKey", "accessKeyId", "secretAccessKey"];
+const fields = ['apiKey', 'accessKeyId', 'secretAccessKey'];
 const names = {
-  apiKey: "llmApiKey",
-  accessKeyId: "llmAccessKeyId",
-  secretAccessKey: "llmSecretAccessKey",
+  apiKey: 'llmApiKey',
+  accessKeyId: 'llmAccessKeyId',
+  secretAccessKey: 'llmSecretAccessKey'
 };
 export const defaultProviderSettings = Object.freeze({
-  provider: "openai",
-  model: "",
+  provider: 'openai',
+  model: '',
   enabled: false,
   autoClassify: false,
   autoApply: false,
   dailyRequestLimit: 20,
-  batchSize: 5,
+  batchSize: 5
 });
 export const disabledProviderConfig = Object.freeze({
-  llmProvider: "openai",
-  llmModel: "",
+  llmProvider: 'openai',
+  llmModel: '',
   llmRegion: undefined,
-  llmBaseUrl: "https://api.openai.com/v1/",
+  llmBaseUrl: 'https://api.openai.com/v1/',
   llmEnabled: false,
   llmAutoClassify: false,
   llmAutoApply: false,
   llmDailyRequestLimit: 20,
   llmBatchSize: 5,
-  llmApiKey: "",
-  llmAccessKeyId: "",
-  llmSecretAccessKey: "",
+  llmApiKey: '',
+  llmAccessKeyId: '',
+  llmSecretAccessKey: '',
   llmConfigured: false,
   llmCredentialsUnavailable: false,
-  llmDisabledReason: "Configure a provider and credentials in Settings",
+  llmDisabledReason: 'Configure a provider and credentials in Settings'
 });
-const required = (provider) =>
-  provider === "openai" ? ["apiKey"] : ["accessKeyId", "secretAccessKey"];
+const required = (provider) => (provider === 'openai' ? ['apiKey'] : ['accessKeyId', 'secretAccessKey']);
 export function createSettingsStore({
   pool,
   appSecret,
-  providerNamespace = "llm",
+  providerNamespace = 'llm',
   settingsSchema = providerSettingsSchema,
-  defaultSettings = defaultProviderSettings,
+  defaultSettings = defaultProviderSettings
 }) {
-  if (!/^[a-z][a-z0-9_.]{0,63}$/.test(providerNamespace))
-    throw Error("Invalid provider namespace");
+  if (!/^[a-z][a-z0-9_.]{0,63}$/.test(providerNamespace)) {
+    throw Error('Invalid provider namespace');
+  }
   async function setSecret(setting, provider, value, client = pool) {
-    if (value === null) return clearSecret(setting, provider, client);
+    if (value === null) {
+      return clearSecret(setting, provider, client);
+    }
     const ciphertext = encryptSecret(value, appSecret, setting, provider);
     await client.query(
-      "INSERT INTO encrypted_credentials(setting,provider,ciphertext) VALUES($1,$2,$3) ON CONFLICT(setting,provider) DO UPDATE SET ciphertext=EXCLUDED.ciphertext,updated_at=now()",
-      [setting, provider, ciphertext],
+      'INSERT INTO encrypted_credentials(setting,provider,ciphertext) VALUES($1,$2,$3) ON CONFLICT(setting,provider) DO UPDATE SET ciphertext=EXCLUDED.ciphertext,updated_at=now()',
+      [setting, provider, ciphertext]
     );
   }
   async function getSecret(setting, provider, client = pool) {
     const row = (
-      await client.query(
-        "SELECT ciphertext FROM encrypted_credentials WHERE setting=$1 AND provider=$2",
-        [setting, provider],
-      )
+      await client.query('SELECT ciphertext FROM encrypted_credentials WHERE setting=$1 AND provider=$2', [
+        setting,
+        provider
+      ])
     ).rows[0];
-    return row
-      ? decryptSecret(row.ciphertext, appSecret, setting, provider)
-      : null;
+    return row ? decryptSecret(row.ciphertext, appSecret, setting, provider) : null;
   }
   async function clearSecret(setting, provider, client = pool) {
-    await client.query(
-      "DELETE FROM encrypted_credentials WHERE setting=$1 AND provider=$2",
-      [setting, provider],
-    );
+    await client.query('DELETE FROM encrypted_credentials WHERE setting=$1 AND provider=$2', [setting, provider]);
   }
   async function getValue(key, client = pool) {
-    return (
-      (await client.query("SELECT value FROM app_settings WHERE key=$1", [key]))
-        .rows[0]?.value ?? null
-    );
+    return (await client.query('SELECT value FROM app_settings WHERE key=$1', [key])).rows[0]?.value ?? null;
   }
   async function setValue(key, value, client = pool) {
     await client.query(
-      "INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()",
-      [key, value],
+      'INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()',
+      [key, value]
     );
   }
   async function getProviderSnapshot(client = pool) {
@@ -145,33 +137,24 @@ export function createSettingsStore({
           WHERE c.provider=s.value->>'provider' AND c.setting=ANY($2::text[])
         ), '{}'::jsonb) AS secrets
         FROM app_settings s WHERE s.key=$1`,
-        [
-          providerNamespace,
-          fields.map((field) => `${providerNamespace}.${field}`),
-        ],
+        [providerNamespace, fields.map((field) => `${providerNamespace}.${field}`)]
       )
     ).rows[0];
     let value = { ...defaultSettings };
     let settingsAvailable = true;
     if (row) {
       const stored = row.value;
-      const candidate =
-        stored && typeof stored === "object" && !Array.isArray(stored)
-          ? { ...stored }
-          : null;
+      const candidate = stored && typeof stored === 'object' && !Array.isArray(stored) ? { ...stored } : null;
       // Old database settings used enabled for both switches. Preserve that
       // persisted behavior once; new writes have two independent booleans.
-      if (
-        candidate &&
-        providerNamespace === "llm" &&
-        !Object.hasOwn(candidate, "autoClassify")
-      )
+      if (candidate && providerNamespace === 'llm' && !Object.hasOwn(candidate, 'autoClassify')) {
         candidate.autoClassify = candidate.enabled === true;
+      }
       const parsed = settingsSchema.safeParse(candidate);
-      settingsAvailable =
-        parsed.success &&
-        !fields.some((field) => Object.hasOwn(candidate || {}, field));
-      if (settingsAvailable) value = parsed.data;
+      settingsAvailable = parsed.success && !fields.some((field) => Object.hasOwn(candidate || {}, field));
+      if (settingsAvailable) {
+        value = parsed.data;
+      }
     }
     const credentials = {};
     const secrets = {};
@@ -182,17 +165,10 @@ export function createSettingsStore({
       let unreadable = false;
       if (configured) {
         try {
-          secrets[field] = decryptSecret(
-            row.secrets[setting],
-            appSecret,
-            setting,
-            value.provider,
-          );
-          if (
-            !secrets[field] ||
-            (field === "accessKeyId" && secrets[field].startsWith("ASIA"))
-          )
-            throw Error("Unsupported stored credentials");
+          secrets[field] = decryptSecret(row.secrets[setting], appSecret, setting, value.provider);
+          if (!secrets[field] || (field === 'accessKeyId' && secrets[field].startsWith('ASIA'))) {
+            throw Error('Unsupported stored credentials');
+          }
         } catch {
           unreadable = true;
           credentialsAvailable = false;
@@ -200,31 +176,28 @@ export function createSettingsStore({
       }
       credentials[field] = {
         configured,
-        masked: configured ? "••••••••" : "",
-        unreadable,
+        masked: configured ? '••••••••' : '',
+        unreadable
       };
     }
     const configured =
-      settingsAvailable &&
-      !!row &&
-      required(value.provider).every((field) => credentials[field].configured);
+      settingsAvailable && !!row && required(value.provider).every((field) => credentials[field].configured);
     const usable = configured && credentialsAvailable;
     const disabledReason = !settingsAvailable
-      ? "Stored provider settings are invalid; save valid settings to continue"
+      ? 'Stored provider settings are invalid; save valid settings to continue'
       : !credentialsAvailable
-        ? "Stored credentials unavailable; verify APP_SECRET or replace credentials"
+        ? 'Stored credentials unavailable; verify APP_SECRET or replace credentials'
         : !configured
-          ? "Configure a provider and credentials in Settings"
+          ? 'Configure a provider and credentials in Settings'
           : !value.enabled
-            ? "Provider is disabled"
+            ? 'Provider is disabled'
             : null;
     const config = {
       ...disabledProviderConfig,
       llmProvider: value.provider,
       llmModel: value.model,
       llmRegion: value.region,
-      llmBaseUrl:
-        value.provider === "openai" ? "https://api.openai.com/v1/" : "",
+      llmBaseUrl: value.provider === 'openai' ? 'https://api.openai.com/v1/' : '',
       llmEnabled: usable && value.enabled === true,
       llmAutoClassify: usable && value.autoClassify === true,
       llmAutoApply: usable && value.autoApply === true,
@@ -232,25 +205,27 @@ export function createSettingsStore({
       llmBatchSize: value.batchSize ?? 5,
       llmConfigured: configured,
       llmCredentialsUnavailable: !!row && !usable,
-      llmDisabledReason: disabledReason,
+      llmDisabledReason: disabledReason
     };
-    if (usable)
-      for (const field of required(value.provider))
+    if (usable) {
+      for (const field of required(value.provider)) {
         config[names[field]] = secrets[field];
+      }
+    }
     return {
       value,
       config,
       publicState: {
         ...value,
         regionCatalog: BEDROCK_REGION_CATALOG,
-        source: "database",
+        source: 'database',
         encryptionAvailable: canEncrypt(appSecret),
         settingsAvailable,
         credentialsAvailable,
         configured,
         disabledReason,
-        credentials,
-      },
+        credentials
+      }
     };
   }
   async function getPublicProvider() {
@@ -258,48 +233,36 @@ export function createSettingsStore({
   }
   async function saveProvider(input) {
     const parsed = settingsSchema.safeParse(input);
-    if (!parsed.success)
-      throw Object.assign(Error("Invalid provider settings"), { status: 400 });
+    if (!parsed.success) {
+      throw Object.assign(Error('Invalid provider settings'), { status: 400 });
+    }
     const value = parsed.data;
     const client = await pool.connect();
     let publicState;
     try {
-      await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(17092381)");
-      for (const field of fields)
-        if (value[field] !== undefined)
-          await setSecret(
-            `${providerNamespace}.${field}`,
-            value.provider,
-            value[field],
-            client,
-          );
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(17092381)');
+      for (const field of fields) {
+        if (value[field] !== undefined) {
+          await setSecret(`${providerNamespace}.${field}`, value.provider, value[field], client);
+        }
+      }
       // Enabling is allowed only when required stored credentials decrypt and
       // satisfy provider restrictions, including blank-preserved legacy keys.
-      if (value.enabled)
+      if (value.enabled) {
         for (const field of required(value.provider)) {
-          const plaintext = await getSecret(
-            `${providerNamespace}.${field}`,
-            value.provider,
-            client,
-          );
-          if (
-            !plaintext ||
-            (field === "accessKeyId" && plaintext.startsWith("ASIA"))
-          )
-            throw Object.assign(
-              Error("Configure required provider credentials before enabling"),
-              { status: 409 },
-            );
+          const plaintext = await getSecret(`${providerNamespace}.${field}`, value.provider, client);
+          if (!plaintext || (field === 'accessKeyId' && plaintext.startsWith('ASIA'))) {
+            throw Object.assign(Error('Configure required provider credentials before enabling'), { status: 409 });
+          }
         }
-      const publicValue = Object.fromEntries(
-        Object.entries(value).filter(([k]) => !fields.includes(k)),
-      );
+      }
+      const publicValue = Object.fromEntries(Object.entries(value).filter(([k]) => !fields.includes(k)));
       await setValue(providerNamespace, publicValue, client);
       publicState = (await getProviderSnapshot(client)).publicState;
-      await client.query("COMMIT");
+      await client.query('COMMIT');
     } catch (error) {
-      await client.query("ROLLBACK");
+      await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -310,42 +273,33 @@ export function createSettingsStore({
     return (await getProviderSnapshot()).config;
   }
   async function rotateSecrets(newSecret) {
-    if (!canEncrypt(newSecret))
-      throw Object.assign(
-        Error("New APP_SECRET must contain strong random material"),
-        { status: 400 },
-      );
+    if (!canEncrypt(newSecret)) {
+      throw Object.assign(Error('New APP_SECRET must contain strong random material'), { status: 400 });
+    }
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
-      await client.query(
-        "LOCK TABLE encrypted_credentials IN ACCESS EXCLUSIVE MODE",
-      );
-      const rows = (await client.query("SELECT * FROM encrypted_credentials"))
-        .rows;
-      for (const row of rows)
+      await client.query('BEGIN');
+      await client.query('LOCK TABLE encrypted_credentials IN ACCESS EXCLUSIVE MODE');
+      const rows = (await client.query('SELECT * FROM encrypted_credentials')).rows;
+      for (const row of rows) {
         await client.query(
-          "UPDATE encrypted_credentials SET ciphertext=$3,updated_at=now() WHERE setting=$1 AND provider=$2",
+          'UPDATE encrypted_credentials SET ciphertext=$3,updated_at=now() WHERE setting=$1 AND provider=$2',
           [
             row.setting,
             row.provider,
             encryptSecret(
-              decryptSecret(
-                row.ciphertext,
-                appSecret,
-                row.setting,
-                row.provider,
-              ),
+              decryptSecret(row.ciphertext, appSecret, row.setting, row.provider),
               newSecret,
               row.setting,
-              row.provider,
-            ),
-          ],
+              row.provider
+            )
+          ]
         );
-      await client.query("COMMIT");
+      }
+      await client.query('COMMIT');
       return rows.length;
     } catch (error) {
-      await client.query("ROLLBACK");
+      await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -353,21 +307,14 @@ export function createSettingsStore({
   }
   return {
     assertEncryptionReady: () => {
-      if (!canEncrypt(appSecret))
+      if (!canEncrypt(appSecret)) {
         throw Object.assign(
-          Error(
-            "APP_SECRET must be configured with strong random material before saving credentials",
-          ),
-          { status: 409 },
+          Error('APP_SECRET must be configured with strong random material before saving credentials'),
+          { status: 409 }
         );
+      }
     },
-    init: async () =>
-      pool.query(
-        await readFile(
-          new URL("../migrations/005_settings.sql", import.meta.url),
-          "utf8",
-        ),
-      ),
+    init: async () => pool.query(await readFile(new URL('../migrations/005_settings.sql', import.meta.url), 'utf8')),
     getPublicProvider,
     saveProvider,
     getProviderConfig,
@@ -377,6 +324,6 @@ export function createSettingsStore({
     clearSecret,
     getValue,
     setValue,
-    rotateSecrets,
+    rotateSecrets
   };
 }

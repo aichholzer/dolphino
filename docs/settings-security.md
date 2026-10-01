@@ -10,7 +10,7 @@ Existing imported transactions, manual overrides, durable jobs, receipt history,
 
 ## Explicit offline key rotation
 
-Changing `APP_SECRET` alone does **not** rotate existing ciphertext. Stop every dolphino server/worker before rotation and keep it stopped throughout. Back up the database and the old key separately. Create a new random key in a separately protected file. Provide a database URL for the intended installation and run:
+Changing `APP_SECRET` alone does **not** rotate existing ciphertext. Stop every dolphino server/worker before rotation and keep it stopped throughout. Back up the database and the old key separately. Create a new random key in a separately protected file. Provide the explicit `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`/`PGPASSWORD_FILE` and `PGSSLMODE` settings for the intended installation and run:
 
 ```sh
 APP_SECRET_FILE=/run/secrets/old-app-secret NEW_APP_SECRET_FILE=/run/secrets/new-app-secret node scripts/rotate-settings-key.js

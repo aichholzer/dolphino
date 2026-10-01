@@ -1,5 +1,7 @@
 # MVP verification — 30 September 2026
 
+Historical results below include earlier URL-based configuration. Current runtime and test reproduction use individual `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`/`PGPASSWORD_FILE` and explicit off-host `PGSSLMODE` settings. See [deployment and TLS migration](deployment.md); `DATABASE_URL`/`DATABASE_URL_FILE` are retired. `TEST_DATABASE_URL` remains an optional test-only override. Synthetic TLS tests require the `openssl` executable.
+
 All records used during development and verification are fictional. No production credentials or financial services were used. Tests create temporary PostgreSQL schemas and remove them afterward. Use a disposable database with schema creation permissions.
 
 ## Commands and outcomes
@@ -96,3 +98,7 @@ Reproduce with `npm run build`, then set `TEST_DATABASE_URL` to a disposable Pos
 Final integrated database-settings/ocean-theme verification on 2026-10-01: **130 tests passed, zero failures and zero skips**, with both database environment variables targeting an isolated PostgreSQL 17.6 fixture, the explicit test-owned database-outage opt-in enabled, and actual Chromium headless-shell rendering. Build, syntax lint, formatting, theme-token/contrast checks and the real-backend Settings browser suite all passed. Runtime dependency audit reported zero known advisories. Native PostgreSQL backup/restore compared every row across 32 public tables and matching financial reports, including encrypted Redbark settings and independent classification controls. The [independent adversarial review](database-settings-security-review.md) documents two reproduced findings, their fixes and successful retests; no unresolved finding remained within that review's scope.
 
 The existing APP_BIND block, Compose deployment/storage settings, and persisted cryptographic KDF/AAD domains were verified unchanged. No real provider, household database, LAN service or deployed instance was contacted; external account permissions and webhook delivery still require deliberate administrator verification after upgrade.
+
+## Maintainability and browser-memory isolation milestone
+
+The [maintainability verification](maintainability-verification.md) records the domain-module refactor, genuine ESLint and complete Prettier configuration, 176 passing tests with zero skips, ten passing browser commands with persistent-storage guards, the 37-table restore rehearsal, and independently reproduced fixes for stale in-memory data across authentication and navigation.

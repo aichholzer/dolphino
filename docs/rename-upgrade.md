@@ -6,13 +6,13 @@ An unfinished Telegram pairing started before the rename must be restarted: pair
 
 ## Existing external PostgreSQL
 
-Copy the existing private `.env` and secret files to the new checkout without committing them. Preserve the exact `DATABASE_URL` or `DATABASE_URL_FILE` and its mounted secret file. Database/user names such as `profe` are intentional compatibility identifiers and do not need renaming. Use only the default Compose file:
+Copy the existing private `.env` and secret files to the new checkout without committing them. Migrate the existing `DATABASE_URL`/`DATABASE_URL_FILE` into `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` and `PGPASSWORD`/`PGPASSWORD_FILE`, preserving the exact server, database, user and decoded password. Remove the retired URL variables; startup rejects them rather than guessing between configurations. Explicitly select `PGSSLMODE` and optional `PGSSLROOTCERT` as described in [deployment TLS guidance](deployment.md#postgresql-tls). Do this privately; never paste the URL or password into logs/chat. Database/user names such as `profe` are intentional compatibility identifiers and do not need renaming. Use the default Compose file (add the documented custom-CA override when needed):
 
 ```sh
 docker compose up -d --build
 ```
 
-The default Compose does not add a database, replace the configured URL or fall back during an outage. Stop the previous app first; do not run two application workers against the same database during the upgrade. Update product environment-variable names according to the configuration compatibility documentation; do not change a live deployment into demo mode. The persisted deployment-mode lock remains in place.
+The default Compose does not add a database, replace the configured database or fall back during an outage. Stop the previous app first; do not run two application workers against the same database during the upgrade. Update product environment-variable names according to the configuration compatibility documentation; do not change a live deployment into demo mode. The persisted deployment-mode lock remains in place.
 
 ## Existing bundled PostgreSQL: identify, preserve, then start
 
@@ -28,18 +28,18 @@ docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgre
 
 The result must identify the intended **volume** and its exact Docker name. If it shows a bind mount, an unexpected name, multiple database containers or an empty value, stop and identify the original storage configuration before continuing. Do not initialize a replacement database. Use the existing configuration to confirm the original database/user names and password; inspecting a volume name does not prove it contains the intended data.
 
-The new bundled override requires all of these explicit `.env` values:
+The new bundled override requires these explicit `.env` values. Move the previous `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` into the corresponding `PGDATABASE`, `PGUSER` and `PGPASSWORD` fields without changing their values. Remove `DATABASE_URL` and `DATABASE_URL_FILE` from the old `.env` as well, including any placeholder URL that was previously overridden by Compose; runtime now rejects both. Leave `PGSSLMODE`/`PGSSLROOTCERT` unset for the bundled plain-TCP network:
 
 ```dotenv
 # Examples for an older default installation only; use your actual values.
 POSTGRES_VOLUME=profe_profe_postgres
-POSTGRES_DB=profe
-POSTGRES_USER=profe
-# Preserve the existing private POSTGRES_PASSWORD value, never this placeholder.
-POSTGRES_PASSWORD=EXISTING_PRIVATE_PASSWORD
+PGDATABASE=profe
+PGUSER=profe
+# Preserve the existing private PGPASSWORD value, never this placeholder.
+PGPASSWORD=EXISTING_PRIVATE_PASSWORD
 ```
 
-`POSTGRES_DB`, `POSTGRES_USER` and password are not renamed automatically. Use URL-safe names/passwords because the override constructs a PostgreSQL URL. Changing initialization variables does not rename an initialized PostgreSQL database/user or rotate its password. Keep PostgreSQL on the same major version used by the existing deployment; this rename keeps the bundled image at PostgreSQL 17.
+The database, role and password are not renamed automatically. Map the old initialization values to the new PG fields exactly; no URL escaping is needed. Changing initialization variables does not rename an initialized PostgreSQL database/user or rotate its password. Keep PostgreSQL on the same major version used by the existing deployment; this rename keeps the bundled image at PostgreSQL 17.
 
 After a verified backup, stop the old app and database using their old Compose project/configuration. **Never use `down -v` or `docker volume rm` for this upgrade.** Then inspect the preserved volume and validate the new configuration:
 
@@ -66,10 +66,10 @@ Then configure `.env` explicitly:
 
 ```dotenv
 POSTGRES_VOLUME=dolphino_postgres
-POSTGRES_DB=dolphino
-POSTGRES_USER=dolphino
+PGDATABASE=dolphino
+PGUSER=dolphino
 # Generate privately with openssl rand -hex 32; no usable default is shipped.
-POSTGRES_PASSWORD=YOUR_NEW_RANDOM_URL_SAFE_PASSWORD
+PGPASSWORD=YOUR_NEW_RANDOM_URL_SAFE_PASSWORD
 ```
 
 Use a different volume/database for fictional demo versus live household data. Complete the normal HTTPS, APP_SECRET and first-administrator setup. Then:
@@ -83,11 +83,11 @@ Do not copy these new-install database/volume names over an existing installatio
 
 ## Verification boundary
 
-`backend/test/compose-upgrade.test.js` parses both Compose options with isolated synthetic `.env` files, verifies the external database URL/file remains unchanged, checks every required bundled variable, and verifies that different old/new project names resolve to the same explicitly selected existing volume and original database credentials. These are configuration regression tests; they do not start a PostgreSQL container or prove a volume's actual contents. Operators must inspect their existing volume and rehearse their own backup/restore. Full image runtime verification remains separately documented in the main verification notes.
+`backend/test/compose-upgrade.test.js` parses both Compose options with isolated synthetic `.env` files, verifies external PG identity and TLS settings are preserved, checks required bundled identity/volume variables and direct/file password mapping, and verifies that different old/new project names resolve to the same explicitly selected existing volume and original database credentials. These are configuration regression tests; they do not start a PostgreSQL container or prove a volume's actual contents. Operators must inspect their existing volume and rehearse their own backup/restore. Full image runtime verification remains separately documented in the main verification notes.
 
 ## Configuration, sessions and persisted protocol identifiers
 
-New configuration uses `DOLPHINO_MODE`, `DOLPHINO_CURRENCY`, `DOLPHINO_TIMEZONE`, `DOLPHINO_BOOTSTRAP_TOKEN` and their `_FILE` equivalents. Existing `PROFE_*` aliases remain accepted; supplying conflicting old/new values fails closed instead of selecting a different mode or key. `DOLPHINO_RESTORE_CONFIRM` replaces `PROFE_RESTORE_CONFIRM` with the same conflict rule. Database URLs and APP_SECRET are unchanged. Redbark and classification integration values are now configured only in administrator Settings; former integration environment values are ignored. Existing environment-only users must explicitly re-enter them after upgrade, as described in the [database integration upgrade checklist](database-integration-upgrade.md).
+New configuration uses `DOLPHINO_MODE`, `DOLPHINO_CURRENCY`, `DOLPHINO_TIMEZONE`, `DOLPHINO_BOOTSTRAP_TOKEN` and their `_FILE` equivalents. Existing `PROFE_*` aliases remain accepted; supplying conflicting old/new values fails closed instead of selecting a different mode or key. `DOLPHINO_RESTORE_CONFIRM` replaces `PROFE_RESTORE_CONFIRM` with the same conflict rule. Database identity and APP_SECRET are unchanged; only connection configuration moves from the retired URL variables to individual PG fields. Redbark and classification integration values are now configured only in administrator Settings; former integration environment values are ignored. Existing environment-only users must explicitly re-enter them after upgrade, as described in the [database integration upgrade checklist](database-integration-upgrade.md).
 
 New logins issue `dolphino_session`; old `profe_session` cookies continue resolving the same hashed PostgreSQL session records until their normal expiration. If both names exist the new name takes precedence, and a malformed new cookie never falls back to the old one. Logout and password changes expire both cookie names. User passwords, grants, invitation hashes and database-mode bindings are unchanged.
 

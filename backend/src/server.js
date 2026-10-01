@@ -1,57 +1,57 @@
-import { createSimplefinIntegration } from "./simplefin.js";
-import pg from "pg";
-import { ensureDeploymentMode } from "./deployment-mode.js";
-import { createAssistantSettings } from "./assistant-settings.js";
-import { createAssistantUsage } from "./assistant-usage.js";
-import { createAssistant } from "./assistant.js";
-import { sendAssistantTurn } from "./assistant-provider.js";
-import { FINANCE_TOOLS, invokeFinanceTool } from "./assistant-tools.js";
-import { createHouseholdAuth } from "./household-auth.js";
-import { createUserManagement } from "./users.js";
-import { ensureAccessSchema } from "./access.js";
-import { createNotificationIntegration } from "./notifications.js";
-import { createTelegramPairing, sendTelegram } from "./telegram.js";
-import { createImportHealth } from "./import-health.js";
-import { readConfig } from "./config.js";
-import { Store } from "./store.js";
-import { createRedbarkIntegration } from "./worker.js";
-import { createClassificationIntegration } from "./classification.js";
-import { createSettingsStore } from "./settings.js";
-import { createRedbarkSettings } from "./redbark-settings.js";
-import { createRegistration } from "./registration.js";
-import { createApp } from "./app.js";
+import { createSimplefinIntegration } from './simplefin.js';
+import pg from 'pg';
+import { ensureDeploymentMode } from './deployment-mode.js';
+import { createAssistantSettings } from './assistant-settings.js';
+import { createAssistantUsage } from './assistant-usage.js';
+import { createAssistant } from './assistant.js';
+import { sendAssistantTurn } from './assistant-provider.js';
+import { FINANCE_TOOLS, invokeFinanceTool } from './assistant-tools.js';
+import { createHouseholdAuth } from './household-auth.js';
+import { createUserManagement } from './users.js';
+import { ensureAccessSchema } from './access.js';
+import { createNotificationIntegration } from './notifications.js';
+import { createTelegramPairing, sendTelegram } from './telegram.js';
+import { createImportHealth } from './import-health.js';
+import { readConfig } from './config.js';
+import { Store } from './store.js';
+import { createRedbarkIntegration } from './worker.js';
+import { createClassificationIntegration } from './classification.js';
+import { createSettingsStore } from './settings.js';
+import { createRedbarkSettings } from './redbark-settings.js';
+import { createRegistration } from './registration.js';
+import { createApp } from './app.js';
 const config = readConfig();
 const pool = new pg.Pool({
-  connectionString: config.databaseUrl,
+  ...config.database,
   max: 10,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 5000
 });
-pool.on("error", () => console.error("Database connection unavailable"));
+pool.on('error', () => console.error('Database connection unavailable'));
 await ensureDeploymentMode(pool, config.mode);
 const store = new Store(pool, { mode: config.mode, timezone: config.timezone });
 await store.migrate();
 const settings = createSettingsStore({
   pool,
-  appSecret: config.appSecret,
+  appSecret: config.appSecret
 });
 await settings.init();
 const redbarkSettings = createRedbarkSettings({
   pool,
   settings,
-  appSecret: config.appSecret,
+  appSecret: config.appSecret
 });
 const registration = createRegistration({
   pool,
   settings,
   config,
-  getRedbarkConfig: redbarkSettings.getRuntimeConfig,
+  getRedbarkConfig: redbarkSettings.getRuntimeConfig
 });
 await registration.init();
 const integration = createRedbarkIntegration({
   pool,
   store,
   config,
-  getRedbarkConfig: redbarkSettings.getRuntimeConfig,
+  getRedbarkConfig: redbarkSettings.getRuntimeConfig
 });
 await integration.init();
 const simplefin = createSimplefinIntegration({ pool, store, settings, config });
@@ -60,14 +60,14 @@ const classification = createClassificationIntegration({
   pool,
   store,
   config,
-  getProviderConfig: settings.getProviderConfig,
+  getProviderConfig: settings.getProviderConfig
 });
 await classification.init();
 const notifications = createNotificationIntegration({
   pool,
   settings,
   mode: config.mode,
-  sendTelegram,
+  sendTelegram
 });
 await notifications.init();
 const telegram = createTelegramPairing({ pool, settings });
@@ -80,7 +80,7 @@ const users = createUserManagement({ pool, config, settings });
 await users.init();
 const assistantSettings = createAssistantSettings({
   pool,
-  appSecret: config.appSecret,
+  appSecret: config.appSecret
 });
 await assistantSettings.init();
 const assistantUsage = createAssistantUsage({ pool });
@@ -88,12 +88,12 @@ await assistantUsage.init();
 const assistant = createAssistant({
   getProviderConfig: async () => ({
     ...(await assistantSettings.getRuntimeConfig()),
-    timezone: config.timezone,
+    timezone: config.timezone
   }),
   reserveRequest: assistantUsage.reserveRequest,
   sendTurn: sendAssistantTurn,
   invokeTool: invokeFinanceTool,
-  tools: FINANCE_TOOLS,
+  tools: FINANCE_TOOLS
 });
 const app = createApp({
   assistant,
@@ -110,18 +110,20 @@ const app = createApp({
   registration,
   notifications,
   telegram,
-  importHealth,
+  importHealth
 });
-const server = app.start(() =>
-  console.log(`dolphino ${config.mode} listening on port ${config.port}`),
-);
+const server = app.start(() => console.log(`dolphino ${config.mode} listening on port ${config.port}`));
 integration.start();
 simplefin.start();
 classification.start();
-if (config.mode === "live") notifications.start();
+if (config.mode === 'live') {
+  notifications.start();
+}
 let closing = false;
 async function close() {
-  if (closing) return;
+  if (closing) {
+    return;
+  }
   closing = true;
   await integration.stop();
   await simplefin.stop();
@@ -133,5 +135,5 @@ async function close() {
   });
   setTimeout(() => process.exit(1), 10000).unref();
 }
-process.on("SIGTERM", close);
-process.on("SIGINT", close);
+process.on('SIGTERM', close);
+process.on('SIGINT', close);

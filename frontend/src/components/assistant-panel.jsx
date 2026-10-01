@@ -1,44 +1,31 @@
-import React, { useState, useEffect, useRef } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { X, Sparkles, Send, Square, Plus, FileDown } from "lucide-react";
-import { Button } from "./ui/button";
-const safeId = (id) =>
-  typeof id === "string" && /^[a-zA-Z0-9_-]{1,120}$/.test(id);
+import { useState, useEffect, useRef } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { X, Sparkles, Send, Square, Plus, FileDown } from 'lucide-react';
+import { Button } from './ui/button';
+const safeId = (id) => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(id);
 function Message({ message, onViewTransaction }) {
   const text =
-    typeof message.content === "string"
-      ? message.content
-      : typeof message.text === "string"
-        ? message.text
-        : "";
+    typeof message.content === 'string' ? message.content : typeof message.text === 'string' ? message.text : '';
   return (
-    <article
-      className={`assistant-message assistant-message-${message.role === "user" ? "user" : "assistant"}`}
-    >
-      <strong>{message.role === "user" ? "You" : "dolphino assistant"}</strong>
+    <article className={`assistant-message assistant-message-${message.role === 'user' ? 'user' : 'assistant'}`}>
+      <strong>{message.role === 'user' ? 'You' : 'dolphino assistant'}</strong>
       <p>{text}</p>
       {message.citations?.length > 0 && (
         <div className="assistant-citations">
           {message.citations.map((c, i) => (
             <div key={c.id || i}>
-              <span>{c.label || c.tool || "Verified tool result"}</span>
-              {typeof c.provenance === "string" && (
-                <small>{c.provenance}</small>
-              )}
+              <span>{c.label || c.tool || 'Verified tool result'}</span>
+              {typeof c.provenance === 'string' && <small>{c.provenance}</small>}
               {onViewTransaction &&
-                c.reference?.type === "transaction" &&
-                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                  c.reference.id || "",
-                ) && (
+                c.reference?.type === 'transaction' &&
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.reference.id || '') && (
                   <button
                     type="button"
                     className="total-drill"
                     onClick={() =>
                       onViewTransaction(
                         c.reference.id,
-                        /^[A-Z]{3}$/.test(c.provenance?.currency || "")
-                          ? c.provenance.currency
-                          : undefined,
+                        /^[A-Z]{3}$/.test(c.provenance?.currency || '') ? c.provenance.currency : undefined
                       )
                     }
                   >
@@ -46,10 +33,7 @@ function Message({ message, onViewTransaction }) {
                   </button>
                 )}
               {safeId(c.reportId) && (
-                <a
-                  href={`/api/assistant/reports/${encodeURIComponent(c.reportId)}`}
-                  download
-                >
+                <a href={`/api/assistant/reports/${encodeURIComponent(c.reportId)}`} download>
                   <FileDown size={13} />
                   Download authorized report
                 </a>
@@ -66,12 +50,12 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     [status, setStatus] = useState(null),
     [chats, setChats] = useState([]),
     [chat, setChat] = useState(null),
-    [question, setQuestion] = useState(""),
+    [question, setQuestion] = useState(''),
     [ack, setAck] = useState(false),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(false),
-    [error, setError] = useState(""),
-    [lastQuestion, setLastQuestion] = useState("");
+    [error, setError] = useState(''),
+    [lastQuestion, setLastQuestion] = useState('');
   const request = useRef(null),
     generation = useRef(0),
     chatRef = useRef(null),
@@ -84,36 +68,46 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     setAck(false);
     setStatus(null);
     setOpen(false);
-    setQuestion("");
-    setLastQuestion("");
-    setError("");
+    setQuestion('');
+    setLastQuestion('');
+    setError('');
+    return () => {
+      generation.current++;
+      request.current?.abort();
+      request.current = null;
+    };
   }, [session?.user?.id]);
   useEffect(() => {
     chatRef.current = chat;
   }, [chat]);
   async function refresh() {
     setLoading(true);
-    setError("");
+    setError('');
     const rev = generation.current;
     try {
-      const [s, h] = await Promise.all([
-        api("/assistant/status"),
-        api("/assistant/chats"),
-      ]);
-      if (rev !== generation.current) return;
+      const [s, h] = await Promise.all([api('/assistant/status'), api('/assistant/chats')]);
+      if (rev !== generation.current) {
+        return;
+      }
       setStatus(s);
       setChats(h.chats || []);
     } catch (e) {
-      if (rev === generation.current) setError(e.message);
+      if (rev === generation.current) {
+        setError(e.message);
+      }
     } finally {
-      if (rev === generation.current) setLoading(false);
+      if (rev === generation.current) {
+        setLoading(false);
+      }
     }
   }
   useEffect(() => {
-    if (open) refresh();
+    if (open) {
+      refresh();
+    }
   }, [open]);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "nearest" });
+    bottom.current?.scrollIntoView({ block: 'nearest' });
   }, [chat, busy]);
   async function cancel() {
     const active = chatRef.current;
@@ -123,23 +117,29 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     if (active?.id) {
       try {
         await api(`/assistant/chats/${encodeURIComponent(active.id)}/cancel`, {
-          method: "POST",
-          body: "{}",
+          method: 'POST',
+          body: '{}'
         });
-        const recovered = await api(
-          `/assistant/chats/${encodeURIComponent(active.id)}`,
-        );
-        if (rev === generation.current) setChat(recovered);
+        const recovered = await api(`/assistant/chats/${encodeURIComponent(active.id)}`);
+        if (rev === generation.current) {
+          setChat(recovered);
+        }
       } catch (e) {
-        if (rev === generation.current) setError(e.message);
+        if (rev === generation.current) {
+          setError(e.message);
+        }
       }
     }
-    if (rev === generation.current) setBusy(false);
+    if (rev === generation.current) {
+      setBusy(false);
+    }
   }
   async function send(text) {
-    if (!text.trim() || busy || !ack) return;
+    if (!text.trim() || busy || !ack) {
+      return;
+    }
     setBusy(true);
-    setError("");
+    setError('');
     setLastQuestion(text);
     const rev = ++generation.current;
     const controller = new AbortController();
@@ -147,69 +147,68 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     try {
       let current = chat;
       if (!current) {
-        current = await api("/assistant/chats", {
-          method: "POST",
-          body: "{}",
-          signal: controller.signal,
+        current = await api('/assistant/chats', {
+          method: 'POST',
+          body: '{}',
+          signal: controller.signal
         });
-        if (rev !== generation.current) return;
+        if (rev !== generation.current) {
+          return;
+        }
         chatRef.current = current;
         setChat(current);
       }
       setChat({
         ...current,
-        messages: [
-          ...(current.messages || []),
-          { role: "user", content: text },
-        ],
+        messages: [...(current.messages || []), { role: 'user', content: text }]
       });
-      setQuestion("");
-      const r = await api(
-        `/assistant/chats/${encodeURIComponent(current.id)}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ message: text, acknowledgeDataSharing: true }),
-          signal: controller.signal,
-        },
-      );
-      if (rev !== generation.current) return;
+      setQuestion('');
+      const r = await api(`/assistant/chats/${encodeURIComponent(current.id)}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ message: text, acknowledgeDataSharing: true }),
+        signal: controller.signal
+      });
+      if (rev !== generation.current) {
+        return;
+      }
       setChat(
         r.chat || {
           ...current,
           messages: [
             ...(current.messages || []),
-            { role: "user", content: text },
+            { role: 'user', content: text },
             {
-              role: "assistant",
-              content:
-                typeof r.reply === "string" ? r.reply : r.reply?.content || "",
-              citations: r.citations || [],
-            },
-          ],
-        },
+              role: 'assistant',
+              content: typeof r.reply === 'string' ? r.reply : r.reply?.content || '',
+              citations: r.citations || []
+            }
+          ]
+        }
       );
       if (r.chat && r.citations?.length) {
         setChat((c) => ({
           ...c,
-          messages: c.messages.map((m, i) =>
-            i === c.messages.length - 1 ? { ...m, citations: r.citations } : m,
-          ),
+          messages: c.messages.map((m, i) => (i === c.messages.length - 1 ? { ...m, citations: r.citations } : m))
         }));
       }
-      const history = await api("/assistant/chats");
-      if (rev === generation.current) setChats(history.chats || []);
+      const history = await api('/assistant/chats');
+      if (rev === generation.current) {
+        setChats(history.chats || []);
+      }
     } catch (e) {
-      if (rev === generation.current && e.name !== "AbortError") {
+      if (rev === generation.current && e.name !== 'AbortError') {
         setError(e.message);
         try {
           if (chatRef.current?.id) {
-            const recovered = await api(
-              `/assistant/chats/${encodeURIComponent(chatRef.current.id)}`,
-            );
-            if (rev === generation.current) setChat(recovered);
+            const recovered = await api(`/assistant/chats/${encodeURIComponent(chatRef.current.id)}`);
+            if (rev === generation.current) {
+              setChat(recovered);
+            }
           }
         } catch {
-          if (rev === generation.current) setChat(null);
+          if (rev === generation.current) {
+            setChat(null);
+          }
         }
       }
     } finally {
@@ -224,7 +223,9 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     <Dialog.Root
       open={open}
       onOpenChange={(v) => {
-        if (!v && busy) cancel();
+        if (!v && busy) {
+          cancel();
+        }
         setOpen(v);
       }}
     >
@@ -244,8 +245,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                 Your dolphino assistant
               </Dialog.Title>
               <Dialog.Description>
-                Private to your account · temporary history expires after 30
-                minutes or a server restart.
+                Private to your account · temporary history expires after 30 minutes or a server restart.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -257,21 +257,21 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
           <div className="assistant-toolbar">
             <select
               aria-label="Assistant conversation"
-              value={chat?.id || ""}
+              value={chat?.id || ''}
               disabled={busy}
               onChange={async (e) => {
                 const rev = ++generation.current;
-                setError("");
+                setError('');
                 setAck(false);
                 if (!e.target.value) {
                   setChat(null);
                   return;
                 }
                 try {
-                  const selected = await api(
-                    `/assistant/chats/${encodeURIComponent(e.target.value)}`,
-                  );
-                  if (rev === generation.current) setChat(selected);
+                  const selected = await api(`/assistant/chats/${encodeURIComponent(e.target.value)}`);
+                  if (rev === generation.current) {
+                    setChat(selected);
+                  }
                 } catch (err) {
                   if (rev === generation.current) {
                     setChat(null);
@@ -294,10 +294,10 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               onClick={() => {
                 generation.current++;
                 setChat(null);
-                setQuestion("");
-                setLastQuestion("");
+                setQuestion('');
+                setLastQuestion('');
                 setAck(false);
-                setError("");
+                setError('');
               }}
             >
               <Plus size={15} />
@@ -312,12 +312,9 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                 <h3>Your assistant is not enabled yet</h3>
                 <p>
                   {status?.disabledReason ||
-                    "An administrator must configure a separate assistant provider and enable financial data sharing in Settings."}
+                    'An administrator must configure a separate assistant provider and enable financial data sharing in Settings.'}
                 </p>
-                <p>
-                  Classification credentials are not reused. You can keep using
-                  dolphino without an assistant.
-                </p>
+                <p>Classification credentials are not reused. You can keep using dolphino without an assistant.</p>
                 <Button variant="outline" onClick={refresh}>
                   Refresh assistant status
                 </Button>
@@ -327,14 +324,10 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               <div className="assistant-empty">
                 <h3>A little help making sense of it.</h3>
                 <p>
-                  Ask about spending, compare months, or request a report. The
-                  assistant can only read financial data you are permitted to
-                  access.
+                  Ask about spending, compare months, or request a report. The assistant can only read financial data
+                  you are permitted to access.
                 </p>
-                <p>
-                  It cannot edit transactions, change budgets, or send
-                  notifications.
-                </p>
+                <p>It cannot edit transactions, change budgets, or send notifications.</p>
               </div>
             )}
             {chat?.messages?.map((m, i) => (
@@ -360,12 +353,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               <div role="alert" className="alert alert-error">
                 <span>{error}</span>
                 {lastQuestion && usable && !busy && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!ack}
-                    onClick={() => send(lastQuestion)}
-                  >
+                  <Button variant="outline" size="sm" disabled={!ack} onClick={() => send(lastQuestion)}>
                     Retry question
                   </Button>
                 )}
@@ -382,15 +370,10 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
           >
             {usable && (
               <label className="checkbox-label assistant-consent">
-                <input
-                  type="checkbox"
-                  checked={ack}
-                  disabled={busy}
-                  onChange={(e) => setAck(e.target.checked)}
-                />
+                <input type="checkbox" checked={ack} disabled={busy} onChange={(e) => setAck(e.target.checked)} />
                 <span>
                   {status?.disclosure ||
-                    "I agree to send my questions and authorized financial tool results to the configured AI provider for this conversation."}
+                    'I agree to send my questions and authorized financial tool results to the configured AI provider for this conversation.'}
                 </span>
               </label>
             )}
@@ -405,16 +388,14 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               placeholder="What changed in my spending this month?"
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   send(question);
                 }
               }}
             />
             <div className="assistant-compose-actions">
-              <small>
-                Read-only tools · verify answers against cited records
-              </small>
+              <small>Read-only tools · verify answers against cited records</small>
               {busy ? (
                 <Button type="button" variant="outline" onClick={cancel}>
                   <Square size={14} />

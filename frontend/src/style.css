@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 :root {
   /* Ocean palette: dark text on quiet pastel surfaces, with semantic colors. */
   --ink: #173847;
@@ -41,7 +41,7 @@
     ui-sans-serif,
     -apple-system,
     BlinkMacSystemFont,
-    "Segoe UI",
+    'Segoe UI',
     sans-serif;
   color: var(--ink);
   background: var(--canvas);
@@ -1710,7 +1710,7 @@ label select {
   font-size: 11px;
   margin: 0;
 }
-.transaction-scope input[type="date"] {
+.transaction-scope input[type='date'] {
   padding: 7px;
   font-size: 12px;
 }
@@ -1754,7 +1754,7 @@ label select {
   position: relative;
 }
 .account-open:after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -1778,12 +1778,12 @@ label select {
   flex-direction: row;
   align-items: center;
 }
-.integration-settings input:not([type="checkbox"]),
+.integration-settings input:not([type='checkbox']),
 .integration-settings select {
   width: 100%;
   min-width: 0;
 }
-.integration-settings input[type="checkbox"] {
+.integration-settings input[type='checkbox'] {
   width: 15px;
   height: 15px;
 }
@@ -2101,10 +2101,10 @@ label select {
     transform: translateX(100%);
   }
 }
-.assistant-panel[data-state="open"] {
+.assistant-panel[data-state='open'] {
   animation: assistant-enter 0.18s ease-out;
 }
-.assistant-panel[data-state="closed"] {
+.assistant-panel[data-state='closed'] {
   animation: assistant-exit 0.14s ease-in;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2160,7 +2160,7 @@ h3 {
   color: var(--ink);
 }
 h1 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-weight: 400;
   font-size: 34px;
   letter-spacing: -1.1px;
@@ -2699,7 +2699,7 @@ label {
   color: var(--ocean-deep);
 }
 .login-card h1 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 31px;
   line-height: 1.25;
 }
@@ -2741,7 +2741,7 @@ label {
 }
 .assistant-empty h3 {
   color: var(--ink);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 24px;
   font-weight: 400;
   line-height: 1.3;

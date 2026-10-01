@@ -1,24 +1,19 @@
-import React, { useState } from "react";
-import { BrandMark } from "./brand";
-import { Button } from "./ui/button";
+import { useState } from 'react';
+import { BrandMark } from './brand';
+import { Button } from './ui/button';
 
 export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
-  const mode = activationToken
-    ? "activate"
-    : session?.setupRequired
-      ? "bootstrap"
-      : "login";
-  const [email, setEmail] = useState(""),
-    [name, setName] = useState(""),
-    [password, setPassword] = useState(""),
-    [confirm, setConfirm] = useState(""),
-    [bootstrapToken, setBootstrapToken] = useState(""),
+  const mode = activationToken ? 'activate' : session?.setupRequired ? 'bootstrap' : 'login';
+  const [email, setEmail] = useState(''),
+    [name, setName] = useState(''),
+    [password, setPassword] = useState(''),
+    [confirm, setConfirm] = useState(''),
+    [bootstrapToken, setBootstrapToken] = useState(''),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
-  const creating = mode !== "login";
-  const resetting =
-    mode === "activate" && location.pathname === "/reset-password";
+    [error, setError] = useState(''),
+    [notice, setNotice] = useState('');
+  const creating = mode !== 'login';
+  const resetting = mode === 'activate' && location.pathname === '/reset-password';
   return (
     <div className="login-screen">
       <form
@@ -26,39 +21,36 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
-          setError("");
+          setError('');
           try {
-            if (creating && password !== confirm)
-              throw Error("Passwords do not match.");
-            const path =
-              mode === "activate"
-                ? "/auth/activate"
-                : mode === "bootstrap"
-                  ? "/auth/bootstrap"
-                  : "/login";
+            if (creating && password !== confirm) {
+              throw Error('Passwords do not match.');
+            }
+            const path = mode === 'activate' ? '/auth/activate' : mode === 'bootstrap' ? '/auth/bootstrap' : '/login';
             const body =
-              mode === "activate"
+              mode === 'activate'
                 ? {
                     token: activationToken,
                     password,
-                    ...(resetting ? {} : { name }),
+                    ...(resetting ? {} : { name })
                   }
-                : mode === "bootstrap"
+                : mode === 'bootstrap'
                   ? { email, name, password, bootstrapToken }
                   : { email, password };
-            await api(path, { method: "POST", body: JSON.stringify(body) });
-            setPassword("");
-            setConfirm("");
-            setBootstrapToken("");
-            if (mode === "activate")
-              history.replaceState(null, "", location.pathname);
-            const next = await api("/session");
+            await api(path, { method: 'POST', body: JSON.stringify(body) });
+            setPassword('');
+            setConfirm('');
+            setBootstrapToken('');
+            if (mode === 'activate') {
+              history.replaceState(null, '', location.pathname);
+            }
+            const next = await api('/session');
             if (!next.authenticated && !next.demo) {
-              setNotice(
-                "Account created. Sign in with your email and password.",
-              );
+              setNotice('Account created. Sign in with your email and password.');
               onAuthenticated({ ...next, setupRequired: false });
-            } else onAuthenticated(next);
+            } else {
+              onAuthenticated(next);
+            }
           } catch (e) {
             setError(e.message);
           } finally {
@@ -70,24 +62,24 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
           <BrandMark />
         </div>
         <h1>
-          {mode === "bootstrap"
-            ? "Make yourself at home."
-            : mode === "activate"
+          {mode === 'bootstrap'
+            ? 'Make yourself at home.'
+            : mode === 'activate'
               ? resetting
-                ? "Choose a new password."
-                : "Join your household."
-              : "Welcome home."}
+                ? 'Choose a new password.'
+                : 'Join your household.'
+              : 'Welcome home.'}
         </h1>
         <p className="muted">
-          {mode === "bootstrap"
-            ? "Create the first administrator using the bootstrap token from your server."
-            : mode === "activate"
+          {mode === 'bootstrap'
+            ? 'Create the first administrator using the bootstrap token from your server.'
+            : mode === 'activate'
               ? resetting
-                ? "Reset access to your dolphino account."
-                : "Accept your invitation and set your own password."
-              : "Sign in to your private financial workspace."}
+                ? 'Reset access to your dolphino account.'
+                : 'Accept your invitation and set your own password.'
+              : 'Sign in to your private financial workspace.'}
         </p>
-        {mode !== "activate" && (
+        {mode !== 'activate' && (
           <label>
             Email address
             <input
@@ -111,7 +103,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
             />
           </label>
         )}
-        {mode === "bootstrap" && (
+        {mode === 'bootstrap' && (
           <label>
             Server bootstrap token
             <input
@@ -124,10 +116,10 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
           </label>
         )}
         <label>
-          {creating ? "Choose a password" : "Your password"}
+          {creating ? 'Choose a password' : 'Your password'}
           <input
             type="password"
-            autoComplete={creating ? "new-password" : "current-password"}
+            autoComplete={creating ? 'new-password' : 'current-password'}
             required
             minLength={creating ? 12 : undefined}
             value={password}
@@ -147,9 +139,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
                 onChange={(e) => setConfirm(e.target.value)}
               />
             </label>
-            <p className="footnote">
-              Use at least 12 characters and a unique password.
-            </p>
+            <p className="footnote">Use at least 12 characters and a unique password.</p>
           </>
         )}
         {error && (
@@ -160,21 +150,21 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
         {notice && <p role="status">{notice}</p>}
         <Button disabled={busy}>
           {busy
-            ? "Please wait…"
-            : mode === "bootstrap"
-              ? "Create administrator"
-              : mode === "activate"
+            ? 'Please wait…'
+            : mode === 'bootstrap'
+              ? 'Create administrator'
+              : mode === 'activate'
                 ? resetting
-                  ? "Reset my password"
-                  : "Activate my account"
-                : "Sign in"}
+                  ? 'Reset my password'
+                  : 'Activate my account'
+                : 'Sign in'}
         </Button>
         <p className="footnote">
-          {mode === "bootstrap"
-            ? "Your server administrator supplies the bootstrap token. There is no default password."
-            : mode === "activate"
-              ? "Invitations expire and can be used only once. Request a new invitation if this link no longer works."
-              : "Your account belongs to this dolphino installation. Contact your administrator if you need access."}
+          {mode === 'bootstrap'
+            ? 'Your server administrator supplies the bootstrap token. There is no default password.'
+            : mode === 'activate'
+              ? 'Invitations expire and can be used only once. Request a new invitation if this link no longer works.'
+              : 'Your account belongs to this dolphino installation. Contact your administrator if you need access.'}
         </p>
       </form>
     </div>
@@ -182,35 +172,37 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
 }
 
 export function PasswordForm({ api, onChanged }) {
-  const [current, setCurrent] = useState(""),
-    [password, setPassword] = useState(""),
-    [confirm, setConfirm] = useState(""),
+  const [current, setCurrent] = useState(''),
+    [password, setPassword] = useState(''),
+    [confirm, setConfirm] = useState(''),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [error, setError] = useState(''),
+    [notice, setNotice] = useState('');
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        setError("");
-        setNotice("");
+        setError('');
+        setNotice('');
         try {
-          if (password !== confirm) throw Error("Passwords do not match.");
-          await api("/auth/change-password", {
-            method: "POST",
+          if (password !== confirm) {
+            throw Error('Passwords do not match.');
+          }
+          await api('/auth/change-password', {
+            method: 'POST',
             body: JSON.stringify({
               currentPassword: current,
-              newPassword: password,
-            }),
+              newPassword: password
+            })
           });
-          setCurrent("");
-          setPassword("");
-          setConfirm("");
-          setNotice(
-            "Password updated. All sessions have been signed out. Sign in with your new password.",
-          );
-          if (onChanged) onChanged();
+          setCurrent('');
+          setPassword('');
+          setConfirm('');
+          setNotice('Password updated. All sessions have been signed out. Sign in with your new password.');
+          if (onChanged) {
+            onChanged();
+          }
         } catch (e) {
           setError(e.message);
         } finally {
@@ -219,9 +211,7 @@ export function PasswordForm({ api, onChanged }) {
       }}
     >
       <h3>Change your password</h3>
-      <p className="footnote">
-        Updating your password signs out every session, including this one.
-      </p>
+      <p className="footnote">Updating your password signs out every session, including this one.</p>
       <label>
         Current password
         <input
@@ -266,7 +256,7 @@ export function PasswordForm({ api, onChanged }) {
 }
 
 export function AccessPending({ api, session, onSession }) {
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   return (
     <div className="login-screen">
       <section className="card login-card integration-settings">
@@ -275,14 +265,10 @@ export function AccessPending({ api, session, onSession }) {
         </div>
         <h1>Your account is ready.</h1>
         <p className="muted">
-          Signed in as {session.user?.email}. Your administrator has not granted
-          financial access yet. Ask them to select the accounts or budgets you
-          can view or edit.
+          Signed in as {session.user?.email}. Your administrator has not granted financial access yet. Ask them to
+          select the accounts or budgets you can view or edit.
         </p>
-        <PasswordForm
-          api={api}
-          onChanged={() => onSession({ authenticated: false })}
-        />
+        <PasswordForm api={api} onChanged={() => onSession({ authenticated: false })} />
         {error && (
           <p role="alert" className="negative">
             {error}
@@ -293,7 +279,7 @@ export function AccessPending({ api, session, onSession }) {
             variant="outline"
             onClick={async () => {
               try {
-                onSession(await api("/session"));
+                onSession(await api('/session'));
               } catch (e) {
                 setError(e.message);
               }
@@ -305,7 +291,7 @@ export function AccessPending({ api, session, onSession }) {
             variant="outline"
             onClick={async () => {
               try {
-                await api("/logout", { method: "POST" });
+                await api('/logout', { method: 'POST' });
                 onSession({ authenticated: false });
               } catch (e) {
                 setError(e.message);

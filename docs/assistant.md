@@ -6,15 +6,15 @@ The assistant receives no database connection, credentials, SQL executor, arbitr
 
 ## Tools and supporting evidence
 
-| Tool | Authorized coverage |
-| --- | --- |
-| `finance_accounts` | Account details, source balance snapshots and freshness |
-| `finance_transactions` | Date/account/category/merchant/amount/status/kind search and bounded pagination |
-| `finance_transaction` | One transaction, splits and local correction within account permission |
-| `finance_aggregate` | Exact income/expenses/net and pending/transfer amounts, grouped by month/category/merchant/account; rankings and prior equal-period comparisons |
-| `finance_budgets` | Granted monthly budgets, allocations, rollover and overspend alerts; no underlying account disclosure |
-| `finance_quality` | Permitted account import coverage and reconciliation limitations |
-| `finance_report` | Downloadable exact aggregate report, regenerated under current permissions |
+| Tool                   | Authorized coverage                                                                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finance_accounts`     | Account details, source balance snapshots and freshness                                                                                         |
+| `finance_transactions` | Date/account/category/merchant/amount/status/kind search and bounded pagination                                                                 |
+| `finance_transaction`  | One transaction, splits and local correction within account permission                                                                          |
+| `finance_aggregate`    | Exact income/expenses/net and pending/transfer amounts, grouped by month/category/merchant/account; rankings and prior equal-period comparisons |
+| `finance_budgets`      | Granted monthly budgets, allocations, rollover and overspend alerts; no underlying account disclosure                                           |
+| `finance_quality`      | Permitted account import coverage and reconciliation limitations                                                                                |
+| `finance_report`       | Downloadable exact aggregate report, regenerated under current permissions                                                                      |
 
 Amounts and comparisons are computed by backend integer arithmetic, not by asking the model to add displayed rows. Currency is required; currencies are never converted or combined. Report downloads are authenticated JSON, not public links. Tool provenance includes filters, timezone, currency, generation time, coverage and truncation. Inspect supporting evidence: natural-language model output can still be mistaken. See [tool contracts and financial policy](assistant-tools.md).
 
