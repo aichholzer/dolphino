@@ -1,12 +1,21 @@
 // Destructive only to new, randomly named databases created by this script.
 // Never accepts an existing source or target database name.
 import pg from "pg";
+import { ensureDeploymentMode } from "../backend/src/deployment-mode.js";
 import assert from "node:assert/strict";
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import {
+  createHouseholdAuth,
+  hashHouseholdPassword,
+} from "../backend/src/household-auth.js";
+import { createUserManagement } from "../backend/src/users.js";
+import { ensureAccessSchema } from "../backend/src/access.js";
+import { createAssistantSettings } from "../backend/src/assistant-settings.js";
+import { createAssistantUsage } from "../backend/src/assistant-usage.js";
 import { createSettingsStore } from "../backend/src/settings.js";
 import { createNotificationIntegration } from "../backend/src/notifications.js";
 import { createRegistration } from "../backend/src/registration.js";
@@ -25,12 +34,12 @@ if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))
     "Restore rehearsal is restricted to a local test PostgreSQL server",
   );
 const suffix = randomUUID().replaceAll("-", "");
-const source = `profe_backup_test_${suffix}`;
-const target = `profe_restore_test_${suffix}`;
+const source = `dolphino_backup_test_${suffix}`;
+const target = `dolphino_restore_test_${suffix}`;
 const admin = new pg.Pool({ connectionString });
 const pools = [];
 const created = [];
-const backupDir = await mkdtemp(join(tmpdir(), "profe-restore-rehearsal-"));
+const backupDir = await mkdtemp(join(tmpdir(), "dolphino-restore-rehearsal-"));
 const env = {
   ...process.env,
   PGHOST: url.hostname,
@@ -67,6 +76,7 @@ try {
     created.push(name);
   }
   const srcPool = connect(source);
+  await ensureDeploymentMode(srcPool, "demo");
   const store = new Store(srcPool, { mode: "demo" });
   await store.migrate();
   await ensureRedbarkSchema(srcPool);
@@ -85,6 +95,79 @@ try {
     appSecret: syntheticMasterKey,
   });
   await settings.init();
+  const authConfig = {
+    mode: "live",
+    origin: "https://dolphino.example.invalid",
+    bootstrapToken: randomBytes(32).toString("base64"),
+  };
+  const householdAuth = createHouseholdAuth({
+    pool: srcPool,
+    config: authConfig,
+  });
+  await householdAuth.init();
+  await createUserManagement({
+    pool: srcPool,
+    config: authConfig,
+    settings,
+    sendMail: async () => {
+      throw Error("Email forbidden in restore rehearsal");
+    },
+  }).init();
+  await ensureAccessSchema(srcPool);
+  const bootstrap = await householdAuth.bootstrap(
+    { headers: {}, socket: { remoteAddress: "127.0.0.1" } },
+    {
+      email: "restore-admin@example.invalid",
+      name: "Fictional administrator",
+      password: "Synthetic recovery fixture password only",
+      bootstrapToken: authConfig.bootstrapToken,
+    },
+  );
+  const authRequest = { headers: { cookie: bootstrap.cookie.split(";")[0] } };
+  const assistantSettings = createAssistantSettings({
+    pool: srcPool,
+    appSecret: syntheticMasterKey,
+  });
+  await assistantSettings.init();
+  await assistantSettings.save({
+    provider: "openai",
+    model: "synthetic-assistant-model",
+    enabled: false,
+    dataSharingAcknowledged: false,
+    apiKey: "synthetic-assistant-rehearsal-key",
+    dailyRequestsPerUser: 3,
+  });
+  const assistantUsage = createAssistantUsage({ pool: srcPool });
+  await assistantUsage.init();
+  await assistantUsage.reserveRequest({ userId: bootstrap.user.id, limit: 3 });
+  await assistantUsage.reserveRequest({ userId: bootstrap.user.id, limit: 3 });
+
+  const memberId = randomUUID();
+  await srcPool.query(
+    "INSERT INTO household_users(id,email,name,role,password_hash) VALUES($1,'restore-member@example.invalid','Fictional member','member',$2)",
+    [
+      memberId,
+      await hashHouseholdPassword("Synthetic member fixture password only"),
+    ],
+  );
+  const inviteHash = createHash("sha256").update(randomBytes(32)).digest("hex");
+  await srcPool.query(
+    "INSERT INTO household_invitations(email,role,purpose,token_hash,expires_at,delivery_state) VALUES('invite@example.invalid','member','invite',$1,now()+interval '1 day','operator')",
+    [inviteHash],
+  );
+  const grantedAccount = (await store.listAccounts())[0];
+  const grantedBudget = (
+    await srcPool.query("SELECT id FROM budgets ORDER BY id LIMIT 1")
+  ).rows[0];
+  await srcPool.query(
+    "INSERT INTO user_account_grants(user_id,mode,account_id,permission) VALUES($1,'demo',$2,'view')",
+    [memberId, grantedAccount.id],
+  );
+  await srcPool.query(
+    "INSERT INTO user_budget_grants(user_id,mode,budget_id,permission) VALUES($1,'demo',$2,'edit')",
+    [memberId, grantedBudget.id],
+  );
+
   await settings.saveProvider({
     provider: "openai",
     model: "synthetic-rehearsal",
@@ -128,7 +211,7 @@ try {
   for (const [setting, provider, value] of extraCredentials)
     await settings.setSecret(setting, provider, value);
   await srcPool.query(
-    "INSERT INTO webhook_registration(singleton,callback_url,destination_id,state,ping_event_id) VALUES(true,'https://profe.example.invalid/api/webhooks/redbark','ed_fictionalbackup','registered','evt_fictionalbackup')",
+    "INSERT INTO webhook_registration(singleton,callback_url,destination_id,state,ping_event_id) VALUES(true,'https://dolphino.example.invalid/api/webhooks/redbark','ed_fictionalbackup','registered','evt_fictionalbackup')",
   );
   const notificationEvent = (
     await srcPool.query(
@@ -218,13 +301,80 @@ try {
       "sh",
       [resolve("scripts/restore.sh"), join(backupDir, dumps[0])],
       {
-        env: { ...env, PGDATABASE: target, PROFE_RESTORE_CONFIRM: target },
+        env: { ...env, PGDATABASE: target, DOLPHINO_RESTORE_CONFIRM: target },
         encoding: "utf8",
       },
     ).trim(),
   );
   const dstPool = connect(target);
   const restored = new Store(dstPool, { mode: "demo" });
+
+  const restoredAssistantSettings = createAssistantSettings({
+    pool: dstPool,
+    appSecret: syntheticMasterKey,
+  });
+  assert.equal(
+    (await restoredAssistantSettings.getRuntimeConfig()).llmApiKey,
+    "synthetic-assistant-rehearsal-key",
+  );
+  assert.equal(
+    (await restoredAssistantSettings.getRuntimeConfig()).assistantEnabled,
+    false,
+  );
+  assert.equal(
+    (await createAssistantSettings({ pool: dstPool }).getRuntimeConfig())
+      .llmApiKey,
+    "",
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT requests FROM assistant_usage WHERE user_id=$1",
+        [bootstrap.user.id],
+      )
+    ).rows[0].requests,
+    2,
+  );
+  await assert.rejects(
+    createAssistantUsage({ pool: dstPool }).reserveRequest({
+      userId: bootstrap.user.id,
+      limit: 2,
+    }),
+    (error) => error.status === 429,
+  );
+  const restoredAuth = createHouseholdAuth({
+    pool: dstPool,
+    config: { mode: "live" },
+  });
+  assert.equal(
+    (await restoredAuth.session(authRequest)).email,
+    "restore-admin@example.invalid",
+  );
+  assert.equal((await restoredAuth.setupStatus()).setupRequired, false);
+  assert.equal(
+    (await dstPool.query("SELECT token_hash FROM household_invitations"))
+      .rows[0].token_hash,
+    inviteHash,
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT permission FROM user_account_grants WHERE user_id=$1",
+        [memberId],
+      )
+    ).rows[0].permission,
+    "view",
+  );
+  assert.equal(
+    (
+      await dstPool.query(
+        "SELECT permission FROM user_budget_grants WHERE user_id=$1",
+        [memberId],
+      )
+    ).rows[0].permission,
+    "edit",
+  );
+
   const restoredSettings = createSettingsStore({
     pool: dstPool,
     appSecret: syntheticMasterKey,
@@ -317,6 +467,8 @@ try {
           pendingMinor: r.pendingMinor,
         })),
         checks: [
+          "Independent encrypted assistant credentials and durable per-user quota restore without any provider request",
+          "Household users, hashed sessions, hashed invitations, closed bootstrap and independent resource grants survive",
           "Every row in every public table matches exactly",
           "Complete financial reports including budgets/coverage match",
           "Manual correction and audit survive",

@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { publicSmtpAddress } from "./smtp-network.js";
 import { readFile } from "node:fs/promises";
 import nodemailer from "nodemailer";
 import { minorToDecimal } from "../../shared/money.js";
@@ -16,6 +19,7 @@ const secret = z.preprocess(
 const defaultFields = ["category", "period", "amount", "remaining"];
 const schema = z
   .object({
+    audienceConfirmed: z.boolean().optional(),
     summaryFields: z
       .array(z.enum(["category", "period", "amount", "remaining"]))
       .min(1)
@@ -45,6 +49,14 @@ export function smtpOptions(value) {
       url.hash ||
       (url.pathname && url.pathname !== "/") ||
       !url.hostname ||
+      isIP(url.hostname) ||
+      url.hostname.includes(":") ||
+      !/^[a-z0-9.-]+$/i.test(url.hostname) ||
+      !url.hostname.includes(".") ||
+      /(^|\.)(localhost|local|internal|lan|home|test|invalid|example)$/i.test(
+        url.hostname,
+      ) ||
+      url.hostname.endsWith(".") ||
       !url.username ||
       !url.password ||
       /[\r\n]/.test(value)
@@ -80,19 +92,54 @@ export function smtpOptions(value) {
   }
 }
 export async function sendSmtp(
-  { smtpUrl, from, to, text, messageId },
+  {
+    smtpUrl,
+    from,
+    to,
+    text,
+    messageId,
+    subject = "Dolphino budget notification",
+  },
   createTransport = nodemailer.createTransport,
+  lookupImpl = lookup,
 ) {
   if (!email.safeParse(from).success || !email.safeParse(to).success)
     throw invalid();
-  const transport = createTransport(smtpOptions(smtpUrl));
+  if (
+    typeof subject !== "string" ||
+    subject.length > 150 ||
+    /[\r\n]/.test(subject)
+  )
+    throw invalid();
+  const options = smtpOptions(smtpUrl);
+  let transport;
   let timer;
   try {
+    const addresses = await Promise.race([
+      lookupImpl(options.host, { all: true, verbatim: true }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error("DNS timeout")), 10000);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (
+      !addresses.length ||
+      addresses.some(({ address }) => !publicSmtpAddress(address))
+    )
+      throw invalid();
+    // Pin the checked IP; a second DNS lookup cannot redirect SMTP into the LAN.
+    // Keep the original DNS name for SNI and certificate hostname verification.
+    transport = createTransport({
+      ...options,
+      host: addresses[0].address,
+      servername: options.host,
+      tls: { ...options.tls, servername: options.host },
+    });
     await Promise.race([
       transport.sendMail({
         from,
         to,
-        subject: "Profe budget notification",
+        subject,
         text,
         messageId,
         disableFileAccess: true,
@@ -114,7 +161,7 @@ export async function sendSmtp(
     );
   } finally {
     clearTimeout(timer);
-    transport.close();
+    transport?.close();
   }
 }
 export function notificationText(payload, fields = defaultFields) {
@@ -126,10 +173,10 @@ export function notificationText(payload, fields = defaultFields) {
     amount: `overspend ${payload.currency} ${payload.state === "resolved" ? minorToDecimal("0", payload.currency) : decimal}`,
     remaining: `remaining budget ${payload.state === "resolved" ? "no longer negative" : `-${decimal} ${payload.currency}`}`,
   };
-  return `Profe budget ${payload.state}: ${fields
+  return `Dolphino budget ${payload.state}: ${fields
     .map((f) => values[f])
     .filter(Boolean)
-    .join("; ")}. Open Profe to review.`;
+    .join("; ")}. Open Dolphino to review.`;
 }
 export function createNotificationIntegration({
   pool,
@@ -178,10 +225,14 @@ export function createNotificationIntegration({
         [mode],
       )
     ).rows;
+    const audience = (await settings.getValue("notifications.audience")) || {
+      confirmed: false,
+    };
     const summaryFields =
       (await settings.getValue("notifications.summaryFields"))?.fields ||
       defaultFields;
     return {
+      audienceConfirmed: audience.confirmed === true,
       summaryFields,
       summaryPreview: notificationText(
         {
@@ -194,14 +245,14 @@ export function createNotificationIntegration({
         summaryFields,
       ),
       smtp: {
-        enabled: smtp.enabled,
+        enabled: smtp.enabled && audience.confirmed === true,
         from: smtp.from,
         recipients: smtp.recipients,
         configured: smtpConfigured,
         credentialConfigured: smtpConfigured,
       },
       telegram: {
-        enabled: telegram.enabled,
+        enabled: telegram.enabled && audience.confirmed === true,
         paired: !!telegram.chatId,
         chatConfigured: !!telegram.chatId,
         configured: telegramConfigured,
@@ -220,6 +271,32 @@ export function createNotificationIntegration({
     try {
       await c.query("BEGIN");
       await c.query("SELECT pg_advisory_xact_lock(17092382)");
+      const priorAudience = (await settings.getValue(
+        "notifications.audience",
+        c,
+      )) || { confirmed: false };
+      const audience =
+        parsed.data.audienceConfirmed === undefined
+          ? priorAudience
+          : {
+              confirmed: parsed.data.audienceConfirmed,
+              confirmedAt:
+                priorAudience.confirmed === parsed.data.audienceConfirmed
+                  ? priorAudience.confirmedAt
+                  : new Date().toISOString(),
+            };
+      if (parsed.data.audienceConfirmed !== undefined)
+        await settings.setValue("notifications.audience", audience, c);
+      if (
+        (parsed.data.smtp?.enabled || parsed.data.telegram?.enabled) &&
+        !audience.confirmed
+      )
+        throw Object.assign(
+          Error(
+            "Confirm the whole-household notification audience before enabling delivery",
+          ),
+          { status: 409 },
+        );
       if (parsed.data.summaryFields)
         await settings.setValue(
           "notifications.summaryFields",
@@ -318,6 +395,10 @@ export function createNotificationIntegration({
     const c = await pool.connect();
     try {
       await c.query("BEGIN");
+      const audience = (await settings.getValue(
+        "notifications.audience",
+        c,
+      )) || { confirmed: false };
       const events = (
         await c.query(
           "SELECT * FROM notification_events WHERE scanned_at IS NULL AND mode=$1 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED",
@@ -325,7 +406,11 @@ export function createNotificationIntegration({
         )
       ).rows;
       for (const event of events) {
-        if (event.mode === mode) {
+        if (
+          event.mode === mode &&
+          audience.confirmed &&
+          new Date(event.created_at) >= new Date(audience.confirmedAt || 0)
+        ) {
           for (const channel of ["smtp", "telegram"]) {
             const value = await config(channel, c);
             if (
@@ -369,6 +454,7 @@ export function createNotificationIntegration({
         from: value.from,
         to: recipient,
         text,
+        // Persistent retry identity: retain the historical brand in SMTP Message-ID.
         messageId: `<profe-notification-${id}@profe.local>`,
       });
     if (!sendTelegram) throw Error("Telegram adapter unavailable");
@@ -405,9 +491,15 @@ export function createNotificationIntegration({
       ).rows;
       for (const job of jobs) {
         const value = await config(job.channel, lock);
+        const audience = (await settings.getValue(
+          "notifications.audience",
+          lock,
+        )) || { confirmed: false };
         const recipients =
           job.channel === "smtp" ? value.recipients : [value.chatId];
         if (
+          !audience.confirmed ||
+          new Date(job.event_at) < new Date(audience.confirmedAt || 0) ||
           !value.enabled ||
           !recipients.includes(job.recipient) ||
           new Date(job.event_at) < new Date(value.enabledAt || 0)
@@ -504,7 +596,7 @@ export function createNotificationIntegration({
       await send(
         channel,
         recipient,
-        "Profe synthetic test: notifications are configured. No transactions or account information are included.",
+        "Dolphino synthetic test: notifications are configured. No transactions or account information are included.",
         `test-${Date.now()}`,
       );
     return { ok: true, message: "Synthetic notification sent" };

@@ -4,7 +4,7 @@ All records used during development and verification are fictional. No productio
 
 ## Commands and outcomes
 
-- `DATABASE_URL=postgresql://profe@127.0.0.1:54329/profe_test npm test`: passed all 67 tests, including real PostgreSQL integration. No database tests skipped in the final run.
+- `DATABASE_URL=postgresql://dolphino@127.0.0.1:54329/dolphino_test npm test`: passed all 67 tests, including real PostgreSQL integration. No database tests skipped in the final run.
 - `npm run build`: production Vite build passed.
 - `npm run lint`: backend/script JavaScript syntax checks passed.
 - `node scripts/browser-check.mjs`: Chromium desktop (1440px) and mobile (390px) checks passed. Checked income/spending, refund drilldown, excluded repayment, two genuine identical coffees, invalid split rejection, cancelled edit, budget save, account freshness, disabled demo connection test, JSON export, and API failure/retry recovery. No uncaught browser errors or viewport overflow.
@@ -22,7 +22,7 @@ Signed raw-byte webhook verification, five-minute replay window, rotated signatu
 
 ## Review artifacts
 
-`artifacts/profe-desktop.png`, `artifacts/profe-mobile.png`, and `artifacts/profe-budgets.png` show the fictional demo. They are also saved to the conversation's Library for visual review. The local preview runs at `http://localhost:3001`; it is not a public deployment.
+`artifacts/dolphino-desktop.png`, `artifacts/dolphino-mobile.png`, and `artifacts/dolphino-budgets.png` show the fictional demo. They are also saved to the conversation's Library for visual review. The local preview runs at `http://localhost:3001`; it is not a public deployment.
 
 ## Deliberate MVP limits
 
@@ -33,7 +33,7 @@ Signed raw-byte webhook verification, five-minute replay window, rotated signatu
 - New accounts are discovered during polling; owners maintain Redbark sync coverage. Bank freshness is provider-dependent.
 - Positive rollover requires consecutive configured budget months. Budgets can be saved or updated via the UI; recurring budget templates and automatic month creation are future work.
 - JSON export is an analysis snapshot, not a complete backup. PostgreSQL backup/restore is required for full evidence, jobs and audit history.
-- Optional Telegram and SMTP delivery are implemented and mocked in tests; actual destinations remain owner-configured. Multi-user access, foreign-exchange conversion and broader provider adapters remain future work.
+- Optional Telegram and SMTP delivery are implemented and mocked in tests; actual destinations remain owner-configured. Foreign-exchange conversion and broader provider adapters remain future work. Household authentication and granular access are implemented in the later milestone below.
 
 ## Follow-up review and verification
 
@@ -58,3 +58,27 @@ The backup/restore rehearsal preserves all 20 tables, including four encrypted s
 Final packaging inspection moved the shared exact-money formatter into `shared/` and explicitly copies it into both Docker stages, preventing a runtime import of an omitted frontend source file. Docker base-image download remains the only container build blocker.
 
 The final copy clarification removes contradictory legacy Redbark setup instructions. Settings now names both subscribed thin events, explains no sync provisioning or instant bank feed, and confirms independent polling. Transaction history explicitly means all imported records, with navigation to bounded backfill. Production build, both browser suites (including the new registration confirmation and backfill link), formatting and diff checks passed after this change.
+
+## Household authentication and granular grants milestone
+
+72 tests passed with no skips against isolated PostgreSQL, including bootstrap races, invitation lifecycle, session revocation, disjoint grants, aggregate-only budgets, guessed IDs, transfer privacy and scoped exports. Production build/lint/format passed. All three browser suites passed (actual demo, enhanced settings and mocked household roles). Backup/restore matched all 29 tables and financial totals. Independent security findings and exact limitations are documented in household-security-review.md. The requested read-only AI assistant is a subsequent milestone and is not included in this authentication commit.
+
+## Assistant and adversarial assessment milestone
+
+The assistant is now implemented on top of the household authorization services. It has separate encrypted provider settings, native OpenAI Responses/Bedrock Converse contracts, exact read-only finance tools, private temporary chats, durable request quotas, source downloads and current-permission checks. No live inference or external messages were used. Model providers and delivery transports were mocked.
+
+The independent HTTP assessment found and fixed recoverable stale chat context after authorization failures and after revoke/regrant of identical permissions. Monotonic access revisions now invalidate old chats and source links; administrator role/disable changes advance the revision too. Hostile assistant tests use synthetic transaction descriptions, forged tools and hidden IDs, 10,000 hidden records and an oversized allowed selection, expired sessions and permission changes during downloads. They verify rejection/scoping, not the truthfulness of unrestricted language-model prose.
+
+The separately requested [local adversarial security assessment](security-assessment.md) records the threat model, endpoint/role matrix, concrete attack cases, fixes and remaining boundaries. It is an internal development assessment, not independent professional certification or a claim that the application is bulletproof.
+
+Four browser suites cover the actual demo, household roles, integration/settings controls and mocked assistant interaction. The assistant suite tests disabled configuration, explicit data-sharing consent, unsafe model HTML/links rendered as plain text, authorized source downloads, cross-currency transaction drilldown, cancellation/stale responses, desktop/mobile layout, focus trapping and Escape. Clean assistant screenshots are explicitly fictional mock answers.
+
+Backup/restore now covers 32 tables, separate encrypted assistant credentials and durable quotas, alongside unchanged financial reports. Both Compose options parse, and npm dependency audits report zero known vulnerabilities at verification time. Full Docker image build and real reverse-proxy/TLS deployment remain unverified because image retrieval was blocked; no real provider or financial access was configured.
+
+Final integrated run for this milestone: **102 tests passed, zero failures and zero skips**, including isolated PostgreSQL, actual HTTP and Chromium adversarial cases. Commands used both `DATABASE_URL` and `TEST_DATABASE_URL` pointing to the disposable local `dolphino_test` database. `npm run build`, `npm run lint`, `npm run format:check`, and all four browser scripts passed after the security fixes. The database mode guard was independently exercised through real server/migration/seed child processes. Both full and runtime-only `npm audit` returned zero known advisories. Source/archive inspection excludes credentials, `.env`, database dumps, dependencies and build outputs.
+
+## dolphino rename and logo verification
+
+The renamed canonical repository was verified by stable repository ID before updating the remote. All **108 tests passed with zero failures/skips**, including the full prior adversarial assessment, legacy encrypted settings/cookies/environment aliases, deployment-mode protection and old/new Compose project-name storage selection. Build, lint and formatting passed; all four application browser suites plus the dedicated vector-logo render suite passed. The isolated restore rehearsal again matched all 32 tables and financial totals. SVG assets were inspected at 16–160 pixels and in desktop/mobile UI. No real credentials, network configuration, provider calls or Docker volumes were changed.
+
+See [the complete brand/reference audit](brand-and-reference-audit.md) and [mandatory existing-installation upgrade notes](rename-upgrade.md). Compose validation proves explicit storage selection, not a running-container upgrade: base-image retrieval remains blocked, so actual image runtime/volume mounting is still unverified here.

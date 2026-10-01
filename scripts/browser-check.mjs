@@ -1,7 +1,7 @@
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-const base = process.env.PROFE_TEST_URL || "http://localhost:3001";
+const base = process.env.DOLPHINO_TEST_URL || "http://localhost:3001";
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
   headless: true,
@@ -21,7 +21,7 @@ try {
     "desktop overflow",
   );
   await page.screenshot({
-    path: "artifacts/profe-desktop.png",
+    path: "artifacts/dolphino-desktop.png",
     fullPage: true,
   });
   await page.getByText("Total spending", { exact: true }).click();
@@ -69,7 +69,7 @@ try {
   await page.getByRole("button", { name: "Budgets", exact: true }).click();
   await page.getByRole("button", { name: "Add budget", exact: true }).waitFor();
   await page.screenshot({
-    path: "artifacts/profe-budgets.png",
+    path: "artifacts/dolphino-budgets.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "Add budget", exact: true }).click();
@@ -126,7 +126,10 @@ try {
     true,
     "mobile overflow",
   );
-  await page.screenshot({ path: "artifacts/profe-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: "artifacts/dolphino-mobile.png",
+    fullPage: true,
+  });
   assert.deepEqual(errors, []);
   console.log(
     "Browser checks passed: desktop/mobile, drilldowns, duplicate purchases, cancelled editor, budget save, accounts, settings, export and error recovery.",

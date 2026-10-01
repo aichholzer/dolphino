@@ -1,4 +1,13 @@
 import pg from "pg";
+import { ensureDeploymentMode } from "./deployment-mode.js";
+import { createAssistantSettings } from "./assistant-settings.js";
+import { createAssistantUsage } from "./assistant-usage.js";
+import { createAssistant } from "./assistant.js";
+import { sendAssistantTurn } from "./assistant-provider.js";
+import { FINANCE_TOOLS, invokeFinanceTool } from "./assistant-tools.js";
+import { createHouseholdAuth } from "./household-auth.js";
+import { createUserManagement } from "./users.js";
+import { ensureAccessSchema } from "./access.js";
 import { createNotificationIntegration } from "./notifications.js";
 import { createTelegramPairing, sendTelegram } from "./telegram.js";
 import { createImportHealth } from "./import-health.js";
@@ -16,6 +25,7 @@ const pool = new pg.Pool({
   connectionTimeoutMillis: 5000,
 });
 pool.on("error", () => console.error("Database connection unavailable"));
+await ensureDeploymentMode(pool, config.mode);
 const store = new Store(pool, { mode: config.mode, timezone: config.timezone });
 await store.migrate();
 const settings = createSettingsStore({
@@ -50,7 +60,33 @@ await notifications.init();
 const telegram = createTelegramPairing({ pool, settings });
 await telegram.init();
 const importHealth = createImportHealth({ pool, store, config, integration });
+const auth = createHouseholdAuth({ pool, config });
+await auth.init();
+await ensureAccessSchema(pool);
+const users = createUserManagement({ pool, config, settings });
+await users.init();
+const assistantSettings = createAssistantSettings({
+  pool,
+  appSecret: config.appSecret,
+});
+await assistantSettings.init();
+const assistantUsage = createAssistantUsage({ pool });
+await assistantUsage.init();
+const assistant = createAssistant({
+  getProviderConfig: async () => ({
+    ...(await assistantSettings.getRuntimeConfig()),
+    timezone: config.timezone,
+  }),
+  reserveRequest: assistantUsage.reserveRequest,
+  sendTurn: sendAssistantTurn,
+  invokeTool: invokeFinanceTool,
+  tools: FINANCE_TOOLS,
+});
 const app = createApp({
+  assistant,
+  assistantSettings,
+  auth,
+  users,
   store,
   integration,
   classification,
@@ -62,7 +98,7 @@ const app = createApp({
   importHealth,
 });
 const server = app.start(() =>
-  console.log(`Profe ${config.mode} listening on port ${config.port}`),
+  console.log(`dolphino ${config.mode} listening on port ${config.port}`),
 );
 integration.start();
 classification.start();

@@ -1,10 +1,10 @@
-# Deploy Profe in a homelab
+# Deploy dolphino in a homelab
 
 ## Database selection and isolation
 
 Use a dedicated database and database role. Default deployment uses `DATABASE_URL` (or `DATABASE_URL_FILE`) pointing to your LAN PostgreSQL. Restrict network access to the application host; use PostgreSQL TLS when traffic crosses an untrusted network. An unavailable database produces an error; the app never silently substitutes another database. Startup applies schema migrations; `npm run migrate` also runs them explicitly. Back up before upgrading.
 
-Use distinct databases for `PROFE_MODE=demo` and `PROFE_MODE=live`. Demo fixtures are fictional and seeding is explicit. Never seed a database that contains real financial data. The demo is for local evaluation and should not be exposed publicly.
+Use distinct databases for `DOLPHINO_MODE=demo` and `DOLPHINO_MODE=live`. Demo fixtures are fictional and seeding is explicit. Never seed a database that contains real financial data. The demo is for local evaluation and should not be exposed publicly.
 
 ## Local configuration and secrets
 
@@ -14,31 +14,30 @@ chmod 600 .env
 mkdir -p secrets
 chmod 700 secrets
 npm ci
-read -rsp "Profe password: " profe_password; printf "\n"
-printf "%s" "$profe_password" | npm run password --silent
-unset profe_password
+# First live setup only; never print or commit this installation proof.
+(umask 077; openssl rand -hex 32 > secrets/bootstrap_token)
 ```
 
-Run the hidden password prompt above in Bash. The password command creates a salted scrypt hash for `PROFE_PASSWORD_HASH`; use a unique, long password. Generate `SESSION_SECRET` locally with `openssl rand -hex 32`. Do not paste secrets into chat or put them in Git. A password hash is still sensitive. Protect `.env`, backups and your secret files.
+For named household authentication, follow [restricted first-administrator setup and shared-password upgrade](household-auth.md). Configure `DOLPHINO_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token` for first setup, then remove it after the administrator is established. Keep the app private during setup. Existing ledger data and APP_SECRET are preserved on upgrade; old shared-password sessions are invalidated. Do not paste secrets into chat or put them in Git. Protect `.env`, backups and secret files.
 
-Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse the session secret. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
+Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse an account password or bootstrap token. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
 
-Each of `DATABASE_URL`, `PROFE_PASSWORD_HASH`, `SESSION_SECRET`, `APP_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
+Each of `DATABASE_URL`, `DOLPHINO_BOOTSTRAP_TOKEN`, `APP_SECRET`, `REDBARK_API_KEY`, `REDBARK_WEBHOOK_SECRET` and `LLM_API_KEY` supports a corresponding `_FILE` variable. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
 
 In live mode set:
 
 ```dotenv
-PROFE_MODE=live
-APP_ORIGIN=https://profe.example.home
-PROFE_CURRENCY=AUD
-PROFE_TIMEZONE=Australia/Brisbane
+DOLPHINO_MODE=live
+APP_ORIGIN=https://dolphino.example.home
+DOLPHINO_CURRENCY=AUD
+DOLPHINO_TIMEZONE=Australia/Brisbane
 DATABASE_URL_FILE=/run/secrets/database_url
-PROFE_PASSWORD_HASH_FILE=/run/secrets/password_hash
-SESSION_SECRET_FILE=/run/secrets/session_secret
+DOLPHINO_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token
+# Remove the bootstrap variable/file after first administrator setup.
 APP_SECRET_FILE=/run/secrets/app_secret
 ```
 
-Configure a trusted HTTPS reverse proxy (for example Caddy or nginx) to forward to `127.0.0.1:3001`, preserving the Host header. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Password rotation and session-secret rotation should be followed by an app restart; rotating the session secret invalidates existing sessions. Keep the service private to your home network or VPN.
+Configure a trusted HTTPS reverse proxy (for example Caddy or nginx) to forward to `127.0.0.1:3001`, preserving the Host header. Use a certificate your browsers trust. `APP_ORIGIN` must equal the browser-visible HTTPS origin. Live sessions use secure cookies, so plain HTTP cannot provide a working live login. Named account passwords and session revocation are managed through the app; legacy shared-password cookies are invalid after upgrading. Keep the service private to your home network or VPN.
 
 ## Default: existing LAN PostgreSQL
 
@@ -58,7 +57,15 @@ docker compose exec app npm run seed
 
 ## Explicit alternative: bundled PostgreSQL
 
-Only use this override if you choose a local database instead of your LAN instance. Generate a URL-safe password with `openssl rand -hex 32` and set `POSTGRES_PASSWORD` in `.env`:
+Only use this override if you choose a local database instead of your LAN instance. **Existing installations must first follow [the rename upgrade instructions](rename-upgrade.md)** and retain the actual existing volume/database/user. Do not create a replacement volume for an upgrade.
+
+For a **new installation only**, generate a URL-safe password with `openssl rand -hex 32`, set `POSTGRES_PASSWORD`, `POSTGRES_VOLUME=dolphino_postgres`, `POSTGRES_DB=dolphino` and `POSTGRES_USER=dolphino` in `.env`, then explicitly create the volume:
+
+```sh
+docker volume create dolphino_postgres
+```
+
+Start the explicitly configured database:
 
 ```sh
 docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
@@ -66,7 +73,7 @@ docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
 docker compose -f compose.yaml -f compose.postgres.yaml exec app npm run seed
 ```
 
-The override explicitly replaces the database URL with `db:5432` and clears `DATABASE_URL_FILE`. PostgreSQL has no published port and persists in the named `profe_postgres` volume. It is not a fallback database. Do not use `docker compose down -v` unless you intend to delete that volume and have verified backups. An existing volume retains its original password; changing `POSTGRES_PASSWORD` alone does not rotate an initialized database password.
+The override explicitly replaces the database URL with `db:5432` and clears `DATABASE_URL_FILE`. PostgreSQL has no published port and uses the exact external volume named by required `POSTGRES_VOLUME`. Compose refuses a missing volume and never automatically creates a replacement under a new project name. `POSTGRES_DB` and `POSTGRES_USER` are also required; preserve existing values on upgrades. It is not a fallback database. Do not use `docker compose down -v` unless you intend to delete that volume and have verified backups. An existing volume retains its original password; changing `POSTGRES_PASSWORD` alone does not rotate an initialized database password.
 
 ## Connect Redbark yourself
 
@@ -86,7 +93,7 @@ JSON export uses the same backend calculations and canonical transactions as the
 For an external database, install PostgreSQL client tools at least as new as your server. Set `PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE`; use a protected `.pgpass` file for authentication instead of command-line passwords:
 
 ```sh
-PGHOST=your-db PGPORT=5432 PGUSER=profe PGDATABASE=profe scripts/backup.sh ./backups
+PGHOST=your-db PGPORT=5432 PGUSER=dolphino PGDATABASE=dolphino scripts/backup.sh ./backups
 ```
 
 The script produces a custom-format consistent database snapshot with restrictive file permissions. Encrypt backups at rest, copy them off the application host, and record the application commit/version and non-secret configuration separately. Keep a separate encrypted backup of required secrets, especially `APP_SECRET`, matched to the database backup version. A database dump alone cannot recover Settings credentials. Adopt a retention policy suitable for your finances. Stop ingestion during planned upgrades and take a backup first.
@@ -96,21 +103,21 @@ For bundled PostgreSQL:
 ```sh
 mkdir -p backups
 chmod 700 backups
-docker compose -f compose.yaml -f compose.postgres.yaml exec -T db pg_dump -U profe -d profe -Fc --no-owner --no-acl > backups/profe.dump
-chmod 600 backups/profe.dump
+docker compose -f compose.yaml -f compose.postgres.yaml exec -T db pg_dump -U dolphino -d dolphino -Fc --no-owner --no-acl > backups/dolphino.dump
+chmod 600 backups/dolphino.dump
 ```
 
 Restore into a **new empty database**, with the app stopped or pointed elsewhere. For external PostgreSQL:
 
 ```sh
-PGHOST=your-db PGUSER=profe PGDATABASE=profe_restore PROFE_RESTORE_CONFIRM=profe_restore scripts/restore.sh backups/profe.dump
+PGHOST=your-db PGUSER=dolphino PGDATABASE=dolphino_restore DOLPHINO_RESTORE_CONFIRM=dolphino_restore scripts/restore.sh backups/dolphino.dump
 ```
 
 For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's database URL and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process. A disposable loopback-only rehearsal script and the successful test evidence are documented in [restore evidence](restore-evidence.md).
 
 ## Policies and limits
 
-AUD and Australia/Brisbane are defaults, configurable server-side. Keep currencies explicit; there is no FX conversion or cross-currency netting. Posted-only actuals use Redbark's posted date, falling back to its transaction date. Redbark returns calendar dates; configure its account timezone to match Profe (see the integration guide). Refunds reduce the relevant category in the refund month; they do not retroactively rewrite the original purchase month. Uncategorised expenses count toward actuals. Pending identities can change: ambiguous identity matches require human review, while two separate identical purchases must remain separate.
+AUD and Australia/Brisbane are defaults, configurable server-side. Keep currencies explicit; there is no FX conversion or cross-currency netting. Posted-only actuals use Redbark's posted date, falling back to its transaction date. Redbark returns calendar dates; configure its account timezone to match dolphino (see the integration guide). Refunds reduce the relevant category in the refund month; they do not retroactively rewrite the original purchase month. Uncategorised expenses count toward actuals. Pending identities can change: ambiguous identity matches require human review, while two separate identical purchases must remain separate.
 
 Positive category rollover is opt-in and applies only across consecutive configured budget months. Negative overspend does not silently roll forward. Allocations are planning entries and do not affect bank spending. Historical import or correction recomputes the affected rollovers deterministically. Provider balance snapshots are not proof transaction coverage is complete; incompatible type, time or coverage remains unreconciled with a reason.
 
@@ -118,6 +125,10 @@ Alerts are persisted and deduplicated in-app. Their state is recalculated in the
 
 Configured AI processes unresolved posted imports automatically using durable jobs, after manual overrides, rules and useful provider categories. `LLM_AUTO_CLASSIFY=false` disables automatic processing while keeping on-demand suggestions. `LLM_AUTO_APPLY=false` is the default: automatic category application requires explicit opt-in. `LLM_DAILY_REQUEST_LIMIT=20` and `LLM_BATCH_SIZE=5` bound request volume; see [classification behavior and limits](classification.md).
 
-Account labels and descriptions in Profe are local overrides, retained across provider refreshes. Every connected account remains included in synchronization, classification, the overview and budgets; account disabling is not supported. Clicking an account opens its paginated transaction history, with adjustable dates and an all-imported-history option. This includes only records already stored in Profe; use Settings → Import health & history for explicit bounded backfill of older provider records. Confirmed internal transfers and card repayments remain excluded from spending, including in an account-scoped list. The overview offers 1, 2, 3, 4 or 6 calendar months ending in the selected month, a monthly comparison and aggregate drilldowns; the current month is marked partial. Monthly budget caps remain scoped to the selected final month.
+Account labels and descriptions in dolphino are local overrides, retained across provider refreshes. Every connected account remains included in synchronization, classification, the overview and budgets; account disabling is not supported. Clicking an account opens its paginated transaction history, with adjustable dates and an all-imported-history option. This includes only records already stored in dolphino; use Settings → Import health & history for explicit bounded backfill of older provider records. Confirmed internal transfers and card repayments remain excluded from spending, including in an account-scoped list. The overview offers 1, 2, 3, 4 or 6 calendar months ending in the selected month, a monthly comparison and aggregate drilldowns; the current month is marked partial. Monthly budget caps remain scoped to the selected final month.
 
 JSON exports include the complete selection, irrespective of the transaction table's current page. For a month/period export, `summary` uses the same full-period report as the overview and `selectionSummary` applies optional transaction filters; both scopes are labeled. Date-range and all-history exports summarize exactly the exported records. Monetary values remain integer minor-unit strings throughout.
+
+## Database deployment-mode lock
+
+The server, migration command and demo seed bind a database to `demo` or `live` before other initialization. Switching a bound database to the other mode fails at startup; it never silently opens live settings through anonymous demo access. Use separate databases. Legacy live users/ledger rows or stored credentials prevent a demo startup. Legacy demo ledger rows prevent live startup. An ambiguous old demo database with saved credentials should be replaced with a fresh fictional demo database; do not delete the marker to bypass this safeguard. Preserve the mode table in backups. Normal live upgrades retain the existing ledger and settings.

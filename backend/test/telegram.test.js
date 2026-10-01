@@ -76,7 +76,7 @@ test(
           ok: true,
           result:
             method === "getMe"
-              ? { is_bot: true, username: "ProfeTestBot" }
+              ? { is_bot: true, username: "dolphinoTestBot" }
               : method === "getWebhookInfo"
                 ? { url: webhook }
                 : method === "getUpdates"
@@ -116,7 +116,7 @@ test(
       });
       updates = [
         msg(1, -111, "irrelevant other household text"),
-        msg(2, -111, "/pair@ProfeTestBot forged"),
+        msg(2, -111, "/pair@dolphinoTestBot forged"),
         {
           ...msg(3, -111, started.command),
           message: {
@@ -137,7 +137,7 @@ test(
         pairing.poll({ sessionId: "other" }),
         /session_mismatch/,
       );
-      updates = [msg(4, -222, `/start@ProfeTestBot ${nonce}`)];
+      updates = [msg(4, -222, `/start@dolphinoTestBot ${nonce}`)];
       const candidate = await pairing.poll(session);
       assert.equal(candidate.candidate.chatId, "-222");
       assert.equal(await settings.getValue("notifications.telegram"), null);

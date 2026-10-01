@@ -6,7 +6,7 @@ export async function createPool(env = process.env) {
     : env.DATABASE_URL;
   if (!connectionString)
     throw new Error(
-      "DATABASE_URL or DATABASE_URL_FILE is required; Profe never falls back to another database",
+      "DATABASE_URL or DATABASE_URL_FILE is required; dolphino never falls back to another database",
     );
   return new pg.Pool({
     connectionString,

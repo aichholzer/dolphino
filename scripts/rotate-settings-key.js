@@ -1,4 +1,4 @@
-// Offline only: stop all Profe processes before running. Never prints secret material.
+// Offline only: stop all Dolphino processes before running. Never prints secret material.
 import { readFileSync } from "node:fs";
 import { createPool } from "../backend/src/db.js";
 import { createSettingsStore } from "../backend/src/settings.js";
@@ -18,7 +18,7 @@ try {
     readFileSync(newFile, "utf8").trim(),
   );
   console.log(
-    `Rotated ${count} encrypted credentials. Install the new APP_SECRET before restarting Profe. Retain the old key with pre-rotation backups.`,
+    `Rotated ${count} encrypted credentials. Install the new APP_SECRET before restarting Dolphino. Retain the old key with pre-rotation backups.`,
   );
 } finally {
   await pool.end();

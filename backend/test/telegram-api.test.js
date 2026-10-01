@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createApp } from "../src/app.js";
-import { hashPassword } from "../src/auth.js";
+import { createHouseholdAuth } from "../src/household-auth.js";
 import { createSettingsStore } from "../src/settings.js";
 import { createTelegramPairing } from "../src/telegram.js";
 const connectionString =
@@ -44,7 +44,7 @@ test(
           ok: true,
           result:
             method === "getMe"
-              ? { is_bot: true, username: "ProfeTestBot" }
+              ? { is_bot: true, username: "dolphinoTestBot" }
               : method === "getWebhookInfo"
                 ? { url: "" }
                 : method === "getChat"
@@ -69,14 +69,26 @@ test(
       const telegram = createTelegramPairing({ pool, settings, fetchImpl });
       const config = {
         mode: "live",
-        origin: "https://profe.test",
+        origin: "https://dolphino.test",
         host: "127.0.0.1",
         port: 0,
-        passwordHash: hashPassword("synthetic test password"),
+        bootstrapToken: randomBytes(32).toString("base64"),
         sessionSecret: randomBytes(32).toString("hex"),
       };
       async function launch(config) {
-        const app = createApp({ store: { pool }, config, telegram });
+        const auth = createHouseholdAuth({ pool, config });
+        await auth.init();
+        if (config.mode === "live")
+          await auth.bootstrap(
+            { headers: {}, socket: { remoteAddress: "127.0.0.1" } },
+            {
+              email: "admin@example.test",
+              name: "Fictional admin",
+              password: "synthetic test password",
+              bootstrapToken: config.bootstrapToken,
+            },
+          );
+        const app = createApp({ store: { pool }, config, telegram, auth });
         const server = await new Promise((resolve) => {
           const s = app.start(() => resolve(s));
         });
@@ -88,7 +100,10 @@ test(
         const response = await fetch(base + "/api/login", {
           method: "POST",
           headers: { Origin: config.origin },
-          body: JSON.stringify({ password: "synthetic test password" }),
+          body: JSON.stringify({
+            email: "admin@example.test",
+            password: "synthetic test password",
+          }),
         });
         assert.equal(response.status, 200);
         return response.headers.get("set-cookie").split(";")[0];

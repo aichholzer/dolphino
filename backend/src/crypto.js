@@ -1,3 +1,5 @@
+// COMPATIBILITY: historical "profe" KDF/AAD domains are a persisted ciphertext protocol.
+// Keep them unchanged after the Dolphino rename; changing branding here destroys decryptability.
 import {
   createCipheriv,
   createDecipheriv,

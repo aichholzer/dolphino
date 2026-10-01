@@ -4,10 +4,40 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { z } from "zod";
 import { testProviderConnection, testProviderModel } from "./llm.js";
-import { createAuth } from "./auth.js";
+import { testAssistantModel } from "./assistant-provider-test.js";
+import { FINANCE_TOOLS, invokeFinanceTool } from "./assistant-tools.js";
+import { createAccessStore } from "./access.js";
+import {
+  createHouseholdAuth,
+  householdSessionToken,
+} from "./household-auth.js";
 const minor = z.string().regex(/^-?\d{1,18}$/);
 const category = z.string().trim().min(1).max(100);
 const kind = z.enum(["expense", "income", "transfer", "refund"]);
+const grants = z
+  .object({
+    accounts: z
+      .array(
+        z
+          .object({
+            accountId: z.string().min(1).max(200),
+            access: z.enum(["view", "edit"]),
+          })
+          .strict(),
+      )
+      .max(1000),
+    budgets: z
+      .array(
+        z
+          .object({
+            budgetId: z.string().uuid(),
+            access: z.enum(["view", "edit"]),
+          })
+          .strict(),
+      )
+      .max(1000),
+  })
+  .strict();
 const correction = z
   .object({
     category: category.optional(),
@@ -68,28 +98,68 @@ export function createApp({
   notifications,
   telegram,
   importHealth,
+  auth = createHouseholdAuth({ pool: store.pool, config }),
+  users,
+  assistant,
+  assistantSettings,
 }) {
-  const auth = createAuth(config);
+  function securityHeaders(res) {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=()",
+    );
+    if (config.mode === "live")
+      res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
   const app = rayo({
     host: config.host,
     port: config.port,
     notFound: (req, res) => staticFile(req, res),
-    onError: (_e, _req, res) => send(res, { error: "Request failed" }, 500),
+    onError: (_e, _req, res) => {
+      securityHeaders(res);
+      send(res, { error: "Request failed" }, 500);
+    },
   });
+  const financialRoutes = new Set([
+    "/api/dashboard",
+    "/api/accounts",
+    "/api/accounts/:id",
+    "/api/transactions",
+    "/api/transactions/:id",
+    "/api/categories",
+    "/api/budgets",
+    "/api/budgets/:id",
+    "/api/reviews",
+    "/api/reviews/:id",
+    "/api/transactions/:id/audit",
+    "/api/export",
+  ]);
+  const ledger = (req) => req.accessStore || store;
   function route(
     method,
     path,
     handler,
-    { publicRoute = false, webhook = false } = {},
+    { publicRoute = false, webhook = false, allowMember = false } = {},
   ) {
     app[method](path, (req, res) => {
       Promise.resolve()
         .then(async () => {
-          res.setHeader("X-Content-Type-Options", "nosniff");
-          res.setHeader("Referrer-Policy", "no-referrer");
-          res.setHeader("X-Frame-Options", "DENY");
-          if (!publicRoute && !auth.authenticated(req))
-            return send(res, { error: "Sign in required" }, 401);
+          securityHeaders(res);
+          if (!publicRoute) {
+            req.user = await auth.session(req);
+            if (!req.user) return send(res, { error: "Sign in required" }, 401);
+            if (
+              !allowMember &&
+              !financialRoutes.has(path) &&
+              req.user.role !== "admin"
+            )
+              return send(res, { error: "Administrator access required" }, 403);
+            if (financialRoutes.has(path))
+              req.accessStore = await createAccessStore(store, req.user);
+          }
           if (
             !webhook &&
             !["GET", "HEAD"].includes(req.method) &&
@@ -100,10 +170,11 @@ export function createApp({
             new URL(req.url, "http://localhost").searchParams,
           );
           const result = await handler(req, res);
-          if (!res.writableEnded) send(res, result ?? { ok: true });
+          if (!res.writableEnded && !res.destroyed)
+            send(res, result ?? { ok: true });
         })
         .catch((e) => {
-          if (res.writableEnded) return;
+          if (res.writableEnded || res.destroyed) return;
           const status =
             e instanceof z.ZodError
               ? 400
@@ -136,33 +207,324 @@ export function createApp({
   route(
     "get",
     "/api/session",
-    (req) => ({
-      authenticated: auth.authenticated(req),
-      demo: config.mode === "demo",
-      currency: config.currency,
-      timeZone: config.timezone,
-    }),
+    async (req) => {
+      const user = await auth.session(req);
+      const setup = await auth.setupStatus();
+      const permissions = user
+        ? await (await createAccessStore(store, user)).permissions()
+        : { financialAccess: false, manageSettings: false };
+      return {
+        authenticated: !!user,
+        user,
+        setupRequired: setup.setupRequired,
+        permissions,
+        demo: config.mode === "demo",
+        currency: config.currency,
+        timeZone: config.timezone,
+      };
+    },
+    { publicRoute: true },
+  );
+  route(
+    "post",
+    "/api/auth/bootstrap",
+    async (req, res) => {
+      const result = await auth.bootstrap(
+        req,
+        z
+          .object({
+            email: z.string().max(254),
+            name: z.string().max(100),
+            password: z.string().max(1024),
+            bootstrapToken: z.string().max(1024),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
+      res.setHeader("Set-Cookie", result.cookie);
+      return { ok: true, user: result.user };
+    },
     { publicRoute: true },
   );
   route(
     "post",
     "/api/login",
     async (req, res) => {
-      const { password } = z
-        .object({ password: z.string().max(1024) })
-        .parse(await body(req));
-      const result = auth.login(req, password);
-      if (result.error)
-        return send(res, { error: result.error }, result.status);
+      const result = await auth.login(
+        req,
+        z
+          .object({
+            email: z.string().max(254),
+            password: z.string().max(1024),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
       res.setHeader("Set-Cookie", result.cookie);
-      return { ok: true };
+      return { ok: true, user: result.user };
     },
     { publicRoute: true },
   );
-  route("post", "/api/logout", (_req, res) => {
-    res.setHeader("Set-Cookie", auth.logoutCookie);
-    return { ok: true };
+  route(
+    "post",
+    "/api/logout",
+    async (req, res) => {
+      const result = await auth.logout(req);
+      res.setHeader("Set-Cookie", result.cookie);
+      return { ok: true };
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/auth/change-password",
+    async (req, res) => {
+      sensitive("change-password");
+      const result = await auth.changePassword(
+        req,
+        z
+          .object({
+            currentPassword: z.string().max(1024),
+            newPassword: z.string().max(1024),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
+      res.setHeader("Set-Cookie", result.cookie);
+      return { ok: true };
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/auth/activate",
+    async (req) => {
+      await auth.rate(req, "activation");
+      return users.activate(
+        z
+          .object({
+            token: z.string().max(1024),
+            password: z.string().max(1024),
+            name: z.string().max(100).optional(),
+          })
+          .strict()
+          .parse(await body(req)),
+      );
+    },
+    { publicRoute: true },
+  );
+  route("get", "/api/users/grant-options", (req) =>
+    users.grantOptions({ actorId: req.user.id }),
+  );
+  route("get", "/api/users", (req) => users.list({ actorId: req.user.id }));
+  route("post", "/api/users/invitations", async (req) => {
+    sensitive("invite-user");
+    return users.invite({
+      ...z
+        .object({
+          email: z.string().max(254),
+          role: z.enum(["admin", "member"]),
+          grants: grants.optional(),
+        })
+        .strict()
+        .parse(await body(req)),
+      actorId: req.user.id,
+    });
   });
+  route("post", "/api/users/invitations/:id/resend", (req) => {
+    sensitive("resend-invite");
+    return users.resend({ actorId: req.user.id, invitationId: req.params.id });
+  });
+  route("post", "/api/users/invitations/:id/revoke", (req) => {
+    sensitive("revoke-invite");
+    return users.revoke({ actorId: req.user.id, invitationId: req.params.id });
+  });
+  route("patch", "/api/users/:id", async (req) => {
+    sensitive("change-role");
+    return users.updateUser({
+      ...z
+        .object({
+          role: z.enum(["admin", "member"]).optional(),
+          disabled: z.boolean().optional(),
+          grants: grants.optional(),
+        })
+        .strict()
+        .parse(await body(req)),
+      actorId: req.user.id,
+      userId: req.params.id,
+    });
+  });
+  route("post", "/api/users/:id/reset-password", (req) => {
+    sensitive("reset-password");
+    return users.resetPassword({ actorId: req.user.id, userId: req.params.id });
+  });
+  const assistantContext = (req) => async () => {
+    const user = await auth.session(req);
+    if (!user) throw Object.assign(Error("Sign in required"), { status: 401 });
+    const finance = await createAccessStore(store, user);
+    const permissions = await finance.permissions();
+    if (!permissions.financialAccess)
+      throw Object.assign(Error("Financial access has not been granted"), {
+        status: 403,
+      });
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify({ id: user.id, role: user.role, permissions }))
+      .digest("hex");
+    // The assistant receives only read services, never Store/pool/credentials or mutation methods.
+    const readOnly = Object.freeze(
+      Object.fromEntries(
+        [
+          "permissions",
+          "listAccounts",
+          "listTransactions",
+          "transactionPage",
+          "getTransaction",
+          "report",
+          "listBudgets",
+          "listCategories",
+          "listReviews",
+          "audit",
+          "exportSnapshot",
+        ].map((name) => [name, (...args) => finance[name](...args)]),
+      ),
+    );
+    return { user, fingerprint, finance: readOnly };
+  };
+  route("get", "/api/settings/assistant", async () => ({
+    ...(await assistantSettings.getPublic()),
+    tools: FINANCE_TOOLS,
+    readOnly: true,
+  }));
+  route("put", "/api/settings/assistant", async (req) => {
+    sensitive("assistant-settings");
+    return assistantSettings.save(await body(req));
+  });
+  route("post", "/api/settings/assistant/test-connection", async () => {
+    sensitive("assistant-connection-test");
+    return testProviderConnection(
+      await assistantSettings.getRuntimeConfig(),
+      providerDependencies,
+    );
+  });
+  route("post", "/api/settings/assistant/test-model", async (req) => {
+    sensitive("assistant-model-test");
+    z.object({ acknowledgeCost: z.literal(true) })
+      .strict()
+      .parse(await body(req));
+    return testAssistantModel(
+      await assistantSettings.getRuntimeConfig(),
+      providerDependencies,
+    );
+  });
+  route(
+    "get",
+    "/api/assistant/status",
+    () => assistantSettings.getUserStatus(),
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/tools",
+    async (req) => {
+      await assistantContext(req)();
+      return { tools: FINANCE_TOOLS, readOnly: true };
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/tools/:name",
+    async (req) =>
+      invokeFinanceTool(req.params.name, await body(req), {
+        getFinance: async () => (await assistantContext(req)()).finance,
+        timeZone: config.timezone,
+      }),
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/chats",
+    (req) => assistant.list({ getContext: assistantContext(req) }),
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/chats",
+    async (req) => {
+      z.object({})
+        .strict()
+        .parse(await body(req));
+      return assistant.create({ getContext: assistantContext(req) });
+    },
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/chats/:id",
+    (req) =>
+      assistant.get({
+        chatId: req.params.id,
+        getContext: assistantContext(req),
+      }),
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/chats/:id/messages",
+    async (req, res) => {
+      const input = z
+        .object({
+          message: z.string().min(1).max(4000),
+          acknowledgeDataSharing: z.literal(true),
+        })
+        .strict()
+        .parse(await body(req));
+      const cancel = new AbortController();
+      const disconnected = () => {
+        if (!res.writableEnded) cancel.abort();
+      };
+      req.once("aborted", disconnected);
+      res.once("close", disconnected);
+      try {
+        return await assistant.send({
+          ...input,
+          chatId: req.params.id,
+          getContext: assistantContext(req),
+          signal: cancel.signal,
+        });
+      } finally {
+        req.off("aborted", disconnected);
+        res.off("close", disconnected);
+      }
+    },
+    { allowMember: true },
+  );
+  route(
+    "post",
+    "/api/assistant/chats/:id/cancel",
+    (req) =>
+      assistant.cancel({
+        chatId: req.params.id,
+        getContext: assistantContext(req),
+      }),
+    { allowMember: true },
+  );
+  route(
+    "get",
+    "/api/assistant/reports/:id",
+    async (req, res) => {
+      const report = await assistant.report({
+        reportId: req.params.id,
+        getContext: assistantContext(req),
+      });
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="dolphino-assistant-report.json"',
+      );
+      return report;
+    },
+    { allowMember: true },
+  );
   const filters = (req) => {
     const q = { ...req.query };
     if (
@@ -206,7 +568,7 @@ export function createApp({
       throw Object.assign(Error("Overview uses a month and period"), {
         status: 400,
       });
-    const r = await store.report(filters(req));
+    const r = await ledger(req).report(filters(req));
     return {
       ...r,
       trend: r.daily?.map((d) => ({ ...d, label: d.date })),
@@ -217,11 +579,11 @@ export function createApp({
     };
   };
   route("get", "/api/dashboard", report);
-  route("get", "/api/accounts", async () => ({
-    accounts: await store.listAccounts(),
+  route("get", "/api/accounts", async (req) => ({
+    accounts: await ledger(req).listAccounts(),
   }));
   route("patch", "/api/accounts/:id", async (req) =>
-    store.updateAccountSettings(
+    ledger(req).updateAccountSettings(
       req.params.id,
       z
         .object({
@@ -233,13 +595,19 @@ export function createApp({
     ),
   );
   route("get", "/api/transactions", async (req) =>
-    store.transactionPage(filters(req)),
+    ledger(req).transactionPage(filters(req)),
+  );
+  route("get", "/api/transactions/:id", (req) =>
+    ledger(req).getTransaction(req.params.id),
   );
   route("patch", "/api/transactions/:id", async (req) =>
-    store.correctTransaction(req.params.id, correction.parse(await body(req))),
+    ledger(req).correctTransaction(
+      req.params.id,
+      correction.parse(await body(req)),
+    ),
   );
-  route("get", "/api/categories", async () => ({
-    categories: await store.listCategories(),
+  route("get", "/api/categories", async (req) => ({
+    categories: await ledger(req).listCategories(),
   }));
   route("get", "/api/budgets", async (req) => {
     const r = await report(req);
@@ -253,7 +621,7 @@ export function createApp({
     };
   });
   route("put", "/api/budgets", async (req) =>
-    store.saveBudget(budget.parse(await body(req))),
+    ledger(req).saveBudget(budget.parse(await body(req))),
   );
   route("get", "/api/rules", async () => ({ rules: await store.listRules() }));
   route("post", "/api/rules", async (req) =>
@@ -269,8 +637,8 @@ export function createApp({
         .parse(await body(req)),
     ),
   );
-  route("get", "/api/reviews", async () => ({
-    reviews: await store.listReviews(),
+  route("get", "/api/reviews", async (req) => ({
+    reviews: await ledger(req).listReviews(),
   }));
   route("post", "/api/reviews/:id", async (req) => {
     const value = z
@@ -281,17 +649,17 @@ export function createApp({
       })
       .strict()
       .parse(await body(req));
-    return store.resolveReview(req.params.id, {
+    return ledger(req).resolveReview(req.params.id, {
       action: value.action === "dismiss" ? "keep" : value.action,
       pendingId: value.pendingId || value.transactionId,
     });
   });
   route("get", "/api/transactions/:id/audit", async (req) => ({
-    audit: await store.audit(req.params.id),
+    audit: await ledger(req).audit(req.params.id),
   }));
   route("delete", "/api/rules/:id", (req) => store.deleteRule(req.params.id));
   route("delete", "/api/budgets/:id", (req) =>
-    store.deleteBudget(req.params.id),
+    ledger(req).deleteBudget(req.params.id),
   );
   route("get", "/api/settings", async () => ({
     mode: config.mode,
@@ -431,12 +799,7 @@ export function createApp({
   });
   const pairingSession = (req) =>
     createHash("sha256")
-      .update(
-        (req.headers.cookie || "")
-          .split(";")
-          .map((s) => s.trim())
-          .find((s) => s.startsWith("profe_session=")) || "",
-      )
+      .update(householdSessionToken(req) || "")
       .digest("hex");
   route("get", "/api/settings/telegram/pair", (req) =>
     telegram.status({ sessionId: pairingSession(req) }),
@@ -470,15 +833,18 @@ export function createApp({
       integration.receiveWebhook(await body(req, true), req.headers),
     { publicRoute: true, webhook: true },
   );
-  route("post", "/api/transactions/:id/suggest", async (req) =>
-    classification.suggest(req.params.id),
-  );
+  route("post", "/api/transactions/:id/suggest", async (req) => {
+    await (
+      await createAccessStore(store, req.user)
+    ).assertTransaction(req.params.id, "edit");
+    return classification.suggest(req.params.id);
+  });
   route("get", "/api/export", async (req, res) => {
     const f = filters(req);
-    const snapshot = await store.exportSnapshot(f);
+    const snapshot = await ledger(req).exportSnapshot(f);
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="profe-export.json"',
+      'attachment; filename="dolphino-export.json"',
     );
     return {
       exportedAt: new Date().toISOString(),
@@ -487,6 +853,7 @@ export function createApp({
     };
   });
   async function staticFile(req, res) {
+    securityHeaders(res);
     if (req.url.startsWith("/api/"))
       return send(res, { error: "Not found" }, 404);
     if (req.method !== "GET") return send(res, { error: "Not found" }, 404);
@@ -495,6 +862,8 @@ export function createApp({
       const pathname = decodeURIComponent(
         new URL(req.url, "http://localhost").pathname,
       );
+      if (pathname.split("/").some((segment) => segment.startsWith(".")))
+        return send(res, { error: "Not found" }, 404);
       const path = resolve(root, "." + pathname);
       if (!path.startsWith(root + "/") && path !== root)
         return send(res, { error: "Not found" }, 404);
@@ -517,7 +886,7 @@ export function createApp({
             ".png": "image/png",
           }[ext] || "application/octet-stream",
         "Content-Security-Policy":
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'",
       });
       res.end(data);
     } catch {

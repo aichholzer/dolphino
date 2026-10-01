@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 export function NotificationSettings({ api, demo }) {
   const [data, setData] = useState(null),
     [deliveries, setDeliveries] = useState([]),
+    [audienceConfirmed, setAudienceConfirmed] = useState(false),
     [summaryFields, setSummaryFields] = useState([
       "category",
       "period",
@@ -28,6 +29,7 @@ export function NotificationSettings({ api, demo }) {
     setDeliveries(Array.isArray(history) ? history : []);
     if (activePairing.active) setPairing((p) => ({ ...p, ...activePairing }));
     setData(d);
+    setAudienceConfirmed(!!d.audienceConfirmed);
     setSummaryFields(
       d.summaryFields || ["category", "period", "amount", "remaining"],
     );
@@ -57,6 +59,7 @@ export function NotificationSettings({ api, demo }) {
     e.preventDefault();
     const body = {
       summaryFields,
+      audienceConfirmed,
       smtp: {
         enabled: !!smtp.enabled,
         from: smtp.from || "",
@@ -100,6 +103,16 @@ export function NotificationSettings({ api, demo }) {
         </p>
       )}
       <form onSubmit={save}>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={audienceConfirmed}
+            onChange={(e) => setAudienceConfirmed(e.target.checked)}
+          />
+          I understand notifications can show whole-household category totals to
+          these email and Telegram recipients, independently of their app
+          permissions.
+        </label>
         <h3>What to share</h3>
         <p className="footnote">
           Choose fields included in household budget summaries. Bank account
@@ -227,7 +240,7 @@ export function NotificationSettings({ api, demo }) {
         <p className="footnote">
           Create a dedicated private group, then add your household members and
           bot yourself. Keep bot privacy mode on; no administrator permissions
-          are needed. Profe does not manage membership.
+          are needed. dolphino does not manage membership.
         </p>
         <p className="footnote">
           {telegram.paired

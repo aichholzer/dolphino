@@ -1,6 +1,6 @@
 # Encrypted settings and recoverability
 
-Provider credentials and registered Redbark signing secrets are encrypted in PostgreSQL using AES-256-GCM, a new random 96-bit nonce for every write, versioned envelopes and authenticated associated data binding each ciphertext to its setting name and provider. Version 2 envelopes include a fresh random 32-byte salt, 12-byte nonce, ciphertext and 16-byte authentication tag. HKDF-SHA256 derives a separate 256-bit encryption key from `APP_SECRET` and that salt with a Profe-specific versioned context. Existing version 1 ciphertext remains readable; any new credential write or explicit key rotation produces version 2. Nonce, salt, tag and encoding lengths are validated before decryption. This is reversible encryption, not password hashing. The running server must decrypt credentials to contact the selected provider.
+Provider credentials and registered Redbark signing secrets are encrypted in PostgreSQL using AES-256-GCM, a new random 96-bit nonce for every write, versioned envelopes and authenticated associated data binding each ciphertext to its setting name and provider. Version 2 envelopes include a fresh random 32-byte salt, 12-byte nonce, ciphertext and 16-byte authentication tag. HKDF-SHA256 derives a separate 256-bit encryption key from `APP_SECRET` and that salt with a dolphino-specific versioned context. Existing version 1 ciphertext remains readable; any new credential write or explicit key rotation produces version 2. Nonce, salt, tag and encoding lengths are validated before decryption. This is reversible encryption, not password hashing. The running server must decrypt credentials to contact the selected provider.
 
 Generate a random 32-byte master secret outside the database and repository, for example `openssl rand -base64 32`, then configure `APP_SECRET` or `APP_SECRET_FILE`. Input must be at least 43 characters and not a low-diversity placeholder. Never use an example/default value. Keep this key separate from PostgreSQL backups and retain it for as long as matching backups may need restoring. Losing the key permanently loses access to encrypted credentials; imported transactions and corrections remain usable. A changed, absent or incorrect key fails credentials closed and does not fall back to environment credentials when database settings exist.
 
@@ -10,7 +10,7 @@ Ordinary provider settings may be read and disabled even with a missing key. Cre
 
 ## Explicit offline key rotation
 
-Changing `APP_SECRET` alone does **not** rotate existing ciphertext. Stop every Profe server/worker before rotation and keep it stopped throughout. Back up the database and the old key separately. Create a new random key in a separately protected file. Provide a database URL for the intended installation and run:
+Changing `APP_SECRET` alone does **not** rotate existing ciphertext. Stop every dolphino server/worker before rotation and keep it stopped throughout. Back up the database and the old key separately. Create a new random key in a separately protected file. Provide a database URL for the intended installation and run:
 
 ```sh
 APP_SECRET_FILE=/run/secrets/old-app-secret NEW_APP_SECRET_FILE=/run/secrets/new-app-secret node scripts/rotate-settings-key.js

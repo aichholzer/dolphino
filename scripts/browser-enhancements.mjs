@@ -49,6 +49,12 @@ await page.route("**/api/**", async (route) => {
   if (path === "/api/session")
     data = {
       authenticated: true,
+      user: {
+        id: "admin-test",
+        email: "admin@example.com",
+        name: "Admin",
+        role: "admin",
+      },
       demo: false,
       currency: "AUD",
       timeZone: "Australia/Brisbane",
@@ -89,6 +95,22 @@ await page.route("**/api/**", async (route) => {
       pageSize: 50,
       totalPages: 3,
     };
+  else if (path === "/api/settings/assistant")
+    data = {
+      provider: "openai",
+      model: "synthetic-assistant-model",
+      enabled: false,
+      dataSharingAcknowledged: false,
+      dailyRequestsPerUser: 10,
+      maxToolCalls: 4,
+      maxRounds: 3,
+      maxOutputTokens: 1024,
+      configured: false,
+      credentials: {},
+      tools: [
+        { name: "account_balances", description: "Read authorized balances" },
+      ],
+    };
   else if (path === "/api/settings/provider") {
     if (req.method() === "PUT")
       Object.assign(provider, req.postDataJSON(), { apiKey: undefined });
@@ -99,7 +121,7 @@ await page.route("**/api/**", async (route) => {
     data = {
       state: "registered",
       destinationId: "evd_synthetic",
-      publicBaseUrl: "https://profe.example.com",
+      publicBaseUrl: "https://dolphino.example.com",
       pingReceived: false,
       pingEventId: null,
     };
@@ -125,7 +147,7 @@ await page.route("**/api/**", async (route) => {
   else if (path === "/api/settings/telegram/pair")
     data = {
       pairingId: "synthetic-pair",
-      command: "/profe_pair@testbot synthetic-nonce",
+      command: "/dolphino_pair@testbot synthetic-nonce",
       deepLink: "https://t.me/testbot?startgroup=synthetic-nonce",
       expiresAt: "2026-09-30T15:00:00Z",
     };
@@ -159,7 +181,7 @@ await page.route("**/api/**", async (route) => {
   await route.fulfill({ json: data });
 });
 try {
-  await page.goto(process.env.PROFE_TEST_URL || "http://localhost:3001");
+  await page.goto(process.env.DOLPHINO_TEST_URL || "http://localhost:3001");
   await page.getByLabel("Overview period").selectOption("3");
   await page.getByText("Partial month", { exact: true }).waitFor();
   assert(
@@ -195,6 +217,27 @@ try {
       exact: true,
     })
     .click();
+  await page
+    .getByLabel("Assistant OpenAI API key", { exact: true })
+    .fill("synthetic-assistant-key");
+  await page
+    .getByRole("button", { name: "Save assistant settings", exact: true })
+    .click();
+  await page.getByText("Assistant settings saved.", { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByLabel("Assistant OpenAI API key", { exact: true })
+      .inputValue(),
+    "",
+  );
+  assert(
+    calls.some(
+      (c) =>
+        c.path === "/api/settings/assistant" &&
+        c.method === "PUT" &&
+        c.body.apiKey === "synthetic-assistant-key",
+    ),
+  );
   await page.getByLabel("OpenAI API key", { exact: true }).waitFor();
   assert.equal(
     await page.getByLabel("OpenAI API key", { exact: true }).inputValue(),
@@ -319,7 +362,7 @@ try {
     "settings mobile overflow",
   );
   await page.screenshot({
-    path: "artifacts/profe-settings-mobile.png",
+    path: "artifacts/dolphino-settings-mobile.png",
     fullPage: true,
   });
   assert.deepEqual(errors, []);
