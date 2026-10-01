@@ -116,6 +116,16 @@ test(
         return store.ingest({ ...o, category: o.raw.category });
       };
       const plain = await legacy('plain');
+      await store.correctTransaction(plain.id, {});
+      assert.equal(
+        (await store.getTransaction(plain.id)).manuallyCorrected,
+        false,
+        'an untouched editor save is a no-op'
+      );
+      assert.equal(
+        (await pool.query('SELECT * FROM transaction_overrides WHERE transaction_id=$1', [plain.id])).rowCount,
+        0
+      );
       const manual = await legacy('manual');
       await store.correctTransaction(manual.id, {
         category: 'My food',

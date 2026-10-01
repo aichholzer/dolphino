@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 export function ImportHealth({ api, demo }) {
   const [data, setData] = useState(null),
@@ -8,6 +8,7 @@ export function ImportHealth({ api, demo }) {
     [accountId, setAccountId] = useState(''),
     [from, setFrom] = useState(''),
     [to, setTo] = useState('');
+  const actionPending = useRef(false);
   async function load() {
     const d = await api('/import-health');
     setData(d);
@@ -16,16 +17,25 @@ export function ImportHealth({ api, demo }) {
     load().catch((e) => setError(e.message));
   }, []);
   async function action(path, body) {
+    if (actionPending.current || demo) {
+      return;
+    }
+    actionPending.current = true;
     setBusy(true);
     setError('');
     setNotice('');
     try {
       const r = await api(path, { method: 'POST', body: JSON.stringify(body) });
-      setNotice(r.message || 'Job queued. Check status after the worker runs.');
+      setNotice(
+        path === '/import-health/repair-categories'
+          ? `${r.message || 'Category repair complete.'} Accounts checked: ${r.accounts}. Category labels updated: ${r.updated}. Still unresolved: ${r.unresolved}. Saved category references kept for review: ${r.manualReferencesPreserved}. Accounts skipped: ${r.skipped}. Budgets to review: ${r.budgetsNeedingReview ?? 0}. Rules to review: ${r.rulesNeedingReview ?? 0}.`
+          : r.message || 'Job queued. Check status after the worker runs.'
+      );
       await load();
     } catch (e) {
       setError(e.message);
     } finally {
+      actionPending.current = false;
       setBusy(false);
     }
   }
@@ -49,14 +59,23 @@ export function ImportHealth({ api, demo }) {
       {data?.integration?.categoryWarning && (
         <p role="status" className="alert alert-error">
           Redbark category names could not all be resolved. Known names and your corrections are retained; newly
-          imported unresolved categories show as Uncategorized.{' '}
+          imported unresolved categories show as Uncategorized. Older unresolved category IDs are labelled Unresolved
+          category until their names can be repaired.{' '}
           {data.integration.categoryWarning === 'category_lookup_forbidden'
             ? 'Bank imports continue. Check that your Redbark key has categories:read permission and access to the category taxonomy.'
-            : 'Category names will be checked again on the next import, subject to provider availability and backoff.'}
+            : 'Use Repair category names to refresh the taxonomy, subject to provider backoff. Saved category references need an explicit category choice.'}
         </p>
       )}
       <Button variant="outline" disabled={busy} onClick={() => load().catch((e) => setError(e.message))}>
         Refresh import status
+      </Button>
+      <h3>Repair category names</h3>
+      <p className="footnote">
+        Refresh Redbark category names and repair stored labels without reloading bank history. Your transaction amounts
+        and manual corrections are retained. Unavailable names remain pending resolution.
+      </p>
+      <Button variant="outline" disabled={busy || demo} onClick={() => action('/import-health/repair-categories', {})}>
+        Repair category names
       </Button>
       {data?.accounts?.map((a) => (
         <div className="health-account" key={a.id}>
@@ -138,7 +157,7 @@ export function ImportHealth({ api, demo }) {
       ))}
       <p className="footnote">
         Retries honor provider backoff and do not create duplicate jobs.
-        {demo ? ' Remote history imports and retries are unavailable in demo mode.' : ''}
+        {demo ? ' Category repairs, remote history imports and retries are unavailable in demo mode.' : ''}
       </p>
     </section>
   );

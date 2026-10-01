@@ -29,7 +29,7 @@ export function RulesPage({ rules, onEdit }) {
             <div>
               <h2>Description contains “{r.match || r.pattern}”</h2>
               <p>
-                Classify as {r.category} · {r.kind || 'expense'}
+                Classify as {r.categoryDisplayLabel || r.category} · {r.kind || 'expense'}
               </p>
             </div>
             <span className="category-tag">Active</span>

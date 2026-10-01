@@ -48,7 +48,7 @@ export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
           return (
             <section className="card budget-card" key={b.category}>
               <div className="card-heading">
-                <h2>{b.category}</h2>
+                <h2>{b.categoryDisplayLabel || b.category}</h2>
                 {(isAdmin || b.canEdit || b.access === 'edit') && (
                   <Button variant="ghost" size="sm" onClick={() => onEdit(b)}>
                     Edit

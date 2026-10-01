@@ -25,16 +25,19 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
     }
   }, [transaction, canSuggest]);
   const [category, setCategory] = useState(''),
+    [categoryEdited, setCategoryEdited] = useState(false),
     [kind, setKind] = useState('expense'),
     [splits, setSplits] = useState([]),
     [error, setError] = useState('');
   useEffect(() => {
     if (transaction) {
       setCategory(transaction.category || 'Uncategorized');
+      setCategoryEdited(false);
       setKind(transaction.kind || 'expense');
       setSplits(
         (transaction.splits || []).map((s) => ({
           ...s,
+          categoryEdited: false,
           amount: minorToDecimal(s.amountMinor, transaction.currency)
         }))
       );
@@ -56,7 +59,10 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
         onSubmit={(e) => {
           e.preventDefault();
           try {
-            const values = transactionCorrection({ category, kind, splits }, transaction);
+            const values = transactionCorrection(
+              { category, categoryEdited, preserveUntouched: true, kind, splits },
+              transaction
+            );
             setError('');
             save(values);
           } catch (e) {
@@ -66,8 +72,21 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
       >
         <label>
           Category
-          <input list="category-options" value={category} onChange={(e) => setCategory(e.target.value)} required />
+          <input
+            list="category-options"
+            value={!categoryEdited && transaction?.categoryDisplayLabel ? transaction.categoryDisplayLabel : category}
+            onChange={(e) => {
+              setCategory(e.target.value);
+              setCategoryEdited(true);
+            }}
+            required
+          />
         </label>
+        {!categoryEdited && transaction?.categoryDisplayLabel && (
+          <p className="footnote">
+            Choose a category to resolve this reference. Leaving it unchanged preserves its saved category.
+          </p>
+        )}
         <datalist id="category-options">
           {CATEGORIES.map((c) => (
             <option key={c} value={c} />
@@ -113,7 +132,13 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
             {suggestion && (
               <p className="footnote">
                 Suggestion: {suggestion.category}. {suggestion.reason}{' '}
-                <button type="button" onClick={() => setCategory(suggestion.category)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCategory(suggestion.category);
+                    setCategoryEdited(true);
+                  }}
+                >
                   Use this category
                 </button>{' '}
                 · Review before saving.
@@ -148,8 +173,12 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
             <input
               aria-label={`Split ${i + 1} category`}
               list="category-options"
-              value={s.category}
-              onChange={(e) => setSplits(splits.map((x, j) => (j === i ? { ...x, category: e.target.value } : x)))}
+              value={!s.categoryEdited && s.categoryDisplayLabel ? s.categoryDisplayLabel : s.category}
+              onChange={(e) =>
+                setSplits(
+                  splits.map((x, j) => (j === i ? { ...x, category: e.target.value, categoryEdited: true } : x))
+                )
+              }
             />
             <input
               aria-label={`Split ${i + 1} amount`}

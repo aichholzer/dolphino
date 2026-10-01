@@ -6,6 +6,7 @@ import { budgetValues } from './budget-model.js';
 
 export function BudgetDialog({ budget, close, busy, save, serverError, currency, canChangeCategory }) {
   const [category, setCategory] = useState(''),
+    [categoryEdited, setCategoryEdited] = useState(false),
     [cap, setCap] = useState(''),
     [allocation, setAllocation] = useState('0.00'),
     [rollover, setRollover] = useState(false),
@@ -13,6 +14,7 @@ export function BudgetDialog({ budget, close, busy, save, serverError, currency,
   useEffect(() => {
     if (budget) {
       setCategory(budget.category);
+      setCategoryEdited(false);
       setCap(minorToDecimal(budget.capMinor, currency));
       setAllocation(minorToDecimal(budget.allocationMinor, currency));
       setRollover(!!budget.rolloverEnabled);
@@ -41,8 +43,11 @@ export function BudgetDialog({ budget, close, busy, save, serverError, currency,
           <input
             required
             disabled={!canChangeCategory}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            value={!categoryEdited && budget?.categoryDisplayLabel ? budget.categoryDisplayLabel : category}
+            onChange={(e) => {
+              setCategory(e.target.value);
+              setCategoryEdited(true);
+            }}
           />
         </label>
         <label>

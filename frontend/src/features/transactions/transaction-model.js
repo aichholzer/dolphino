@@ -1,6 +1,9 @@
 import { decimalToMinor } from '../../money.js';
 
-export function transactionCorrection({ category, kind, splits }, transaction) {
+export function transactionCorrection(
+  { category, categoryEdited = true, preserveUntouched = false, kind, splits },
+  transaction
+) {
   const values = splits.map((split) => ({
     category: split.category,
     amountMinor: decimalToMinor(split.amount, transaction.currency)
@@ -11,7 +14,12 @@ export function transactionCorrection({ category, kind, splits }, transaction) {
   ) {
     throw new Error('Split amounts must add up exactly to the transaction amount, including its sign.');
   }
-  return { category, kind, splits: values };
+  const oldSplits = (transaction.splits || []).map(({ category, amountMinor }) => ({ category, amountMinor }));
+  return {
+    ...(categoryEdited ? { category } : {}),
+    ...(!preserveUntouched || kind !== transaction.kind ? { kind } : {}),
+    ...(!preserveUntouched || JSON.stringify(values) !== JSON.stringify(oldSplits) ? { splits: values } : {})
+  };
 }
 
 export function initialTransactionFilters() {

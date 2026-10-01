@@ -49,3 +49,5 @@ Test sends a synthetic provider ping. A queued ping is **not** proof of successf
 Contract references: [thin events and destinations](https://redbark.com/docs/api-reference/v2/events), [create destination](https://redbark.com/docs/api-reference/v2/event-destinations/create-an-event-destination), [public webhook requirements](https://redbark.com/docs/webhook). No destination was registered during development; all registration tests use mocked Redbark responses and synthetic secrets.
 
 An event can arrive immediately after remote creation, before local secret storage completes. dolphino returns 503 until it can verify the key; Redbark retries. For reused destinations, the recovered key is saved before updating subscriptions or re-enabling delivery.
+
+For existing opaque category references, use [Repair category names](category-repair.md) in Import health. This checks taxonomy without downloading bank history. Ambiguous saved manual references are preserved for an explicit category choice; no database wipe is needed.

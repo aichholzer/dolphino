@@ -302,7 +302,9 @@ try {
           .toBe(readsBeforeBackoff + 1);
         await expect(warning).toBeVisible();
         await expect(warning).toContainText('Known names and your corrections are retained');
-        await expect(warning).toContainText('subject to provider availability and backoff');
+        await expect(warning).toContainText(
+          'subject to provider backoff. Saved category references need an explicit category choice.'
+        );
         await expect(warning).not.toContainText(/imports continue/i);
         await expect(warning).not.toContainText('categories:read permission');
         await expect(page.getByText(state.jobs[0].lastError, { exact: false })).toBeVisible();

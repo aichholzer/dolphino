@@ -24,10 +24,13 @@ export function ReviewsPage({ reviews, busy, onEdit, mutate }) {
                 {r.accountName ? ` · ${r.accountName}` : ''}
               </p>
               <p>
-                {r.category || 'Uncategorized'}
+                {r.categoryDisplayLabel || r.category || 'Uncategorized'}
                 {r.kind ? ` · Current type: ${r.kind}` : ''}
               </p>
               <p>{r.reviewReason || r.reason || r.type || 'Check the original evidence before resolving this item.'}</p>
+              {r.categoryDisplayLabel && (
+                <p className="footnote">Category name unavailable; saved references need a category choice.</p>
+              )}
               <small>Transaction: {r.id}</small>
             </div>
             <div className="review-actions">

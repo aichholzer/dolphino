@@ -61,6 +61,7 @@
   ["post", "/api/settings/webhook/test", "admin"],
   ["get", "/api/import-health", "admin"],
   ["post", "/api/import-health/backfill", "admin"],
+  ["post", "/api/import-health/repair-categories", "admin"],
   ["post", "/api/import-health/retry", "admin"],
   ["get", "/api/settings/notifications", "admin"],
   ["put", "/api/settings/notifications", "admin"],

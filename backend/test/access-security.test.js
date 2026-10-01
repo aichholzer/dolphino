@@ -48,8 +48,10 @@ test(
         accountId: 'owned',
         kind: 'transfer',
         description: 'Hidden private account transfer',
-        category: 'Hidden category'
+        category: 'cat_Transfer',
+        raw: { category: 'cat_Transfer' }
       });
+      assert.equal((await store.getTransaction(transfer.id)).categoryDisplayLabel, 'Unresolved category');
       // An administrator's historical override cannot remove source-transfer sensitivity.
       await store.correctTransaction(transfer.id, {
         kind: 'expense',
@@ -66,6 +68,8 @@ test(
         accountIds: ['hidden'],
         redactTransfers: false
       });
+      assert.equal(rows.find((row) => row.id === transfer.id).categoryDisplayLabel, undefined);
+      assert.equal(rows.find((row) => row.id === transfer.id).category, 'Transfers');
       assert(rows.every((row) => row.accountId === 'owned'));
       assert(!JSON.stringify(rows).includes('Hidden'));
       assert.deepEqual(await scoped.audit(transfer.id), []);

@@ -16,6 +16,16 @@ export function TransactionsPage({
   onFiltersChange
 }) {
   const transactions = data.transactions || [];
+  const categoryOptions = new Map(CATEGORIES.map((name) => [name, name]));
+  for (const transaction of transactions) {
+    categoryOptions.set(transaction.category, transaction.categoryDisplayLabel || transaction.category);
+    for (const split of transaction.splits || []) {
+      categoryOptions.set(split.category, split.categoryDisplayLabel || split.category);
+    }
+  }
+  if (filters.category && !categoryOptions.has(filters.category)) {
+    categoryOptions.set(filters.category, 'Selected category');
+  }
   const { accountId, accountName, allHistory, from, to, search, category, status, kind, ids, txPage } = filters;
   return (
     <section className="card transactions-card">
@@ -88,8 +98,10 @@ export function TransactionsPage({
           onChange={(e) => onFiltersChange({ category: e.target.value })}
         >
           <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c}>{c}</option>
+          {[...categoryOptions].map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
           ))}
         </select>
         <select aria-label="Filter status" value={status} onChange={(e) => onFiltersChange({ status: e.target.value })}>
@@ -142,8 +154,13 @@ export function TransactionsPage({
                 <td>{String(t.date || '').slice(0, 10)}</td>
                 <td>
                   <span className="category-tag">
-                    {t.splits?.length > 1 ? 'Split transaction' : t.category || 'Uncategorized'}
+                    {t.splits?.length > 1
+                      ? 'Split transaction'
+                      : t.categoryDisplayLabel || t.category || 'Uncategorized'}
                   </span>
+                  {t.categoryDisplayLabel && (
+                    <small>Category name unavailable; saved references need a category choice.</small>
+                  )}
                 </td>
                 <td className="muted">{t.accountName || '—'}</td>
                 <td className={`align-right amount ${BigInt(t.amountMinor || 0) > 0n ? 'positive' : ''}`}>

@@ -118,6 +118,7 @@ const sanitize = (t) =>
         note: '',
         providerCategory: null,
         category: 'Transfers',
+        categoryDisplayLabel: undefined,
         splits: []
       }
     : t;

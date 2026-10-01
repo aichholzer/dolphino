@@ -47,8 +47,11 @@ export function classify(transaction, rules = []) {
     kind: rule?.kind || transaction.kind || (minor(transaction.amountMinor) < 0n ? 'expense' : 'income')
   };
 }
-function add(map, category, value, id) {
+function add(map, category, value, id, categoryDisplayLabel) {
   const item = map.get(category) || { category, spent: 0n, transactionIds: [] };
+  if (categoryDisplayLabel) {
+    item.categoryDisplayLabel = categoryDisplayLabel;
+  }
   item.spent += value;
   if (!item.transactionIds.includes(id)) {
     item.transactionIds.push(id);
@@ -94,10 +97,11 @@ export function calculateReport(transactions, budgets = [], { month, currency = 
         : [
             {
               category: t.category || 'Uncategorized',
+              ...(t.categoryDisplayLabel ? { categoryDisplayLabel: t.categoryDisplayLabel } : {}),
               amountMinor: t.amountMinor
             }
           ]) {
-        add(categories, s.category, -minor(s.amountMinor), t.id);
+        add(categories, s.category, -minor(s.amountMinor), t.id, s.categoryDisplayLabel);
       }
     }
     daily.set(t.date, day);
@@ -160,6 +164,7 @@ export function calculateReport(transactions, budgets = [], { month, currency = 
     categories: [...categories.values()]
       .map((c) => ({
         category: c.category,
+        ...(c.categoryDisplayLabel ? { categoryDisplayLabel: c.categoryDisplayLabel } : {}),
         spentMinor: String(c.spent),
         transactionIds: c.transactionIds
       }))
@@ -183,7 +188,7 @@ export function calculateReport(transactions, budgets = [], { month, currency = 
       .map((b) => ({
         type: 'overspend',
         category: b.category,
-        message: `${b.category} is over its monthly budget`,
+        message: `${b.categoryDisplayLabel || b.category} is over its monthly budget`,
         amountMinor: String(-minor(b.remainingMinor))
       })),
     policy: {
@@ -242,12 +247,13 @@ function aggregateMonthly(report) {
   const categories = new Map();
   for (const row of monthly) {
     for (const category of row.categories) {
-      add(categories, category.category, BigInt(category.spentMinor), null);
+      add(categories, category.category, BigInt(category.spentMinor), null, category.categoryDisplayLabel);
     }
   }
   report.categories = [...categories.values()]
     .map((c) => ({
       category: c.category,
+      ...(c.categoryDisplayLabel ? { categoryDisplayLabel: c.categoryDisplayLabel } : {}),
       spentMinor: String(c.spent),
       transactionIds: monthly.flatMap(
         (row) => row.categories.find((item) => item.category === c.category)?.transactionIds || []

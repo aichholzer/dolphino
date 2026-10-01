@@ -304,3 +304,32 @@ test('API client keeps same-origin credentials, JSON headers and structured erro
   });
   await assert.rejects(api('/accounts'), { message: 'Request failed (502)' });
 });
+
+test('transaction editor omits untouched category, kind and splits without copying provider defaults', () => {
+  const transaction = {
+    category: 'cat_Legacy',
+    categoryDisplayLabel: 'Unresolved category',
+    kind: 'expense',
+    amountMinor: '-1234',
+    currency: 'AUD',
+    splits: [{ category: 'cat_Split', amountMinor: '-1234', categoryDisplayLabel: 'Unresolved category' }]
+  };
+  const input = {
+    category: 'cat_Legacy',
+    categoryEdited: false,
+    preserveUntouched: true,
+    kind: 'expense',
+    splits: [{ category: 'cat_Split', amount: '-12.34', categoryDisplayLabel: 'Unresolved category' }]
+  };
+  assert.deepEqual(transactionCorrection(input, transaction), {});
+  assert.deepEqual(transactionCorrection({ ...input, kind: 'refund' }, transaction), { kind: 'refund' });
+  assert.deepEqual(transactionCorrection({ ...input, categoryEdited: true, category: 'Groceries' }, transaction), {
+    category: 'Groceries'
+  });
+  assert.deepEqual(
+    transactionCorrection({ ...input, splits: [{ category: 'Dining', amount: '-12.34' }] }, transaction),
+    {
+      splits: [{ category: 'Dining', amountMinor: '-1234' }]
+    }
+  );
+});

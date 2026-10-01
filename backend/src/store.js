@@ -11,7 +11,13 @@ import {
   domainError
 } from './engine.js';
 import { demoData } from './demo.js';
-import { isRedbarkCategoryReference, isKnownCategoryLabel, resolveRedbarkCategory } from './redbark-categories.js';
+import {
+  isRedbarkCategoryReference,
+  isKnownCategoryLabel,
+  resolveRedbarkCategory,
+  categoryDisplayMetadata,
+  transactionCategoryReferencesSql
+} from './redbark-categories.js';
 const dateString = (d) =>
   d instanceof Date
     ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -24,36 +30,44 @@ const ruleResolvesReview = (reason, description, rules) => {
     .find((r) => description.toLowerCase().includes(r.contains.toLowerCase()));
   return !!matched && (reason === 'Category needs review' || !!matched.kind);
 };
-const txRow = (r) => ({
-  id: r.id,
-  accountId: r.account_id,
-  supersededBy: r.superseded_by || null,
-  accountName: r.account_name,
-  currency: r.currency,
-  amountMinor: String(r.amount_minor),
-  status: r.status,
-  date: dateString(r.date),
-  description: r.description,
-  providerCategory: r.provider_category,
-  category:
+const txRow = (r) => {
+  const category =
     r.override_category ||
     (r.classification_category !== 'Uncategorized' ? r.classification_category : null) ||
     r.ai_category ||
     r.provider_category ||
-    'Uncategorized',
-  kind: r.override_kind || r.kind,
-  internalTransfer: r.kind === 'transfer' || r.override_kind === 'transfer',
-  splits: r.splits || [],
-  note: r.note || '',
-  reviewReason: r.review_reason,
-  reviewRequired: !!r.review_reason,
-  fetchedAt: r.fetched_at,
-  manuallyCorrected: !!r.override_id
-});
-const txSelect = `SELECT t.*,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,o.splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id`;
+    'Uncategorized';
+  return {
+    id: r.id,
+    accountId: r.account_id,
+    supersededBy: r.superseded_by || null,
+    accountName: r.account_name,
+    currency: r.currency,
+    amountMinor: String(r.amount_minor),
+    status: r.status,
+    date: dateString(r.date),
+    description: r.description,
+    providerCategory: r.provider_category,
+    category,
+    ...categoryDisplayMetadata(category, r.category_references),
+    kind: r.override_kind || r.kind,
+    internalTransfer: r.kind === 'transfer' || r.override_kind === 'transfer',
+    splits: (r.splits || []).map((split) => ({
+      ...split,
+      ...categoryDisplayMetadata(split.category, r.category_references)
+    })),
+    note: r.note || '',
+    reviewReason: r.review_reason,
+    reviewRequired: !!r.review_reason,
+    fetchedAt: r.fetched_at,
+    manuallyCorrected: !!r.override_id
+  };
+};
+const txSelect = `SELECT t.*,${transactionCategoryReferencesSql} category_references,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,o.splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id`;
 const budgetRow = (r) => ({
   id: r.id,
   category: r.category,
+  ...categoryDisplayMetadata(r.category, r.category_references),
   currency: r.currency,
   month: r.month,
   capMinor: String(r.cap_minor),
@@ -66,6 +80,7 @@ const ruleRow = (r) => ({
   contains: r.contains,
   match: r.contains,
   category: r.category,
+  ...categoryDisplayMetadata(r.category, r.category_references),
   kind: r.kind,
   priority: r.priority
 });
@@ -459,13 +474,13 @@ export class Store {
     }
     return (await c.query(`${txSelect} WHERE ${where} ORDER BY t.date DESC,t.id`, values)).rows.map(txRow);
   }
-  async reconcileRedbarkCategories(accountId, names) {
-    return this.atomic(async (c) => {
+  async reconcileRedbarkCategories(accountId, names, { client } = {}) {
+    const reconcile = async (c) => {
       // Only current, accepted evidence for this accessible direct-Redbark account
       // can repair derived labels. Late pending observations and other sources cannot.
       const rows = (
         await c.query(
-          `SELECT t.*,o.transaction_id override_id,p.payload FROM transactions t
+          `SELECT t.*,o.transaction_id override_id,o.category override_category,o.splits,p.payload,${transactionCategoryReferencesSql} category_references FROM transactions t
            LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
            JOIN LATERAL (
              SELECT payload FROM provider_observations p
@@ -482,14 +497,24 @@ export class Store {
       ).rows;
       const rules = (await c.query('SELECT * FROM rules WHERE mode=$1', [this.mode])).rows.map(ruleRow);
       let updated = 0,
-        unresolved = 0;
+        unresolved = 0,
+        manualReferencesPreserved = 0;
       for (const row of rows) {
         const raw = row.payload.raw;
+        // Audits cannot distinguish an untouched legacy default from an intentional
+        // manual category. Preserve these references, including explicit splits.
+        const savedReferences = [row.override_category, ...(row.splits || []).map((split) => split.category)].filter(
+          (category) => isRedbarkCategoryReference(category) && row.category_references.includes(category)
+        );
+        if (savedReferences.length) {
+          manualReferencesPreserved++;
+          unresolved++;
+        }
         if (!isRedbarkCategoryReference(raw?.category)) {
           continue;
         }
         const resolved = resolveRedbarkCategory(raw, names);
-        if (!resolved) {
+        if (!resolved && !savedReferences.length) {
           unresolved++;
         }
         const providerCategory =
@@ -533,8 +558,9 @@ export class Store {
         );
         updated++;
       }
-      return { updated, unresolved };
-    });
+      return { updated, unresolved, manualReferencesUpdated: 0, manualReferencesPreserved, examined: rows.length };
+    };
+    return client ? reconcile(client) : this.atomic(reconcile);
   }
   async transactionPage(filters = {}) {
     return this.atomic((c) => this.listTransactions({ ...filters, paginated: true }, c), { refresh: false });
@@ -553,6 +579,9 @@ export class Store {
         .rows[0];
       if (!current) {
         throw domainError('Transaction not found');
+      }
+      if (!['category', 'kind', 'splits', 'note'].some((field) => patch[field] !== undefined)) {
+        return;
       }
       if (
         patch.category != null &&
@@ -807,9 +836,12 @@ export class Store {
     );
   }
   async listBudgets(c = this.pool) {
-    return (await c.query('SELECT * FROM budgets WHERE mode=$1 ORDER BY month,category', [this.mode])).rows.map(
-      budgetRow
-    );
+    return (
+      await c.query(
+        `SELECT b.*,ARRAY(SELECT DISTINCT p.payload->'raw'->>'category' FROM provider_observations p WHERE p.mode=b.mode AND p.provider='redbark' AND p.payload->'raw'->>'category'=b.category) category_references FROM budgets b WHERE b.mode=$1 ORDER BY b.month,b.category`,
+        [this.mode]
+      )
+    ).rows.map(budgetRow);
   }
   async saveBudget(b) {
     minor(b.capMinor);
@@ -848,9 +880,12 @@ export class Store {
     });
   }
   async listRules() {
-    return (await this.pool.query('SELECT * FROM rules WHERE mode=$1 ORDER BY priority DESC,id', [this.mode])).rows.map(
-      ruleRow
-    );
+    return (
+      await this.pool.query(
+        `SELECT r.*,ARRAY(SELECT DISTINCT p.payload->'raw'->>'category' FROM provider_observations p WHERE p.mode=r.mode AND p.provider='redbark' AND p.payload->'raw'->>'category'=r.category) category_references FROM rules r WHERE r.mode=$1 ORDER BY r.priority DESC,r.id`,
+        [this.mode]
+      )
+    ).rows.map(ruleRow);
   }
   async saveRule(r) {
     const contains = r.contains || r.match;

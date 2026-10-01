@@ -226,6 +226,12 @@ export function createRedbarkIntegration({
           }
         }
       }
+      // Local repair must not depend on balances or the rolling transaction window.
+      const historical = await store.reconcileRedbarkCategories(rawAccount.id, categoryNames);
+      if (historical.unresolved && !categoryError) {
+        categoryError = 'category_reference_unresolved';
+      }
+      await pool.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
       const fetchedAt = new Date().toISOString();
       const rawBalance = rawAccount.category === 'banking' ? await client.balance(rawAccount.id) : null;
       const rawTransactions = await client.transactions(rawAccount.id, from, to);
@@ -276,6 +282,144 @@ export function createRedbarkIntegration({
       }
     }
     await pool.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
+  }
+  async function repairCategories() {
+    if (busy) {
+      throw new RedbarkError('An import or category repair is already running; try again after it finishes', 409);
+    }
+    busy = true;
+    let db,
+      locked = false,
+      settingsLocked = false;
+    try {
+      db = await pool.connect();
+      locked = (await db.query('SELECT pg_try_advisory_lock(73426712, hashtext(current_schema())) AS acquired')).rows[0]
+        .acquired;
+      if (!locked) {
+        throw new RedbarkError('An import or category repair is already running; try again after it finishes', 409);
+      }
+      await db.query('SELECT pg_advisory_lock($1)', [REDBARK_SETTINGS_LOCK]);
+      settingsLocked = true;
+      const current = await runtime(db);
+      const state = (await db.query('SELECT fingerprint,next_attempt FROM redbark_state WHERE id=1')).rows[0];
+      if (!configured(current) || state?.fingerprint !== current.redbarkFingerprint) {
+        throw new RedbarkError('Verify the current live Redbark connection before repairing category names', 409);
+      }
+      if (state.next_attempt && new Date(state.next_attempt).getTime() > now()) {
+        throw new RedbarkError(
+          'Provider backoff is active; try category repair after ' + new Date(state.next_attempt).toISOString(),
+          429
+        );
+      }
+      const client = clientFor(current);
+      let accounts, names;
+      try {
+        accounts = await client.accounts();
+        names = await client.categories();
+      } catch (error) {
+        const code = error instanceof RedbarkError ? error.code : 'category_lookup_unavailable';
+        const categoryError = error.status === 403 ? 'category_lookup_forbidden' : 'category_lookup_unavailable';
+        await db.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
+        if (error.status === 429 || error.status === 503) {
+          await db.query(
+            "UPDATE redbark_state SET last_error=$1,next_attempt=now()+($2 * interval '1 second') WHERE id=1",
+            [code, Math.max(error.retryAfter || 0, 60)]
+          );
+        }
+        throw Object.assign(
+          new RedbarkError(
+            error.status === 403
+              ? 'Redbark category access is unavailable. Check accounts:read and categories:read permissions, then test the connection again.'
+              : 'Redbark category names could not be fetched. Stored categories were not changed; retry after provider backoff.',
+            error.status === 403 ? 403 : error.status === 429 ? 429 : 502
+          ),
+          { expose: true }
+        );
+      }
+      const accessible = new Set();
+      for (const account of accounts) {
+        if (account.category !== 'banking' && account.provider !== 'documents') {
+          continue;
+        }
+        if (!/^acct_[a-zA-Z0-9]+$/.test(account.id) || !/^[a-zA-Z]{3}$/.test(account.currency)) {
+          throw new RedbarkError('invalid_provider_account');
+        }
+        accessible.add(account.id);
+      }
+      return await store.atomic(
+        async (transaction) => {
+          // The settings lock also fences saves; recheck revisions for injected/runtime sources.
+          const latest = await runtime(transaction);
+          if (!configured(latest) || latest.redbarkFingerprint !== current.redbarkFingerprint) {
+            throw new RedbarkError('configuration_changed_retest_required', 409);
+          }
+          const imported = (await transaction.query('SELECT id FROM accounts WHERE mode=$1', [config.mode])).rows;
+          const mapped = new Set(
+            (await transaction.query('SELECT local_id FROM simplefin_accounts WHERE local_id IS NOT NULL')).rows.map(
+              (row) => row.local_id
+            )
+          );
+          const eligible = imported.filter((account) => accessible.has(account.id) && !mapped.has(account.id));
+          const result = {
+            accounts: eligible.length,
+            updated: 0,
+            unresolved: 0,
+            manualReferencesUpdated: 0,
+            manualReferencesPreserved: 0,
+            examined: 0,
+            skipped: imported.length - eligible.length
+          };
+          for (const account of eligible) {
+            const repaired = await store.reconcileRedbarkCategories(account.id, names, { client: transaction });
+            for (const field of ['updated', 'unresolved', 'manualReferencesPreserved', 'examined']) {
+              result[field] += repaired[field];
+            }
+          }
+          const references = (
+            await transaction.query(
+              "SELECT DISTINCT p.payload->'raw'->>'category' reference FROM provider_observations p WHERE p.mode=$1 AND p.provider='redbark' AND p.account_id=ANY($2::text[])",
+              [config.mode, eligible.map((account) => account.id)]
+            )
+          ).rows
+            .map((row) => row.reference)
+            .filter((reference) => reference?.startsWith('cat_'));
+          result.budgetsNeedingReview = (
+            await transaction.query(
+              'SELECT count(*)::int count FROM budgets WHERE mode=$1 AND category=ANY($2::text[])',
+              [config.mode, references]
+            )
+          ).rows[0].count;
+          result.rulesNeedingReview = (
+            await transaction.query(
+              'SELECT count(*)::int count FROM rules WHERE mode=$1 AND category=ANY($2::text[])',
+              [config.mode, references]
+            )
+          ).rows[0].count;
+          await transaction.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [
+            result.unresolved ? 'category_reference_unresolved' : null
+          ]);
+          return {
+            ...result,
+            message: result.unresolved
+              ? 'Available category names repaired. Some names or saved category choices still need review.'
+              : 'Category names repaired without reloading bank history.'
+          };
+        },
+        { client: db }
+      );
+    } finally {
+      if (settingsLocked) {
+        await db.query('SELECT pg_advisory_unlock($1)', [REDBARK_SETTINGS_LOCK]).catch(() => {});
+      }
+      if (locked) {
+        await db.query('SELECT pg_advisory_unlock(73426712, hashtext(current_schema()))').catch(() => {});
+      }
+      db?.release();
+      busy = false;
+      for (const resolve of idleWaiters.splice(0)) {
+        resolve();
+      }
+    }
   }
   async function tick() {
     if (busy || config.mode !== 'live') {
@@ -360,6 +504,7 @@ export function createRedbarkIntegration({
     status,
     testConnection,
     receiveWebhook,
+    repairCategories,
     tick,
     async queueBackfill(params, key) {
       const db = await pool.connect();

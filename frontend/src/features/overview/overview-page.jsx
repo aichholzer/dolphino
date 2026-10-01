@@ -287,7 +287,7 @@ function CategoryChart({ rows, currency, onSelect }) {
           <div className="category-line">
             <span>
               <i style={{ background: colors[i % colors.length] }} />
-              {r.category}
+              {r.categoryDisplayLabel || r.category}
             </span>
             <strong>{money(r.amountMinor, currency)}</strong>
           </div>

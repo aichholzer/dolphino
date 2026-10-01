@@ -126,5 +126,9 @@ export function createImportHealth({ pool, store, config, integration, now = Dat
       message: 'This job is already queued or completed'
     };
   }
-  return { status, backfill, retry };
+  async function repairCategories() {
+    await verified();
+    return integration.repairCategories();
+  }
+  return { status, backfill, retry, repairCategories };
 }

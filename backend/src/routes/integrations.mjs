@@ -51,6 +51,14 @@ export function registerIntegrationRoutes({ route, integration, registration, si
 
   route('get', '/api/import-health', () => importHealth.status());
 
+  route('post', '/api/import-health/repair-categories', async (req) => {
+    sensitive('category-repair');
+    z.object({})
+      .strict()
+      .parse(await body(req));
+    return importHealth.repairCategories();
+  });
+
   route('post', '/api/import-health/backfill', async (req) => {
     sensitive('backfill');
     return importHealth.backfill(
