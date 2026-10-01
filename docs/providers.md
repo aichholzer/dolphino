@@ -1,6 +1,6 @@
 # Classification providers
 
-Choose OpenAI or Amazon Bedrock in Settings and enter a model identifier manually. Model availability, pricing and regional access vary; dolphino does not maintain a potentially stale model catalogue. Credentials are write-only encrypted settings. Leaving classification disabled still permits the explicit test actions. Import classification is subject to the configured daily request cap and batch limit; jobs are durable and deduplicated. Existing manual, rule and provider categories retain precedence. The master enable switch controls both on-demand and automatic classification; the independent automatic-suggestions switch can pause scanning and automatic jobs while retaining on-demand suggestions. Automatic application is a separate opt-in, and all returned categories must match the supplied allowlist. Saves take effect without a restart.
+Choose OpenAI or Amazon Bedrock in Settings. For Bedrock, save credentials and region with classification disabled, then use **Load models** and the searchable chooser, or enter a model identifier manually. OpenAI model IDs remain manual. Model availability, pricing and regional access vary; Bedrock choices are retrieved from AWS on demand rather than maintained as a static model catalogue. Credentials are write-only encrypted settings. Leaving classification disabled still permits the explicit test actions. Import classification is subject to the configured daily request cap and batch limit; jobs are durable and deduplicated. Existing manual, rule and provider categories retain precedence. The master enable switch controls both on-demand and automatic classification; the independent automatic-suggestions switch can pause scanning and automatic jobs while retaining on-demand suggestions. Automatic application is a separate opt-in, and all returned categories must match the supplied allowlist. Saves take effect without a restart.
 
 **Test connection** is read-only: OpenAI retrieves metadata for the selected model; Bedrock calls STS GetCallerIdentity. The AWS result means credentials are valid, not that inference permissions or model availability are sufficient. No account identifier or identity ARN is returned to the browser.
 
@@ -21,6 +21,37 @@ Official references checked during implementation:
 - [Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
 - [GetFoundationModelAvailability](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetFoundationModelAvailability.html)
 - [GetInferenceProfile](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetInferenceProfile.html)
+
+## Bedrock model discovery
+
+Classification and assistant Settings each have an independent **Load models** control. To configure a new Bedrock provider:
+
+1. Select Bedrock and an AWS region, enter its permanent access key and secret, and leave the provider disabled. A model ID may be blank at this stage.
+2. Save settings. The keys are encrypted in PostgreSQL and cleared from the input fields.
+3. Choose **Load models**, search by name, provider, ID or region, and select a foundation model or inference profile. Selection fills the editable ID field; it does not enable or invoke anything.
+4. Save the chosen ID. Arrange model access separately in AWS and use the explicit synthetic model test if desired before enabling.
+
+Discovery calls only the regional control-plane `ListFoundationModels` and `ListInferenceProfiles` APIs using that section's saved credentials. It does not use the runtime API, send financial data, test inference, grant access or accept a model agreement. Loading does not incur inference charges. Unsaved provider/region/credential changes must be saved first; the browser never sends keys to the discovery endpoint.
+
+Grant `bedrock:ListFoundationModels` and `bedrock:ListInferenceProfiles` with `Resource: "*"` to permit both lists. These read actions do not support resource-level scoping in the AWS service authorization table. Existing runtime availability/invocation permissions remain separate. If one list is denied or unavailable, the other can still be shown with an incomplete-list warning. A denied list does not prove there are no usable models. Manual entry remains available if discovery fails or a custom foundation/profile ID is missing.
+
+The list includes text-input/text-output foundation models advertising on-demand inference and ACTIVE system/application inference profiles. Known non-text profiles and provisioned-only base models are omitted. Profiles remain distinct even when they target the same model, and the exact returned profile ID is preserved. Destination models need not appear in the source-region foundation catalogue. Current saved/custom IDs are never replaced automatically; LEGACY and unknown lifecycle states are labeled, with ACTIVE choices first.
+
+Every choice is labeled **unverified**. The list APIs do not report Converse, system-prompt or tool-use compatibility, and listing does not establish model entitlement or permission to invoke. Classification requires Converse, system prompts and valid JSON output; the assistant also needs native tool use. The existing `GetFoundationModelAvailability`/`GetInferenceProfile` checks still run before inference. They are not called once per dropdown entry, and do not simulate IAM/SCPs, quotas, profile routing or runtime compatibility. Profile destination regions are shown after selection; check data residency and all required destination permissions before enabling.
+
+The two administrator-only POST routes are `/api/settings/provider/models` and `/api/settings/assistant/models`, accepting only `{ "revision": "<saved discoveryRevision>" }`. They use the shared exact-Origin guard, demo restriction and one shared five-requests-per-minute discovery limiter. A non-secret revision hashes stored ciphertext, settings and the settings-update timestamp; it is checked before and after discovery, including failed responses. A save, region change, credential rotation or clear invalidates an in-flight response. The shared React picker also ignores requests invalidated by edits, refreshes, saves, navigation or unmounting. Results and all credential input stay in memory; API responses use `Cache-Control: no-store`.
+
+Each discovery has a 15-second total deadline, no SDK retries, a 1 MiB raw-response limit per AWS response, at most ten 100-item inference-profile pages and at most 1,000 returned choices. Repeated pagination tokens and overlarge/malformed responses stop traversal; partial/truncated lists are explicitly labeled. AWS error text, identity metadata, pagination tokens and credentials are never forwarded to the browser.
+
+Official discovery references checked on 2026-10-01:
+
+- [ListFoundationModels](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListFoundationModels.html)
+- [ListInferenceProfiles](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListInferenceProfiles.html)
+- [FoundationModelSummary](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_FoundationModelSummary.html)
+- [InferenceProfileSummary](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_InferenceProfileSummary.html)
+- [Bedrock IAM actions and resource support](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html)
+- [Cross-region inference prerequisites](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html)
+- [Model lifecycle](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html)
 
 ## Region catalogue maintenance
 

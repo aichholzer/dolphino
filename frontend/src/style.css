@@ -1821,6 +1821,17 @@ label select {
 .integration-settings .alert {
   font-size: 12px;
 }
+.bedrock-model-picker {
+  min-width: 0;
+}
+.bedrock-model-picker select {
+  max-width: 100%;
+}
+.bedrock-model-picker .footnote,
+.bedrock-model-picker .setup-note,
+.bedrock-model-picker .alert {
+  overflow-wrap: anywhere;
+}
 .period-controls {
   flex-wrap: wrap;
 }

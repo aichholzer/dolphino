@@ -1,6 +1,8 @@
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import assert from 'node:assert/strict';
-import { chromium } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { chromium, expect } from '@playwright/test';
 
 // Run against the Vite frontend. Every API is intercepted; no provider calls,
 // credentials, database, or external account is required.
@@ -11,7 +13,10 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const assertPageStorageUnused = await installBrowserStorageGuard(page);
 const calls = [],
-  errors = [];
+  errors = [],
+  responses = [];
+let revision = 0;
+const nextRevision = () => (++revision).toString(16).padStart(64, '0');
 page.on('pageerror', (error) => errors.push(error.message));
 const credential = (configured = false) => ({
   configured,
@@ -28,6 +33,7 @@ const redbark = {
   credentials: { apiKey: credential(), signingSecret: credential() }
 };
 const provider = {
+  discoveryRevision: nextRevision(),
   provider: 'openai',
   model: '',
   region: '',
@@ -44,9 +50,15 @@ const provider = {
     accessKeyId: credential(),
     secretAccessKey: credential()
   },
-  regionCatalog: { regions: [{ id: 'ap-southeast-2', label: 'Sydney' }] }
+  regionCatalog: {
+    regions: [
+      { id: 'ap-southeast-2', label: 'Sydney' },
+      { id: 'us-east-1', label: 'Northern Virginia' }
+    ]
+  }
 };
 const assistant = {
+  discoveryRevision: nextRevision(),
   provider: 'openai',
   model: '',
   region: '',
@@ -56,9 +68,53 @@ const assistant = {
   maxToolCalls: 4,
   maxRounds: 3,
   maxOutputTokens: 1024,
-  credentials: {}
+  encryptionAvailable: true,
+  credentialsAvailable: true,
+  credentials: {},
+  regionCatalog: provider.regionCatalog
 };
-let failSave = false;
+let failSave = false,
+  demo = false,
+  discoveryMode = 'success';
+const pendingDiscovery = [];
+const models = [
+  {
+    id: 'synthetic.text-v1',
+    name: 'Text model',
+    provider: 'Synthetic provider',
+    kind: 'foundation',
+    lifecycle: 'ACTIVE',
+    regions: ['ap-southeast-2'],
+    compatibility: 'unverified'
+  },
+  {
+    id: 'synthetic.legacy-v1',
+    name: 'Legacy text model',
+    provider: 'Synthetic provider',
+    kind: 'foundation',
+    lifecycle: 'LEGACY',
+    regions: ['ap-southeast-2'],
+    compatibility: 'unverified'
+  },
+  {
+    id: 'apac.synthetic.text-v1',
+    name: 'Regional text profile',
+    provider: 'Synthetic provider',
+    kind: 'system-profile',
+    lifecycle: 'ACTIVE',
+    regions: ['ap-southeast-2', 'us-east-1'],
+    compatibility: 'unverified'
+  },
+  {
+    id: 'synthetic-application-profile',
+    name: 'Household application profile',
+    provider: '',
+    kind: 'application-profile',
+    lifecycle: 'UNKNOWN',
+    regions: [],
+    compatibility: 'unverified'
+  }
+];
 function savePublic(target, body, names) {
   for (const [key, value] of Object.entries(body)) {
     if (names.includes(key)) {
@@ -68,6 +124,10 @@ function savePublic(target, body, names) {
     } else {
       target[key] = value;
     }
+  }
+  if (target.provider) {
+    target.discoveryRevision = nextRevision();
+    target.configured = !!target.model;
   }
 }
 await page.route('**/api/**', async (route) => {
@@ -80,7 +140,7 @@ await page.route('**/api/**', async (route) => {
   if (path === '/api/session') {
     data = {
       authenticated: true,
-      demo: false,
+      demo,
       currency: 'AUD',
       timeZone: 'Australia/Brisbane',
       user: {
@@ -110,6 +170,27 @@ await page.route('**/api/**', async (route) => {
     if (status === 200) {
       data = redbark;
     }
+  } else if (path === '/api/settings/provider/models' || path === '/api/settings/assistant/models') {
+    const target = path.includes('/assistant/') ? assistant : provider;
+    assert.deepEqual(body, { revision: target.discoveryRevision }, 'discovery sends only saved revision');
+    data = {
+      revision: target.discoveryRevision,
+      region: target.region,
+      models: discoveryMode === 'empty' ? [] : models,
+      warnings: ['Model access and compatibility have not been verified.'],
+      truncated: discoveryMode === 'partial'
+    };
+    if (discoveryMode === 'permission') {
+      status = 403;
+      data = { error: 'Bedrock discovery permission denied.' };
+    } else if (discoveryMode === 'stale') {
+      status = 409;
+      data = { error: 'Saved configuration changed. Refresh settings.' };
+    } else if (discoveryMode === 'mismatch') {
+      data.revision = 'f'.repeat(64);
+    } else if (discoveryMode === 'deferred') {
+      await new Promise((resolve) => pendingDiscovery.push(resolve));
+    }
   } else if (path === '/api/settings/provider') {
     if (request.method() === 'PUT') {
       savePublic(provider, body, ['apiKey', 'accessKeyId', 'secretAccessKey']);
@@ -117,7 +198,7 @@ await page.route('**/api/**', async (route) => {
     data = provider;
   } else if (path === '/api/settings/assistant') {
     if (request.method() === 'PUT') {
-      savePublic(assistant, body, ['apiKey']);
+      savePublic(assistant, body, ['apiKey', 'accessKeyId', 'secretAccessKey']);
     }
     data = assistant;
   } else if (path === '/api/settings/webhook') {
@@ -139,13 +220,14 @@ await page.route('**/api/**', async (route) => {
   } else if (path === '/api/import-health') {
     data = { accounts: [], jobs: [] };
   }
+  responses.push(JSON.stringify(data));
   await route.fulfill({ status, json: data });
 });
 const lastWrite = (path) => calls.filter((c) => c.path === path && c.method === 'PUT').at(-1)?.body;
 const saveRedbark = async () => {
   await page.getByRole('button', { name: 'Save Redbark settings', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Redbark settings saved' }).waitFor();
-  await page.getByRole('button', { name: 'Save Redbark settings', exact: true }).waitFor({ state: 'visible' });
+  await expect(page.getByRole('button', { name: 'Save Redbark settings', exact: true })).toBeEnabled();
 };
 try {
   await page.goto(process.env.DOLPHINO_TEST_URL || 'http://127.0.0.1:5173');
@@ -199,7 +281,7 @@ try {
   assert.equal(body.enabled, true);
   assert.equal(body.autoClassify, false, 'on-demand only supported');
   assert.equal(body.autoApply, false);
-  assert.equal(await page.getByLabel('OpenAI API key', { exact: true }).inputValue(), '');
+  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
   await page
     .getByRole('checkbox', {
       name: 'Automatically suggest categories for unresolved imports',
@@ -234,15 +316,278 @@ try {
       (c) => c.path === '/api/settings/webhook/register' && c.body.publicBaseUrl === 'https://dolphino.example.com'
     )
   );
-  await page.getByLabel('Provider', { exact: true }).selectOption('bedrock');
-  await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
-  await page.getByLabel('Model or inference profile ID / ARN', { exact: true }).fill('synthetic-bedrock-model');
-  await page.getByLabel('AWS access key ID', { exact: true }).fill('synthetic-access-key');
-  await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-secret-key');
-  await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Settings updated.' }).waitFor();
-  assert.equal(lastWrite('/api/settings/provider').region, 'ap-southeast-2');
-  assert.equal(lastWrite('/api/settings/provider').enabled, false, 'provider switch requires re-enable');
+  const pickerCases = [
+    {
+      heading: 'Optional AI classification',
+      purpose: 'classification',
+      providerLabel: 'Provider',
+      modelLabel: 'Model or inference profile ID / ARN',
+      regionLabel: 'AWS region',
+      keyLabel: 'AWS access key ID',
+      secretLabel: 'AWS secret access key',
+      saveLabel: 'Save provider settings',
+      enableLabel: 'Enable AI classification',
+      path: '/api/settings/provider',
+      target: provider
+    },
+    {
+      heading: 'Read-only financial assistant',
+      purpose: 'assistant',
+      providerLabel: 'Assistant provider',
+      modelLabel: 'Assistant model ID',
+      regionLabel: 'Assistant AWS region',
+      keyLabel: 'Assistant AWS access key ID',
+      secretLabel: 'Assistant AWS secret access key',
+      saveLabel: 'Save assistant settings',
+      enableLabel: 'Enable the household assistant',
+      path: '/api/settings/assistant',
+      target: assistant
+    }
+  ];
+  for (const config of pickerCases) {
+    const section = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: config.heading, exact: true }) });
+    const model = section.getByLabel(config.modelLabel, { exact: true });
+    const load = section.getByRole('button', { name: /^(Load models|Loading models…)$/ });
+    const choices = section.getByLabel(`Available ${config.purpose} Bedrock models`, { exact: true });
+    const search = section.getByLabel(`Search ${config.purpose} Bedrock models`, { exact: true });
+    const key = section.getByLabel(config.keyLabel, { exact: true });
+    const secret = section.getByLabel(config.secretLabel, { exact: true });
+    const region = section.getByLabel(config.regionLabel, { exact: true });
+    const clear = section.getByRole('checkbox', { name: 'Clear saved value', exact: true }).first();
+    const save = async () => {
+      const button = section.getByRole('button', { name: config.saveLabel, exact: true });
+      await Promise.all([
+        page.waitForResponse(
+          (response) => response.url().endsWith(config.path) && response.request().method() === 'PUT'
+        ),
+        button.click()
+      ]);
+      await expect(button).toBeEnabled();
+      await expect(key).toHaveValue('');
+      await expect(secret).toHaveValue('');
+    };
+    const loadSuccessful = async (mode = 'success') => {
+      discoveryMode = mode;
+      await load.click();
+      await expect(choices).toBeVisible();
+      await expect(load).toBeEnabled();
+    };
+    const beginDeferred = async () => {
+      discoveryMode = 'deferred';
+      await load.click();
+      await expect.poll(() => pendingDiscovery.length).toBe(1);
+      await expect(load).toBeDisabled();
+    };
+    const endDeferred = async () => {
+      const release = pendingDiscovery.shift();
+      const count = responses.length;
+      release();
+      await expect.poll(() => responses.length).toBeGreaterThan(count);
+      await expect(choices).toHaveCount(0);
+    };
+
+    await section.getByLabel(config.providerLabel, { exact: true }).selectOption('bedrock');
+    await region.selectOption('ap-southeast-2');
+    await expect(model).toHaveValue('');
+    assert.equal(await model.evaluate((element) => element.required), false, 'disabled Bedrock permits missing model');
+    await key.fill(`synthetic-${config.purpose}-access-key`);
+    await secret.fill(`synthetic-${config.purpose}-secret-key`);
+    await expect(load).toBeDisabled();
+    await save();
+    assert.equal(lastWrite(config.path).model, '', 'credentials can be saved before choosing a model');
+    assert.equal(lastWrite(config.path).enabled, false, 'provider switch requires re-enable');
+    assert.equal(config.target.configured, false, 'empty model remains unconfigured');
+    await expect(load).toBeEnabled();
+    await section.getByRole('checkbox', { name: config.enableLabel, exact: true }).check();
+    assert.equal(await model.evaluate((element) => element.required), true, 'enabled Bedrock requires a model');
+    await section.getByRole('checkbox', { name: config.enableLabel, exact: true }).uncheck();
+    await loadSuccessful();
+    await expect(model).toHaveValue('');
+    assert.deepEqual(calls.filter((call) => call.path === `${config.path}/models`).at(-1).body, {
+      revision: config.target.discoveryRevision
+    });
+    const optionText = (await choices.locator('option').allTextContents()).join(' ');
+    for (const description of [
+      'Foundation model',
+      'System inference profile',
+      'Application inference profile',
+      'LEGACY',
+      'Unverified'
+    ]) {
+      assert(optionText.includes(description), `discovery labels ${description}`);
+    }
+    await search.fill('Household');
+    await expect(choices.locator('option')).toHaveCount(2);
+    await choices.selectOption('synthetic-application-profile');
+    await expect(model).toHaveValue('synthetic-application-profile');
+    await save();
+    await expect(choices).toHaveCount(0);
+    await model.fill('custom.model-or-profile');
+    await loadSuccessful();
+    await expect(model).toHaveValue('custom.model-or-profile');
+    await search.fill('Legacy');
+    await choices.selectOption('synthetic.legacy-v1');
+    await loadSuccessful();
+    await expect(model).toHaveValue('synthetic.legacy-v1');
+    await loadSuccessful('partial');
+    await expect(section.getByText('This list is incomplete.', { exact: false })).toBeVisible();
+    await loadSuccessful('empty');
+    await expect(choices).toBeDisabled();
+    await expect(model).toHaveValue('synthetic.legacy-v1');
+    for (const mode of ['permission', 'stale', 'mismatch']) {
+      discoveryMode = mode;
+      await load.click();
+      await expect(section.getByRole('alert')).toContainText('Unable to load models');
+      await expect(section.getByRole('alert')).toContainText('bedrock:ListInferenceProfiles');
+      await expect(choices).toHaveCount(0);
+      await expect(model).toHaveValue('synthetic.legacy-v1');
+      await expect(model).toBeEditable();
+    }
+    await loadSuccessful();
+    await key.fill('synthetic-unsaved-key');
+    await expect(load).toBeDisabled();
+    await expect(choices).toHaveCount(0);
+    await key.fill('');
+    await expect(load).toBeEnabled();
+    await clear.check();
+    await expect(load).toBeDisabled();
+    await clear.uncheck();
+    await region.selectOption('us-east-1');
+    await expect(load).toBeDisabled();
+    await region.selectOption('ap-southeast-2');
+    await expect(load).toBeEnabled();
+
+    // Double dispatch happens before React can repaint the disabled button.
+    discoveryMode = 'deferred';
+    const beforeDouble = calls.filter((call) => call.path === `${config.path}/models`).length;
+    await load.evaluate((element) => {
+      element.click();
+      element.click();
+    });
+    await expect.poll(() => pendingDiscovery.length).toBe(1);
+    assert.equal(calls.filter((call) => call.path === `${config.path}/models`).length, beforeDouble + 1);
+    await model.fill('manual-model-after-request');
+    await endDeferred();
+    await expect(model).toHaveValue('manual-model-after-request');
+
+    await beginDeferred();
+    await section.getByRole('checkbox', { name: config.enableLabel, exact: true }).check();
+    await endDeferred();
+    await section.getByRole('checkbox', { name: config.enableLabel, exact: true }).uncheck();
+    await beginDeferred();
+    await secret.fill('synthetic-unsaved-secret');
+    await endDeferred();
+    await expect(load).toBeDisabled();
+    await secret.fill('');
+    await beginDeferred();
+    await clear.check();
+    await endDeferred();
+    await clear.uncheck();
+    await beginDeferred();
+    await region.selectOption('us-east-1');
+    await region.selectOption('ap-southeast-2');
+    await endDeferred();
+    await beginDeferred();
+    await save();
+    await endDeferred();
+    await expect(model).toHaveValue('manual-model-after-request');
+    await beginDeferred();
+    await section.getByLabel(config.providerLabel, { exact: true }).selectOption('openai');
+    await section.getByLabel(config.providerLabel, { exact: true }).selectOption('bedrock');
+    await endDeferred();
+    await expect(model).toHaveValue('');
+    await model.fill('saved-manual-profile');
+    await save();
+    await loadSuccessful();
+    await expect(model).toHaveValue('saved-manual-profile');
+    if (process.env.DOLPHINO_BROWSER_ARTIFACT_DIR) {
+      await mkdir(process.env.DOLPHINO_BROWSER_ARTIFACT_DIR, { recursive: true });
+      await choices.selectOption('apac.synthetic.text-v1');
+      for (const [size, viewport] of [
+        ['desktop', { width: 1440, height: 1000 }],
+        ['mobile', { width: 390, height: 844 }]
+      ]) {
+        await page.setViewportSize(viewport);
+        assert.equal(
+          await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth),
+          true,
+          `${config.purpose} loaded picker ${size} overflow`
+        );
+        await section.screenshot({
+          path: join(process.env.DOLPHINO_BROWSER_ARTIFACT_DIR, `bedrock-${config.purpose}-${size}.png`),
+          animations: 'disabled'
+        });
+      }
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await model.fill('saved-manual-profile');
+    }
+    if (config.purpose === 'assistant') {
+      await expect(section.getByText('the assistant also requires tool use', { exact: false })).toBeVisible();
+    } else {
+      await beginDeferred();
+      await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+      await expect(page.getByRole('status').filter({ hasText: 'Registration status refreshed.' })).toBeVisible();
+      await endDeferred();
+    }
+  }
+
+  // Unmounting Settings disposes of both discoveries. Returning starts clean.
+  const bothLoad = page.getByRole('button', { name: 'Load models', exact: true });
+  discoveryMode = 'deferred';
+  await bothLoad.nth(0).click();
+  await bothLoad.nth(0).click();
+  await expect.poll(() => pendingDiscovery.length).toBe(2);
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  while (pendingDiscovery.length) {
+    pendingDiscovery.shift()();
+  }
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel(/Available .* Bedrock models/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Load models', exact: true })).toHaveCount(2);
+
+  // Unusable saved credentials and demo mode cannot issue discovery requests.
+  provider.credentialsAvailable = false;
+  assistant.credentialsAvailable = false;
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  for (const button of await page.getByRole('button', { name: 'Load models', exact: true }).all()) {
+    await expect(button).toBeDisabled();
+  }
+  provider.credentialsAvailable = true;
+  assistant.credentialsAvailable = true;
+  demo = true;
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByText('Model discovery is unavailable in the fictional demo.', { exact: true })).toHaveCount(2);
+  for (const button of await page.getByRole('button', { name: 'Load models', exact: true }).all()) {
+    await expect(button).toBeDisabled();
+  }
+  const discoveryCalls = calls.filter((call) => call.path.endsWith('/models'));
+  assert(discoveryCalls.length > 0);
+  assert(discoveryCalls.every((call) => call.method === 'POST' && Object.keys(call.body).join() === 'revision'));
+  const publicResponses = responses.join(' ');
+  for (const secret of [
+    'synthetic-classification-access-key',
+    'synthetic-classification-secret-key',
+    'synthetic-assistant-access-key',
+    'synthetic-assistant-secret-key',
+    'synthetic-unsaved-key',
+    'synthetic-unsaved-secret'
+  ]) {
+    assert.equal(publicResponses.includes(secret), false, 'API responses never return write-only credentials');
+    assert.equal(
+      (await page.locator('body').innerText()).includes(secret),
+      false,
+      'credentials are absent from rendered content'
+    );
+  }
+  assert.equal(
+    calls.some((call) => /test-model|test-connection/.test(call.path)),
+    false,
+    'model discovery never invokes connection or inference tests'
+  );
   assert.equal(await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth), true);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(
@@ -253,7 +598,7 @@ try {
   assert.deepEqual(errors, []);
   await assertPageStorageUnused();
   console.log(
-    'Database Settings browser checks passed: Redbark write-only save/preserve/clear, signing-secret controls, failed-save retry, OpenAI first save, independent classification flags/limits, Bedrock switch, assistant OpenAI first save, webhook registration and responsive layout. All APIs mocked.'
+    'Database Settings browser checks passed: Redbark write-only save/preserve/clear, signing-secret controls, failed-save retry, OpenAI first save, independent classification flags/limits, Bedrock credentials-first discovery for classification and assistant, searchable foundation/profile choices, manual/legacy preservation, empty/partial results, permission/stale failures, dirty drafts, repeated requests, region/provider/save/refresh/unmount races, demo controls, no inference, no secret disclosure, webhook registration and responsive layout. All APIs mocked.'
   );
 } finally {
   await browser.close();

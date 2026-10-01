@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
+import { BedrockModelPicker } from './bedrock-model-picker';
 export function AssistantSettings({ api, demo }) {
   const [data, setData] = useState(null),
     [values, setValues] = useState({
@@ -117,15 +118,35 @@ export function AssistantSettings({ api, demo }) {
             <option value="bedrock">Amazon Bedrock</option>
           </select>
         </label>
-        <label>
-          Assistant model ID
-          <input
-            required
-            value={values.model}
-            maxLength={2048}
-            onChange={(e) => setValues({ ...values, model: e.target.value })}
+        {values.provider === 'bedrock' ? (
+          <BedrockModelPicker
+            api={api}
+            endpoint="/settings/assistant/models"
+            saved={data}
+            provider={values.provider}
+            region={values.region}
+            credentialsDirty={Object.values(secrets).some(Boolean)}
+            clearsDirty={Object.values(clears).some(Boolean)}
+            draft={values}
+            model={values.model}
+            onModelChange={(model) => setValues({ ...values, model })}
+            modelLabel="Assistant model ID"
+            purpose="assistant"
+            required={values.enabled}
+            busy={busy}
+            demo={demo}
           />
-        </label>
+        ) : (
+          <label>
+            Assistant model ID
+            <input
+              required
+              value={values.model}
+              maxLength={500}
+              onChange={(e) => setValues({ ...values, model: e.target.value })}
+            />
+          </label>
+        )}
         {values.provider === 'bedrock' && (
           <label>
             Assistant AWS region

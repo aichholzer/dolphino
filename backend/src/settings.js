@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BEDROCK_REGION_CATALOG, isBedrockRegion } from './provider-regions.js';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { canEncrypt, encryptSecret, decryptSecret } from './crypto.js';
 const credential = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
@@ -18,9 +19,8 @@ export const providerSettingsSchema = z
     model: z
       .string()
       .trim()
-      .min(1)
       .max(500)
-      .regex(/^[a-zA-Z0-9._:/-]+$/),
+      .regex(/^[a-zA-Z0-9._:/-]*$/),
     region: z.preprocess(
       (value) => (value === '' ? undefined : value),
       z.string().refine(isBedrockRegion, 'Choose a supported Bedrock region').optional()
@@ -36,6 +36,9 @@ export const providerSettingsSchema = z
   })
   .strict()
   .superRefine((v, ctx) => {
+    if (!v.model && (v.provider !== 'bedrock' || v.enabled)) {
+      ctx.addIssue({ code: 'custom', message: 'Choose a model before enabling', path: ['model'] });
+    }
     if (v.provider === 'bedrock' && v.accessKeyId?.startsWith('ASIA')) {
       ctx.addIssue({
         code: 'custom',
@@ -131,7 +134,7 @@ export function createSettingsStore({
     // credentials from another, even when writers use transactions.
     const row = (
       await client.query(
-        `SELECT s.value, COALESCE((
+        `SELECT s.value, s.updated_at::text AS revision_time, COALESCE((
           SELECT jsonb_object_agg(c.setting,c.ciphertext)
           FROM encrypted_credentials c
           WHERE c.provider=s.value->>'provider' AND c.setting=ANY($2::text[])
@@ -180,18 +183,34 @@ export function createSettingsStore({
         unreadable
       };
     }
-    const configured =
+    const credentialsConfigured =
       settingsAvailable && !!row && required(value.provider).every((field) => credentials[field].configured);
+    const configured = credentialsConfigured && !!value.model;
+    const usableCredentials = credentialsConfigured && credentialsAvailable;
     const usable = configured && credentialsAvailable;
+    // Hash only stored ciphertext and public settings, never decrypted secrets.
+    // The timestamp fences same-value saves and region changes away and back.
+    const discoveryRevision = createHash('sha256')
+      .update(
+        JSON.stringify([
+          providerNamespace,
+          row?.revision_time,
+          row?.value,
+          fields.map((field) => row?.secrets?.[`${providerNamespace}.${field}`])
+        ])
+      )
+      .digest('hex');
     const disabledReason = !settingsAvailable
       ? 'Stored provider settings are invalid; save valid settings to continue'
       : !credentialsAvailable
         ? 'Stored credentials unavailable; verify APP_SECRET or replace credentials'
-        : !configured
+        : !credentialsConfigured
           ? 'Configure a provider and credentials in Settings'
-          : !value.enabled
-            ? 'Provider is disabled'
-            : null;
+          : !value.model
+            ? 'Credentials saved; load models or enter a model ID before enabling'
+            : !value.enabled
+              ? 'Provider is disabled'
+              : null;
     const config = {
       ...disabledProviderConfig,
       llmProvider: value.provider,
@@ -204,10 +223,10 @@ export function createSettingsStore({
       llmDailyRequestLimit: value.dailyRequestLimit ?? 20,
       llmBatchSize: value.batchSize ?? 5,
       llmConfigured: configured,
-      llmCredentialsUnavailable: !!row && !usable,
+      llmCredentialsUnavailable: !!row && !usableCredentials,
       llmDisabledReason: disabledReason
     };
-    if (usable) {
+    if (usableCredentials) {
       for (const field of required(value.provider)) {
         config[names[field]] = secrets[field];
       }
@@ -217,6 +236,7 @@ export function createSettingsStore({
       config,
       publicState: {
         ...value,
+        discoveryRevision,
         regionCatalog: BEDROCK_REGION_CATALOG,
         source: 'database',
         encryptionAvailable: canEncrypt(appSecret),

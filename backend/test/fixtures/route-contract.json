@@ -74,5 +74,7 @@
   ["post", "/api/connection/test", "admin"],
   ["post", "/api/webhooks/redbark", "public", true],
   ["post", "/api/transactions/:id/suggest", "admin"],
-  ["get", "/api/export", "financial"]
+  ["get", "/api/export", "financial"],
+  ["post", "/api/settings/provider/models", "admin"],
+  ["post", "/api/settings/assistant/models", "admin"]
 ]

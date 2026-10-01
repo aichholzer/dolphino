@@ -18,6 +18,9 @@ export const assistantSettingsSchema = z
   })
   .strict()
   .superRefine((v, ctx) => {
+    if (!v.model && (v.provider !== 'bedrock' || v.enabled)) {
+      ctx.addIssue({ code: 'custom', message: 'Choose a model before enabling', path: ['model'] });
+    }
     if (v.provider === 'bedrock' && !v.region) {
       ctx.addIssue({
         code: 'custom',
@@ -122,6 +125,7 @@ export function createAssistantSettings({ pool, appSecret }) {
     save,
     getRuntimeConfig,
     getProviderConfig: getRuntimeConfig,
+    getProviderSnapshot: store.getProviderSnapshot,
     getUserStatus
   };
 }

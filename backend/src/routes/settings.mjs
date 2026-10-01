@@ -3,6 +3,7 @@ import { testProviderConnection, testProviderModel } from '../llm.js';
 import { testAssistantModel } from '../assistant-provider-test.js';
 import { FINANCE_TOOLS } from '../assistant-tools.js';
 import { body } from '../http/body.mjs';
+import { discoverSavedBedrockModels } from '../bedrock-models.js';
 
 export function registerSettingsRoutes({
   route,
@@ -14,6 +15,33 @@ export function registerSettingsRoutes({
   providerDependencies,
   sensitive
 }) {
+  for (const namespace of ['provider', 'assistant']) {
+    route('post', `/api/settings/${namespace}/models`, async (req, res) => {
+      sensitive('bedrock-model-discovery');
+      const { revision } = z
+        .object({ revision: z.string().regex(/^[a-f0-9]{64}$/) })
+        .strict()
+        .parse(await body(req));
+      const cancel = new AbortController();
+      const disconnected = () => {
+        if (!res.writableEnded) {
+          cancel.abort();
+        }
+      };
+      req.once('aborted', disconnected);
+      res.once('close', disconnected);
+      try {
+        const source = namespace === 'provider' ? settings : assistantSettings;
+        return await discoverSavedBedrockModels(() => source.getProviderSnapshot(), revision, {
+          ...providerDependencies,
+          signal: cancel.signal
+        });
+      } finally {
+        req.off('aborted', disconnected);
+        res.off('close', disconnected);
+      }
+    });
+  }
   route('get', '/api/settings/assistant', async () => ({
     ...(await assistantSettings.getPublic()),
     tools: FINANCE_TOOLS,

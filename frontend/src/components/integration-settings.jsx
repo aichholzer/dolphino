@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from './ui/button';
+import { BedrockModelPicker } from './bedrock-model-picker';
 
 export function IntegrationSettings({ api, demo, onUpdated }) {
   const [settings, setSettings] = useState(null),
@@ -306,20 +307,36 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
               <option value="bedrock">Amazon Bedrock</option>
             </select>
           </label>
-          <label>
-            {values.provider === 'bedrock' ? 'Model or inference profile ID / ARN' : 'Model'}
-            <input
-              required
-              maxLength={500}
-              value={values.model}
-              placeholder={
-                values.provider === 'bedrock'
-                  ? 'Enter an authorized model or inference profile'
-                  : 'Enter a supported model ID'
-              }
-              onChange={(e) => setValues({ ...values, model: e.target.value })}
+          {values.provider === 'bedrock' ? (
+            <BedrockModelPicker
+              api={api}
+              endpoint="/settings/provider/models"
+              saved={settings}
+              provider={values.provider}
+              region={values.region}
+              credentialsDirty={Object.values(secrets).some(Boolean)}
+              clearsDirty={Object.values(clears).some(Boolean)}
+              draft={values}
+              model={values.model}
+              onModelChange={(model) => setValues({ ...values, model })}
+              modelLabel="Model or inference profile ID / ARN"
+              purpose="classification"
+              required={values.enabled}
+              busy={busy}
+              demo={demo}
             />
-          </label>
+          ) : (
+            <label>
+              Model
+              <input
+                required
+                maxLength={500}
+                value={values.model}
+                placeholder="Enter a supported model ID"
+                onChange={(e) => setValues({ ...values, model: e.target.value })}
+              />
+            </label>
+          )}
           {values.provider === 'bedrock' && (
             <label>
               AWS region
