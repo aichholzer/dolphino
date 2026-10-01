@@ -15,6 +15,7 @@ export async function ensureRedbarkSchema(pool) {
   await ensureSimplefinSchema(pool);
   await pool.query(`CREATE TABLE IF NOT EXISTS redbark_state (id integer PRIMARY KEY CHECK(id=1), fingerprint text, tested_at timestamptz, last_success timestamptz, last_error text, next_attempt timestamptz);
     ALTER TABLE redbark_state ADD COLUMN IF NOT EXISTS next_attempt timestamptz;
+    ALTER TABLE redbark_state ADD COLUMN IF NOT EXISTS category_error text;
     INSERT INTO redbark_state(id) VALUES(1) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS redbark_receipts (event_id text PRIMARY KEY, body bytea NOT NULL, body_hash text NOT NULL, received_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS redbark_jobs (id bigserial PRIMARY KEY, dedupe_key text UNIQUE NOT NULL, status text NOT NULL DEFAULT 'queued', attempts integer NOT NULL DEFAULT 0, available_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz, last_error text);
@@ -77,6 +78,7 @@ export function createRedbarkIntegration({
       lastSuccess: state?.last_success,
       lastPollAt: state?.last_success,
       lastError: state?.last_error,
+      categoryWarning: state?.category_error || null,
       queuedJobs: counts.pending,
       pausedJobs: counts.paused,
       pauseReason: counts.paused
@@ -174,6 +176,8 @@ export function createRedbarkIntegration({
   async function sync(current, params = {}) {
     const client = clientFor(current);
     const accounts = await client.accounts();
+    let categoryNames = null,
+      categoryError = null;
     const timezone = config.timezone || 'Australia/Brisbane';
     const to =
       params.to ||
@@ -208,6 +212,19 @@ export function createRedbarkIntegration({
       }
       if (!/^acct_[a-zA-Z0-9]+$/.test(rawAccount.id) || !/^[a-zA-Z]{3}$/.test(rawAccount.currency)) {
         throw new RedbarkError('invalid_provider_account');
+      }
+      if (!categoryNames) {
+        try {
+          categoryNames = await client.categories();
+        } catch (error) {
+          categoryNames = new Map();
+          categoryError = error.status === 403 ? 'category_lookup_forbidden' : 'category_lookup_unavailable';
+          await pool.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
+          // Respect global provider backoff; missing category permission alone never blocks imports.
+          if (error.status === 429 || error.status === 503) {
+            throw error;
+          }
+        }
       }
       const fetchedAt = new Date().toISOString();
       const rawBalance = rawAccount.category === 'banking' ? await client.balance(rawAccount.id) : null;
@@ -249,9 +266,16 @@ export function createRedbarkIntegration({
           truncated: false,
           reason: 'Source snapshot; opening balance and compatible coverage unavailable for reconciliation.'
         },
-        transactions: rawTransactions.map((t) => normalizeTransaction(t, rawAccount.id, fetchedAt))
+        transactions: rawTransactions.map((t) => normalizeTransaction(t, rawAccount.id, fetchedAt, categoryNames))
       });
+      // Repair all imported history for this verified account, including older rows
+      // outside the rolling fetch window, without replaying or changing bank evidence.
+      const repaired = await store.reconcileRedbarkCategories(rawAccount.id, categoryNames);
+      if (repaired.unresolved && !categoryError) {
+        categoryError = 'category_reference_unresolved';
+      }
     }
+    await pool.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
   }
   async function tick() {
     if (busy || config.mode !== 'live') {

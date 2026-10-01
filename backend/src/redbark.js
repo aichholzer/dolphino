@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { redbarkCategoryNames, resolveRedbarkCategory } from './redbark-categories.js';
 
 export const REDBARK_VERSION = '2026-10-01.wattle';
 const BASE = 'https://api.redbark.com/v2/';
@@ -117,7 +118,7 @@ export function providerClassification(t) {
         : 'Classification review: provider gives insufficient evidence to distinguish income, refund, spending or transfer'
   };
 }
-export function normalizeTransaction(raw, accountId, fetchedAt) {
+export function normalizeTransaction(raw, accountId, fetchedAt, categoryNames) {
   const parsed = transactionSchema.safeParse(raw);
   if (!parsed.success || raw.account !== accountId) {
     throw new RedbarkError('invalid_provider_transaction');
@@ -142,7 +143,7 @@ export function normalizeTransaction(raw, accountId, fetchedAt) {
     date,
     ...classification,
     description: t.description,
-    category: t.category || t.provider_category || undefined,
+    category: resolveRedbarkCategory(t, categoryNames),
     fetchedAt,
     raw,
     mode: 'live'
@@ -239,6 +240,14 @@ export class RedbarkClient {
   }
   async accounts() {
     return this.list('accounts?limit=100');
+  }
+  async categories() {
+    const rows = await this.list('categories?limit=100');
+    try {
+      return redbarkCategoryNames(rows);
+    } catch {
+      throw new RedbarkError('invalid_provider_categories');
+    }
   }
   async balance(id) {
     return (await this.request(`accounts/${encodeURIComponent(id)}/balance`)).body;

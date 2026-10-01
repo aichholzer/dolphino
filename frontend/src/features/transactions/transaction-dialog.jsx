@@ -47,7 +47,9 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
       onOpenChange={(v) => !v && close()}
       title="Make it your own"
       description={
-        transaction ? `${transaction.description} · ${money(transaction.amountMinor, transaction.currency)}` : ''
+        transaction
+          ? `${transaction.description} · ${money(transaction.amountMinor ?? null, transaction.currency)}`
+          : ''
       }
     >
       <form

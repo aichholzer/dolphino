@@ -11,6 +11,7 @@ import {
   domainError
 } from './engine.js';
 import { demoData } from './demo.js';
+import { isRedbarkCategoryReference, isKnownCategoryLabel, resolveRedbarkCategory } from './redbark-categories.js';
 const dateString = (d) =>
   d instanceof Date
     ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -83,7 +84,8 @@ export class Store {
       '005_settings.sql',
       '006_alert_notifications.sql',
       '010_grants.sql',
-      '012_simplefin.sql'
+      '012_simplefin.sql',
+      '013_redbark_category_evidence.sql'
     ]) {
       await this.pool.query(await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
     }
@@ -221,6 +223,20 @@ export class Store {
         );
       }
     }
+    let sameCategoryReference = false;
+    if (existing && provider === 'redbark' && isRedbarkCategoryReference(o.raw?.category)) {
+      const previous = (
+        await c.query(
+          "SELECT payload FROM provider_observations WHERE mode=$1 AND provider='redbark' AND transaction_id=$2 AND account_id=$3 AND payload->>'status'=$4 ORDER BY fetched_at DESC,id DESC LIMIT 1",
+          [this.mode, existing.id, o.accountId, existing.status]
+        )
+      ).rows[0]?.payload;
+      sameCategoryReference = previous?.raw?.category === o.raw.category;
+      // A missing scope or temporary taxonomy outage must not erase a known name.
+      if (!o.category && sameCategoryReference && isKnownCategoryLabel(existing.provider_category)) {
+        o = { ...o, category: existing.provider_category };
+      }
+    }
     const id = existing?.id || randomUUID();
     const rules = (await c.query('SELECT * FROM rules WHERE mode=$1 ORDER BY priority DESC,id', [this.mode])).rows.map(
       ruleRow
@@ -235,7 +251,7 @@ export class Store {
       existing.kind === classification.kind &&
       dateString(existing.date) === o.date &&
       existing.description === o.description &&
-      (existing.provider_category || null) === (o.category || null);
+      ((existing.provider_category || null) === (o.category || null) || sameCategoryReference);
     if (
       classificationReview(reason) &&
       (ruleResolvesReview(reason, o.description, rules) || (unchanged && !existing.review_reason))
@@ -285,6 +301,21 @@ export class Store {
         } catch {
           reason = 'Provider amount changed; existing manual splits need review';
         }
+      }
+      if (sameCategoryReference && unchanged && (existing.provider_category || null) !== (o.category || null)) {
+        await c.query(
+          "INSERT INTO audit_history(mode,transaction_id,action,before_value,after_value) VALUES($1,$2,'redbark-category-resolved',$3,$4)",
+          [
+            this.mode,
+            id,
+            { providerCategory: existing.provider_category, category: existing.classification_category },
+            {
+              providerCategory: o.category || null,
+              category: classification.category,
+              categoryReference: o.raw.category
+            }
+          ]
+        );
       }
       await c.query(
         `UPDATE transactions SET currency=$2,amount_minor=$3,status=$4,date=$5,description=$6,provider_category=$7,classification_category=$8,kind=$9,fetched_at=$10,review_reason=COALESCE($11,review_reason) WHERE id=$1`,
@@ -427,6 +458,83 @@ export class Store {
       };
     }
     return (await c.query(`${txSelect} WHERE ${where} ORDER BY t.date DESC,t.id`, values)).rows.map(txRow);
+  }
+  async reconcileRedbarkCategories(accountId, names) {
+    return this.atomic(async (c) => {
+      // Only current, accepted evidence for this accessible direct-Redbark account
+      // can repair derived labels. Late pending observations and other sources cannot.
+      const rows = (
+        await c.query(
+          `SELECT t.*,o.transaction_id override_id,p.payload FROM transactions t
+           LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
+           JOIN LATERAL (
+             SELECT payload FROM provider_observations p
+             WHERE p.mode=t.mode AND p.provider='redbark' AND p.transaction_id=t.id AND p.account_id=t.account_id
+               AND p.payload->>'status'=t.status AND p.payload->>'amountMinor'=t.amount_minor::text
+               AND p.payload->>'currency'=t.currency AND p.payload->>'date'=t.date::text
+               AND p.payload->>'description'=t.description
+             ORDER BY fetched_at DESC,id DESC LIMIT 1
+           ) p ON true
+           WHERE t.mode=$1 AND t.account_id=$2 AND t.superseded_by IS NULL
+             AND NOT EXISTS(SELECT 1 FROM simplefin_accounts s WHERE s.local_id=t.account_id)`,
+          [this.mode, accountId]
+        )
+      ).rows;
+      const rules = (await c.query('SELECT * FROM rules WHERE mode=$1', [this.mode])).rows.map(ruleRow);
+      let updated = 0,
+        unresolved = 0;
+      for (const row of rows) {
+        const raw = row.payload.raw;
+        if (!isRedbarkCategoryReference(raw?.category)) {
+          continue;
+        }
+        const resolved = resolveRedbarkCategory(raw, names);
+        if (!resolved) {
+          unresolved++;
+        }
+        const providerCategory =
+          resolved || (isKnownCategoryLabel(row.provider_category) ? row.provider_category : null);
+        const category = classify(
+          { description: row.description, category: providerCategory, kind: row.kind },
+          rules
+        ).category;
+        const categoryChanged = row.provider_category !== providerCategory || row.classification_category !== category;
+        let reviewReason = row.review_reason;
+        if (reviewReason === 'Category needs review' && category !== 'Uncategorized') {
+          reviewReason = null;
+        } else if (
+          categoryChanged &&
+          !reviewReason &&
+          category === 'Uncategorized' &&
+          !row.override_id &&
+          !row.ai_category
+        ) {
+          reviewReason = 'Category needs review';
+        }
+        if (!categoryChanged && row.review_reason === reviewReason) {
+          continue;
+        }
+        await c.query(
+          'UPDATE transactions SET provider_category=$2,classification_category=$3,review_reason=$4 WHERE id=$1',
+          [row.id, providerCategory, category, reviewReason]
+        );
+        await c.query(
+          "INSERT INTO audit_history(mode,transaction_id,action,before_value,after_value) VALUES($1,$2,'redbark-category-resolved',$3,$4)",
+          [
+            this.mode,
+            row.id,
+            {
+              providerCategory: row.provider_category,
+              category: row.classification_category,
+              reviewReason: row.review_reason
+            },
+            { providerCategory, category, categoryReference: raw.category, reviewReason }
+          ]
+        );
+        updated++;
+      }
+      return { updated, unresolved };
+    });
   }
   async transactionPage(filters = {}) {
     return this.atomic((c) => this.listTransactions({ ...filters, paginated: true }, c), { refresh: false });

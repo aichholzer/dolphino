@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, Check } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
+import { money } from '../../money.js';
 
 export function ReviewsPage({ reviews, busy, onEdit, mutate }) {
   return (
@@ -14,6 +15,18 @@ export function ReviewsPage({ reviews, busy, onEdit, mutate }) {
             </div>
             <div>
               <h2>{r.description || r.title || 'Transaction needs review'}</h2>
+              <p>
+                <strong className="amount">
+                  {money(r.amountMinor ?? null, r.currency)}
+                  {r.currency ? ` ${r.currency}` : ''}
+                </strong>
+                {r.date ? ` · ${String(r.date).slice(0, 10)}` : ''}
+                {r.accountName ? ` · ${r.accountName}` : ''}
+              </p>
+              <p>
+                {r.category || 'Uncategorized'}
+                {r.kind ? ` · Current type: ${r.kind}` : ''}
+              </p>
               <p>{r.reviewReason || r.reason || r.type || 'Check the original evidence before resolving this item.'}</p>
               <small>Transaction: {r.id}</small>
             </div>

@@ -46,6 +46,15 @@ export function ImportHealth({ api, demo }) {
           {notice}
         </p>
       )}
+      {data?.integration?.categoryWarning && (
+        <p role="status" className="alert alert-error">
+          Redbark category names could not all be resolved. Known names and your corrections are retained; newly
+          imported unresolved categories show as Uncategorized.{' '}
+          {data.integration.categoryWarning === 'category_lookup_forbidden'
+            ? 'Bank imports continue. Check that your Redbark key has categories:read permission and access to the category taxonomy.'
+            : 'Category names will be checked again on the next import, subject to provider availability and backoff.'}
+        </p>
+      )}
       <Button variant="outline" disabled={busy} onClick={() => load().catch((e) => setError(e.message))}>
         Refresh import status
       </Button>

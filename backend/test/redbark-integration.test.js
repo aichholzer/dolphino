@@ -124,7 +124,10 @@ test('mocked live import preserves source evidence and Retry-After gates all job
   };
   const integration = createRedbarkIntegration({
     pool,
-    store: { ingestBatch: async (batch) => batches.push(batch) },
+    store: {
+      ingestBatch: async (batch) => batches.push(batch),
+      reconcileRedbarkCategories: async () => ({ updated: 0, unresolved: 0 })
+    },
     config: { mode: 'live', timezone: 'Australia/Brisbane' },
     getRedbarkConfig: async () => ({ redbarkApiKey: 'fake' }),
     fetchImpl
