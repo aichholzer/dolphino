@@ -86,6 +86,7 @@ export class Store {
       "005_settings.sql",
       "006_alert_notifications.sql",
       "010_grants.sql",
+      "012_simplefin.sql",
     ])
       await this.pool.query(
         await readFile(
@@ -138,6 +139,23 @@ export class Store {
     coverage = null,
   }) {
     return this.atomic(async (c) => {
+      if (this.mode === "live") {
+        const owner = (
+          await c.query(
+            "SELECT source_id FROM simplefin_accounts WHERE local_id=$1",
+            [account.id],
+          )
+        ).rows[0];
+        if (
+          owner &&
+          transactions.some(
+            (t) => t.provider !== `simplefin:${owner.source_id}`,
+          )
+        )
+          throw domainError("Account belongs to another import source");
+        if (owner && !transactions.length)
+          throw domainError("Account belongs to another import source");
+      }
       await this.updateAccount({ ...account, fetchedAt }, coverage, c);
       const result = [];
       for (const t of transactions)

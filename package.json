@@ -22,7 +22,8 @@
     "test:browser:assistant": "node scripts/browser-assistant.mjs",
     "test:browser:brand": "node scripts/browser-brand.mjs",
     "test:browser:integration-settings": "node scripts/browser-integration-settings.mjs",
-    "check:theme": "node scripts/check-theme.mjs"
+    "check:theme": "node scripts/check-theme.mjs",
+    "test:browser:simplefin": "node scripts/browser-simplefin.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",

@@ -61,3 +61,7 @@ See [assistant setup, tool catalog and limits](docs/assistant.md).
 The [isolated security assessment](docs/security-assessment.md) documents tested attacks, fixed findings and remaining deployment limits. This is not a security certification.
 
 Upgrading an existing installation? Read [rename compatibility and volume preservation](docs/rename-upgrade.md) before changing directories or Compose configuration. Keep APP_SECRET and your existing database/volume.
+
+### Optional SimpleFIN
+
+An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from Settings. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).

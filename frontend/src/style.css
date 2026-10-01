@@ -2997,3 +2997,14 @@ label {
     padding-right: 20px;
   }
 }
+
+/* Optional importer account controls stay stacked on narrow screens. */
+.simplefin-account {
+  display: block;
+}
+.simplefin-account > p {
+  margin: 8px 0 14px;
+}
+.simplefin-account form {
+  width: 100%;
+}

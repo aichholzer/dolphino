@@ -1,3 +1,4 @@
+import { createSimplefinIntegration } from "./simplefin.js";
 import rayo from "rayo";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -94,6 +95,9 @@ export function createApp({
   config,
   settings,
   redbarkSettings,
+  simplefin = settings
+    ? createSimplefinIntegration({ pool: store.pool, store, settings, config })
+    : null,
   registration,
   providerDependencies,
   notifications,
@@ -700,6 +704,25 @@ export function createApp({
     recent.push(now);
     sensitiveCalls.set(action, recent);
   }
+  route("get", "/api/settings/simplefin", () => simplefin.status());
+  for (const [path, method] of [
+    ["connect", "connect"],
+    ["disconnect", "disconnect"],
+    ["test", "discover"],
+    ["map", "mapAccount"],
+    ["backfill", "backfill"],
+  ]) {
+    route("post", `/api/settings/simplefin/${path}`, async (req) => {
+      sensitive(`simplefin-${path}`);
+      const input = await body(req);
+      if (path === "test") z.object({}).strict().parse(input);
+      return simplefin[method](input);
+    });
+  }
+  route("put", "/api/settings/simplefin", async (req) => {
+    sensitive("simplefin-save");
+    return simplefin.save(await body(req));
+  });
   route("get", "/api/settings/redbark", () => redbarkSettings.getPublic());
   route("put", "/api/settings/redbark", async (req) => {
     sensitive("save-redbark");

@@ -33,9 +33,10 @@ export function ImportHealth({ api, demo }) {
     <section className="card settings-card integration-settings import-health">
       <h2>Import health & history</h2>
       <p className="muted">
-        Check imported coverage and queued work. A successful provider request
-        does not guarantee fresh bank activity; account balances are separate
-        snapshots.
+        Check imported coverage and direct Redbark jobs. SimpleFIN jobs and
+        backfills are managed in its settings above. A successful provider
+        request does not guarantee fresh bank activity; account balances are
+        separate snapshots.
       </p>
       {error && (
         <p role="alert" className="alert alert-error">
@@ -88,11 +89,13 @@ export function ImportHealth({ api, demo }) {
             onChange={(e) => setAccountId(e.target.value)}
           >
             <option value="">Choose account</option>
-            {data?.accounts?.map((a) => (
-              <option value={a.id} key={a.id}>
-                {a.name}
-              </option>
-            ))}
+            {data?.accounts
+              ?.filter((a) => a.importSource !== "simplefin")
+              .map((a) => (
+                <option value={a.id} key={a.id}>
+                  {a.name}
+                </option>
+              ))}
           </select>
         </label>
         <div className="settings-row">

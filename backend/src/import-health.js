@@ -69,12 +69,20 @@ export function createImportHealth({
           "SELECT count(*) FILTER(WHERE status='queued')::int AS queued, count(*) FILTER(WHERE status='queued' AND last_error IS NOT NULL)::int AS retrying, count(*) FILTER(WHERE status='completed')::int AS completed FROM redbark_jobs",
         ),
       ]);
+    const simplefinAccounts = new Set(
+      (
+        await pool.query(
+          "SELECT local_id FROM simplefin_accounts WHERE local_id IS NOT NULL",
+        )
+      ).rows.map((r) => r.local_id),
+    );
     return {
       integration: integrationStatus,
       accounts: accounts.map((a) => ({
         id: a.id,
         name: a.name,
         currency: a.currency,
+        importSource: simplefinAccounts.has(a.id) ? "simplefin" : "redbark",
         fetchedAt: a.fetchedAt,
         coverage: a.coverage,
         transactionCount: 0,
@@ -99,6 +107,14 @@ export function createImportHealth({
     if (params.to > today)
       throw failure("Backfill cannot include future dates", 400);
     await verified();
+    if (
+      (
+        await pool.query("SELECT 1 FROM simplefin_accounts WHERE local_id=$1", [
+          params.accountId,
+        ])
+      ).rowCount
+    )
+      throw failure("Use SimpleFIN account backfill for this account");
     if (!(await store.listAccounts()).some((a) => a.id === params.accountId))
       throw failure("Account is not imported; wait for discovery first", 404);
     const key =

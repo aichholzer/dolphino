@@ -36,6 +36,7 @@ import { AssistantPanel } from "./components/assistant-panel";
 import { AssistantSettings } from "./components/assistant-settings";
 import { ImportHealth } from "./components/import-health";
 import { NotificationSettings } from "./components/notification-settings";
+import { SimplefinSettings } from "./components/simplefin-settings";
 import { IntegrationSettings } from "./components/integration-settings";
 import { money, decimalToMinor, minorToDecimal } from "./money.js";
 const CATEGORIES = [
@@ -1441,6 +1442,11 @@ function App() {
                     )}
                   </section>
                   <IntegrationSettings
+                    api={api}
+                    demo={session?.demo}
+                    onUpdated={async () => setData(await api("/settings"))}
+                  />
+                  <SimplefinSettings
                     api={api}
                     demo={session?.demo}
                     onUpdated={async () => setData(await api("/settings"))}

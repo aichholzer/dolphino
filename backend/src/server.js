@@ -1,3 +1,4 @@
+import { createSimplefinIntegration } from "./simplefin.js";
 import pg from "pg";
 import { ensureDeploymentMode } from "./deployment-mode.js";
 import { createAssistantSettings } from "./assistant-settings.js";
@@ -53,6 +54,8 @@ const integration = createRedbarkIntegration({
   getRedbarkConfig: redbarkSettings.getRuntimeConfig,
 });
 await integration.init();
+const simplefin = createSimplefinIntegration({ pool, store, settings, config });
+await simplefin.init();
 const classification = createClassificationIntegration({
   pool,
   store,
@@ -103,6 +106,7 @@ const app = createApp({
   config,
   settings,
   redbarkSettings,
+  simplefin,
   registration,
   notifications,
   telegram,
@@ -112,6 +116,7 @@ const server = app.start(() =>
   console.log(`dolphino ${config.mode} listening on port ${config.port}`),
 );
 integration.start();
+simplefin.start();
 classification.start();
 if (config.mode === "live") notifications.start();
 let closing = false;
@@ -119,6 +124,7 @@ async function close() {
   if (closing) return;
   closing = true;
   await integration.stop();
+  await simplefin.stop();
   classification.stop();
   await notifications.stop();
   server.close(async () => {

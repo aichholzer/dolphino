@@ -1,3 +1,4 @@
+import { ensureSimplefinSchema } from "./simplefin.js";
 import { createHash } from "node:crypto";
 import {
   REDBARK_SETTINGS_LOCK,
@@ -14,6 +15,7 @@ import {
 } from "./redbark.js";
 
 export async function ensureRedbarkSchema(pool) {
+  await ensureSimplefinSchema(pool);
   await pool.query(`CREATE TABLE IF NOT EXISTS redbark_state (id integer PRIMARY KEY CHECK(id=1), fingerprint text, tested_at timestamptz, last_success timestamptz, last_error text, next_attempt timestamptz);
     ALTER TABLE redbark_state ADD COLUMN IF NOT EXISTS next_attempt timestamptz;
     INSERT INTO redbark_state(id) VALUES(1) ON CONFLICT DO NOTHING;
@@ -218,6 +220,17 @@ export function createRedbarkIntegration({
       throw new RedbarkError("backfill_account_unavailable", 409);
     for (const rawAccount of accounts) {
       if (params.accountId && rawAccount.id !== params.accountId) continue;
+      // A deliberately mapped optional source owns its account, including while paused.
+      // Never start importing its history through direct Redbark as well.
+      if (
+        (
+          await pool.query(
+            "SELECT 1 FROM simplefin_accounts WHERE local_id=$1",
+            [rawAccount.id],
+          )
+        ).rowCount
+      )
+        continue;
       if (
         rawAccount.category !== "banking" &&
         rawAccount.provider !== "documents"

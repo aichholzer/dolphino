@@ -1,3 +1,4 @@
+import { createSimplefinIntegration } from "../backend/src/simplefin.js";
 // Destructive only to new, randomly named databases created by this script.
 // Never accepts an existing source or target database name.
 import pg from "pg";
@@ -191,6 +192,67 @@ try {
     backfillDays: 45,
   });
   const beforeRedbarkConfig = await redbarkSettings.getRuntimeConfig();
+  const simplefinSourceId = randomUUID();
+  const simplefinKey = createHash("sha256")
+    .update("synthetic-simplefin-account")
+    .digest("hex");
+  const simplefinAccess =
+    "https://synthetic-user:synthetic-access-password@provider.example.com/simplefin";
+  await settings.setSecret("simplefin.accessUrl", "simplefin", simplefinAccess);
+  await settings.setValue("simplefin", {
+    sourceId: simplefinSourceId,
+    revision: randomUUID(),
+    enabled: false,
+    backfillDays: 30,
+    providerHost: "provider.example.com",
+    providerKey: simplefinKey,
+  });
+  await srcPool.query(
+    "INSERT INTO simplefin_accounts(source_id,remote_key,identity_key,metadata,local_id,mapped_at) VALUES($1,$2,$2,$3,$4,now())",
+    [
+      simplefinSourceId,
+      simplefinKey,
+      {
+        key: simplefinKey,
+        remoteId: "synthetic-one",
+        name: "Synthetic provenance account",
+        currency: "AUD",
+      },
+      grantedAccount.id,
+    ],
+  );
+  await srcPool.query(
+    "INSERT INTO simplefin_claims(token_hash,outcome) VALUES($1,'claimed')",
+    [simplefinKey],
+  );
+  await srcPool.query(
+    "INSERT INTO simplefin_jobs(dedupe_key,source_id,remote_key,start_second,end_second,attempts,last_error) VALUES('synthetic-restore-window',$1,$2,1700000000,1700086400,2,'simplefin_http_429')",
+    [simplefinSourceId, simplefinKey],
+  );
+  await srcPool.query(
+    "INSERT INTO simplefin_fetches(source_id,remote_key,coverage,raw) VALUES($1,$2,$3,$4)",
+    [
+      simplefinSourceId,
+      simplefinKey,
+      { truncated: true },
+      {
+        account: {
+          id: "synthetic-one",
+          transactions: [{ id: "synthetic-tx", amount: "-1.23" }],
+        },
+      },
+    ],
+  );
+  const beforeSimplefin = await createSimplefinIntegration({
+    pool: srcPool,
+    store,
+    settings,
+    config: { mode: "demo", appSecret: syntheticMasterKey },
+    request: async () => {
+      throw Error("Provider I/O forbidden in restore rehearsal");
+    },
+  }).snapshot();
+
   await createNotificationIntegration({
     pool: srcPool,
     settings,
@@ -401,6 +463,29 @@ try {
   assert.equal(restoredClassification.llmAutoApply, false);
   assert.equal(restoredClassification.llmDailyRequestLimit, 7);
   assert.equal(restoredClassification.llmBatchSize, 3);
+  const restoredSimplefin = createSimplefinIntegration({
+    pool: dstPool,
+    store,
+    settings: restoredSettings,
+    config: { mode: "demo", appSecret: syntheticMasterKey },
+    request: async () => {
+      throw Error("Provider I/O forbidden in restore rehearsal");
+    },
+  });
+  assert.deepEqual(
+    await restoredSimplefin.snapshot(),
+    beforeSimplefin,
+    "SimpleFIN source identity, encrypted Access URL and paused settings survive",
+  );
+  assert(
+    !JSON.stringify(await restoredSimplefin.status()).includes(
+      "synthetic-access-password",
+    ),
+  );
+  await assert.rejects(
+    dstPool.query("DELETE FROM simplefin_fetches"),
+    /immutable/,
+  );
   const restoredRedbarkSettings = createRedbarkSettings({
     pool: dstPool,
     settings: restoredSettings,
@@ -514,6 +599,7 @@ try {
           pendingMinor: r.pendingMinor,
         })),
         checks: [
+          "SimpleFIN encrypted Access URL, source ownership, claim replay hashes, queued retry windows and immutable raw evidence survive without network calls",
           "Independent encrypted assistant credentials and durable per-user quota restore without any provider request",
           "Database-backed Redbark API/signing keys, account binding, version and backfill settings restore without network calls",
           "Classification enablement and independent automatic-classification switch, apply consent, daily limit and batch size survive",
