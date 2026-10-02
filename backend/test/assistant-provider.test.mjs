@@ -46,6 +46,40 @@ const control = {
   }
 };
 
+test('provider model incompatibility has an actionable redacted error without a model-name special case', async () => {
+  const check = (error) => {
+    assert.equal(error.status, 502);
+    assert.equal(error.expose, true);
+    assert.match(error.message, /model rejected.*tool-calling support.*compatibility test/);
+    assert.ok(!error.message.includes('PRIVATE'));
+    return true;
+  };
+
+  await assert.rejects(
+    sendAssistantTurn(
+      { ...request, config: openai },
+      {
+        fetchImpl: async () => new Response('PRIVATE provider details and credentials', { status: 400 })
+      }
+    ),
+    check
+  );
+  await assert.rejects(
+    sendAssistantTurn(
+      { ...request, config: bedrock },
+      {
+        bedrockControlClient: control,
+        bedrockClient: {
+          async send() {
+            throw Object.assign(Error('PRIVATE provider details and credentials'), { name: 'ValidationException' });
+          }
+        }
+      }
+    ),
+    check
+  );
+});
+
 test('Responses native call IDs, JSON arguments and all reasoning items survive multi-call continuation', async () => {
   const output = [
     {

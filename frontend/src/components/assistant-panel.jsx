@@ -16,6 +16,14 @@ function Message({ message, onViewTransaction }) {
             <div key={c.id || i}>
               <span>{c.label || c.tool || 'Verified tool result'}</span>
               {typeof c.provenance === 'string' && <small>{c.provenance}</small>}
+              {/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(c.provenance?.filters?.from || '') &&
+                /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(c.provenance?.filters?.to || '') && (
+                  <small>
+                    {c.provenance.filters.from} — {c.provenance.filters.to}
+                    {c.provenance.timeZone ? ` · ${c.provenance.timeZone}` : ''}
+                    {c.provenance.dateRange?.includesToday ? ' · Today is partial' : ''}
+                  </small>
+                )}
               {onViewTransaction &&
                 c.reference?.type === 'transaction' &&
                 /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.reference.id || '') && (

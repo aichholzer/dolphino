@@ -356,3 +356,144 @@ test('every successful tool citation has an owned source download, not only repo
     'authorized'
   );
 });
+
+test('final answer round honors configured request/tool ceilings without executing another query', async () => {
+  for (const limits of [
+    { rounds: 1, tools: 4 },
+    { rounds: 3, tools: 1 }
+  ]) {
+    let requests = 0,
+      executed = 0;
+    const state = setup({
+      getProviderConfig: async () => ({
+        assistantEnabled: true,
+        assistantMaxRounds: limits.rounds,
+        assistantMaxToolCalls: limits.tools
+      }),
+      reserveRequest: async () => {
+        requests++;
+      },
+      invokeTool: async () => {
+        executed++;
+        return { data: {}, provenance: {} };
+      },
+      sendTurn: async (input) => {
+        if ((requests === 1 && limits.rounds === 1) || requests === 2) {
+          assert.equal(input.finalAnswer, true);
+          assert.match(input.system, /Do not request more tools/);
+        }
+
+        return {
+          text: '',
+          toolCalls: [{ id: `tool-${requests}`, name: 'finance_report', arguments: {} }],
+          continuation: []
+        };
+      }
+    });
+    const chat = await state.assistant.create({ getContext: state.getContext });
+    await assert.rejects(
+      state.assistant.send({
+        chatId: chat.id,
+        message: 'Spending',
+        acknowledgeDataSharing: true,
+        getContext: state.getContext
+      }),
+      /instead of finishing/
+    );
+    assert.equal(requests, limits.rounds === 1 ? 1 : 2);
+    assert.equal(executed, limits.rounds === 1 ? 0 : 1);
+    assert.deepEqual((await state.assistant.get({ chatId: chat.id, getContext: state.getContext })).messages, []);
+  }
+});
+
+test('empty final output after a successful tool is a recoverable error rather than a blank financial answer', async () => {
+  let turn = 0;
+  const diagnostics = [];
+  const state = setup({
+    onDiagnostic: (event) => diagnostics.push(event),
+    sendTurn: async () =>
+      ++turn === 1
+        ? { text: '', toolCalls: [{ id: 'first', name: 'finance_report', arguments: {} }], continuation: [] }
+        : { text: ' ', toolCalls: [], continuation: [] }
+  });
+  const chat = await state.assistant.create({ getContext: state.getContext });
+  await assert.rejects(
+    state.assistant.send({
+      chatId: chat.id,
+      message: 'PRIVATE question',
+      acknowledgeDataSharing: true,
+      getContext: state.getContext
+    }),
+    /returned no answer.*Reference:/
+  );
+  assert.equal(diagnostics.length, 1);
+  assert.ok(!JSON.stringify(diagnostics).includes('PRIVATE'));
+});
+
+test('tool database failures expose a retry reference and only redacted execution diagnostics', async () => {
+  const diagnostics = [];
+  const state = setup({
+    onDiagnostic: (event) => diagnostics.push(event),
+    invokeTool: async () => {
+      throw Error('PRIVATE postgres secret bank account amount 999999');
+    }
+  });
+  const chat = await state.assistant.create({ getContext: state.getContext });
+  await assert.rejects(
+    state.assistant.send({
+      chatId: chat.id,
+      message: 'PRIVATE household question',
+      acknowledgeDataSharing: true,
+      getContext: state.getContext
+    }),
+    (error) => {
+      assert.equal(error.status, 502);
+      assert.match(error.message, /temporarily unavailable.*Retry.*Reference:/);
+      assert.ok(!error.message.includes('PRIVATE'));
+      assert.ok(!error.message.includes('999999'));
+      return true;
+    }
+  );
+  assert.equal(diagnostics[0].phase, 'tool');
+  assert.equal(diagnostics[0].lastTool, 'finance_report');
+  assert.ok(!JSON.stringify(diagnostics).includes('PRIVATE'));
+});
+
+test('each question refreshes local today across midnight and pins that clock across its provider/tool rounds', async () => {
+  let clock = Date.parse('2026-10-01T06:59:59Z'),
+    calls = 0;
+  const times = [];
+  const state = setup({
+    now: () => clock,
+    getProviderConfig: async () => ({ assistantEnabled: true, timezone: 'America/Los_Angeles', currency: 'AUD' }),
+    invokeTool: async (_name, _args, options) => {
+      times.push(options.now());
+      return { data: {}, provenance: {} };
+    },
+    sendTurn: async (input) => {
+      calls++;
+      assert.match(input.system, calls <= 2 ? /"today":"2026-09-30"/ : /"today":"2026-10-01"/);
+      if (calls % 2) {
+        clock = Date.parse('2026-10-01T07:00:01Z');
+        return {
+          text: '',
+          toolCalls: [{ id: `date-${calls}`, name: 'finance_report', arguments: {} }],
+          continuation: []
+        };
+      }
+
+      return { text: 'Verified source.', toolCalls: [], continuation: [] };
+    }
+  });
+  const chat = await state.assistant.create({ getContext: state.getContext });
+  for (let i = 0; i < 2; i++) {
+    await state.assistant.send({
+      chatId: chat.id,
+      message: 'What happened yesterday?',
+      acknowledgeDataSharing: true,
+      getContext: state.getContext
+    });
+  }
+
+  assert.deepEqual(times, [Date.parse('2026-10-01T06:59:59Z'), Date.parse('2026-10-01T07:00:01Z')]);
+});

@@ -4,6 +4,8 @@ import { isProviderConfigured, verifyBedrockAvailability } from './llm.mjs';
 const INPUT_BYTES = 128 * 1024,
   OUTPUT_BYTES = 64 * 1024;
 const OWN_ERROR = Symbol('assistant-provider-error');
+const MODEL_REQUEST_REJECTED =
+  'The configured model rejected the assistant request. Choose a model with tool-calling support and run its compatibility test in Settings → AI features.';
 const failure = (message, status = 502) =>
   Object.assign(Error(message), { status, expose: true, [OWN_ERROR]: message });
 const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -149,6 +151,10 @@ function history(messages, provider) {
 async function responseJson(response) {
   if (!response.ok) {
     await response.body?.cancel?.();
+    if ([400, 422].includes(response.status)) {
+      throw failure(MODEL_REQUEST_REJECTED);
+    }
+
     throw failure('Assistant provider unavailable; verify model access and credentials');
   }
 
@@ -262,7 +268,10 @@ function validateCalls(calls) {
 
 /** Only the server orchestrator may supply tool definitions/native history. This
  * adapter parses calls; the executor separately authorizes and schema-validates them. */
-export async function sendAssistantTurn({ config, system, messages, tools, signal, assertConfiguration }, deps = {}) {
+export async function sendAssistantTurn(
+  { config, system, messages, tools, signal, assertConfiguration, finalAnswer = false },
+  deps = {}
+) {
   const assertCurrent = async () => {
     await assertConfiguration?.();
     await deps.assertConfiguration?.();
@@ -325,6 +334,7 @@ export async function sendAssistantTurn({ config, system, messages, tools, signa
           input,
           store: false,
           parallel_tool_calls: false,
+          ...(finalAnswer ? { tool_choice: 'none' } : {}),
           max_output_tokens: maxTokens,
           include: ['reasoning.encrypted_content'],
           tools: tools.map((tool) => ({
@@ -488,6 +498,10 @@ export async function sendAssistantTurn({ config, system, messages, tools, signa
 
     if (error?.[OWN_ERROR]) {
       throw failure(error[OWN_ERROR], error.status);
+    }
+
+    if (error?.name === 'ValidationException') {
+      throw failure(MODEL_REQUEST_REJECTED);
     }
 
     throw failure('Assistant provider unavailable; verify model access and credentials');

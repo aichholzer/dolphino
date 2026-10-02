@@ -34,6 +34,7 @@ export function registerAssistantRoutes({ route, store, auth, assistant, assista
           'report',
           'listBudgets',
           'listCategories',
+          'listCategoryCatalog',
           'listReviews',
           'audit',
           'exportSnapshot'

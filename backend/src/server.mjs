@@ -89,10 +89,12 @@ await assistantUsage.init();
 const assistant = createAssistant({
   getProviderConfig: async () => ({
     ...(await assistantSettings.getRuntimeConfig()),
-    timezone: config.timezone
+    timezone: config.timezone,
+    currency: config.currency
   }),
   reserveRequest: assistantUsage.reserveRequest,
   sendTurn: sendAssistantTurn,
+  onDiagnostic: (event) => console.warn(JSON.stringify(event)),
   invokeTool: invokeFinanceTool,
   tools: FINANCE_TOOLS
 });

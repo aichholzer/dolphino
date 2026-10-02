@@ -1,6 +1,14 @@
 import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { mkdir } from 'node:fs/promises';
+import { createCompiledServer } from '../frontend/test/compiled-server.mjs';
+const server = await createCompiledServer({ root: fileURLToPath(new URL('../frontend', import.meta.url)) });
+await server.listen();
+const base = `http://127.0.0.1:${server.httpServer.address().port}`;
+const output = process.env.DOLPHINO_SCREENSHOT_DIR || 'artifacts';
+await mkdir(output, { recursive: true });
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   args: ['--no-sandbox']
@@ -20,6 +28,9 @@ let configured = false,
     status: 'idle',
     expiresAt: Date.now() + 1800000
   };
+await page.route('**/*', (route) =>
+  new URL(route.request().url()).origin === base ? route.continue() : route.abort()
+);
 await page.route('**/api/**', async (route) => {
   const r = route.request(),
     path = new URL(r.url()).pathname;
@@ -109,7 +120,7 @@ await page.route('**/api/**', async (route) => {
   await route.fulfill({ json: data });
 });
 try {
-  await page.goto(process.env.DOLPHINO_TEST_URL || 'http://localhost:3001');
+  await page.goto(base);
   await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'Your assistant is not enabled yet' }).waitFor();
   assert(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled());
@@ -142,7 +153,7 @@ try {
   );
   assert(calls.some((c) => c.path.endsWith('/messages') && c.body.acknowledgeDataSharing === true));
   await page.screenshot({
-    path: 'artifacts/dolphino-assistant-desktop.png',
+    path: `${output}/dolphino-assistant-desktop.png`,
     fullPage: false
   });
   slow = true;
@@ -161,7 +172,7 @@ try {
   await page.waitForTimeout(250);
   assert.equal(await page.locator('body').evaluate((e) => e.scrollWidth <= innerWidth), true);
   await page.screenshot({
-    path: 'artifacts/dolphino-assistant-mobile.png',
+    path: `${output}/dolphino-assistant-mobile.png`,
     fullPage: false
   });
   for (let i = 0; i < 12; i++) {
@@ -199,13 +210,13 @@ try {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByText('Authorized monthly report', { exact: true }).waitFor();
   await page.screenshot({
-    path: 'artifacts/dolphino-assistant-desktop.png',
+    path: `${output}/dolphino-assistant-desktop.png`,
     fullPage: false
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   await page.screenshot({
-    path: 'artifacts/dolphino-assistant-mobile.png',
+    path: `${output}/dolphino-assistant-mobile.png`,
     fullPage: false
   });
   await page.getByRole('button', { name: 'View source transaction', exact: true }).click();
@@ -226,4 +237,5 @@ try {
   );
 } finally {
   await browser.close();
+  await server.close();
 }

@@ -86,6 +86,8 @@ const selected = (f) =>
       )
     : [];
 const finance = {
+  listCategoryCatalog: async () =>
+    ['Dining', 'Work', 'Transfers', 'Income'].map((category) => ({ category, name: category, archived: false })),
   listAccounts: async () =>
     allowed
       ? [
@@ -263,5 +265,34 @@ test('fresh authorization is retrieved per invocation and overlarge selection/ou
         }
       ),
     /64 KiB/
+  );
+});
+
+test('relative aggregate and transaction source queries pin inclusive dates across later downloads', async () => {
+  for (const name of ['finance_aggregate', 'finance_transactions']) {
+    const input = {
+      ...(name === 'finance_aggregate' ? aggregate : { ...base, page: 1, pageSize: 100 }),
+      from: null,
+      to: null,
+      dateRange: { period: 'last_month', count: null, from: null, to: null }
+    };
+    const first = await invokeFinanceTool(name, input, options);
+    assert.deepEqual([first.provenance.filters.from, first.provenance.filters.to], ['2026-08-01', '2026-08-31']);
+    assert.equal(first.reportQuery.args.dateRange, null);
+    const downloaded = await invokeFinanceTool(first.reportQuery.tool, first.reportQuery.args, {
+      ...options,
+      now: () => new Date('2026-10-30T00:00:00Z')
+    });
+    assert.deepEqual(downloaded.provenance.filters, first.provenance.filters);
+    assert.equal(downloaded.provenance.dateRange.utcFrom, first.provenance.dateRange.utcFrom);
+  }
+
+  await assert.rejects(
+    invokeFinanceTool(
+      'finance_aggregate',
+      { ...aggregate, dateRange: { period: 'last_month', count: null, from: null, to: null } },
+      options
+    ),
+    /either dateRange or explicit/
   );
 });
