@@ -4,6 +4,8 @@ In-app alerts remain the primary durable record. Optional Telegram and SMTP emai
 
 Select summary fields (category, period, overspend amount, remaining budget) and inspect the synthetic preview before enabling. No bank account names, transaction descriptions, merchant details or credentials are included. Category names and selected financial summary fields are still personal information; select recipients accordingly. These external summaries describe whole-household category totals. Email recipients and Telegram group participants are independent of dolphino account and budget grants, so a recipient may see a summary that their app account cannot view. Administrators must deliberately opt into that audience; new app members are never added as recipients automatically. Revoking audience confirmation stops queued financial sends; reconfirming applies only to future events. Resolved means spending is no longer over the cap; the notification does not claim an exact positive remaining amount. Currency exponents are respected using exact integer arithmetic.
 
+Settings presents three ordered steps: save credentials and sharing preferences, pair/check/confirm the Telegram group, then manage delivery and send a synthetic test. Saving a new token is required before pairing. Use **Save delivery settings** to persist a later pause or enable change; confirmation retains the existing consent-gated enablement behavior.
+
 ## Email / Brevo
 
 Enter an SMTP URL, a verified sender email address and up to ten recipient email addresses. Example structure (placeholders only):

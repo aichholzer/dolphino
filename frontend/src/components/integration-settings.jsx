@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { useSettingsDirty } from '../features/settings/settings-dirty';
 
-export function IntegrationSettings({ api, demo, onUpdated }) {
+export function IntegrationSettings({ api, demo, onUpdated, status }) {
   const [webhook, setWebhook] = useState(null),
     [redbark, setRedbark] = useState(null),
     [redbarkValues, setRedbarkValues] = useState({ version: '2026-10-01.wattle', backfillDays: 90 }),
@@ -12,14 +12,12 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
-  useSettingsDirty(
-    busy ||
-      Object.values(redbarkSecrets).some(Boolean) ||
-      Object.values(redbarkClears).some(Boolean) ||
-      (redbark &&
-        (redbarkValues.version !== redbark.version || Number(redbarkValues.backfillDays) !== redbark.backfillDays)) ||
-      (webhook && baseUrl !== (webhook.publicBaseUrl || ''))
-  );
+  const redbarkDirty =
+    Object.values(redbarkSecrets).some(Boolean) ||
+    Object.values(redbarkClears).some(Boolean) ||
+    (redbark &&
+      (redbarkValues.version !== redbark.version || Number(redbarkValues.backfillDays) !== redbark.backfillDays));
+  useSettingsDirty(busy || redbarkDirty || (webhook && baseUrl !== (webhook.publicBaseUrl || '')));
   async function load({ redbarkDraft = false, webhookDraft = false, signal } = {}) {
     const [w, r] = await Promise.all([api('/settings/webhook', { signal }), api('/settings/redbark', { signal })]);
     if (signal?.aborted) {
@@ -82,6 +80,9 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
       )}
       <section className="card settings-card integration-settings">
         <h2>Redbark settings</h2>
+        <p className="status-pill">
+          {status?.verified ? 'Verified' : redbark?.configured ? 'Saved · test required' : 'Not connected'}
+        </p>
         <p className="muted">
           Save your API key, API version and rolling import window here. Settings take effect immediately. Credentials
           are encrypted in PostgreSQL and never returned to this form.
@@ -233,10 +234,51 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
               need data:read for imports. Existing environment-only configuration is not imported: re-enter it here.
               Keep the same APP_SECRET when restoring your database.
             </p>
-            <Button disabled={busy || demo || !redbark}>Save Redbark settings</Button>
+            <div className="settings-actions">
+              <Button disabled={busy || demo || !redbark}>Save Redbark settings</Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || demo || !redbark?.configured || !redbark.credentialsAvailable || !!redbarkDirty}
+                onClick={() => action(() => api('/connection/test', { method: 'POST', body: '{}' }))}
+              >
+                Test connection
+              </Button>
+            </div>
+            <p className="footnote">Save credential or import changes before testing the saved connection.</p>
             {demo && <p className="footnote">Integration credential changes are unavailable in the fictional demo.</p>}
           </fieldset>
         </form>
+        {status?.lastError && (
+          <p role="status" className="alert alert-error">
+            {status.lastError}
+          </p>
+        )}
+        <details>
+          <summary>Connection status</summary>
+          <dl>
+            <div>
+              <dt>Environment</dt>
+              <dd>{demo ? 'Demo · fictional fixtures' : 'Live · authenticated'}</dd>
+            </div>
+            <div>
+              <dt>API version</dt>
+              <dd>{redbark?.version || '2026-10-01.wattle'} · beta</dd>
+            </div>
+            <div>
+              <dt>Signed event webhook</dt>
+              <dd>{status?.webhookConfigured ? 'Configured' : 'Not configured'}</dd>
+            </div>
+            <div>
+              <dt>Account discovery</dt>
+              <dd>Every 4 hours</dd>
+            </div>
+            <div>
+              <dt>Last poll</dt>
+              <dd>{status?.lastPollAt ? new Date(status.lastPollAt).toLocaleString() : 'Not yet run'}</dd>
+            </div>
+          </dl>
+        </details>
       </section>
       <section className="card settings-card integration-settings">
         <h2>Redbark thin-event notifications</h2>

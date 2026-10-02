@@ -1,5 +1,5 @@
 export const settingsSections = [
-  { id: 'redbark', label: 'RedBark', description: 'Connection, credentials and signed events' },
+  { id: 'bank-feeds', label: 'Bank feeds', description: 'Redbark, PocketSmith and SimpleFIN' },
   { id: 'categories', label: 'Categories', description: 'Names, new categories and archived history' },
   { id: 'members', label: 'Members', description: 'People, invitations and access' },
   { id: 'notifications', label: 'Notifications', description: 'Email and Telegram alerts' },
@@ -10,7 +10,7 @@ export const settingsSections = [
 const pages = ['Overview', 'Transactions', 'Accounts', 'Budgets', 'Review', 'Rules', 'Settings'];
 
 export function settingsSection(value) {
-  return settingsSections.some((section) => section.id === value) ? value : 'redbark';
+  return settingsSections.some((section) => section.id === value) ? value : 'bank-feeds';
 }
 
 export function workspaceRoute(hash = '') {

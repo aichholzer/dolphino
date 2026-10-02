@@ -51,6 +51,10 @@ try {
   const panel = page.locator('.notification-settings');
   const pair = panel.getByRole('button', { name: 'Pair Telegram group', exact: true });
   const enabled = panel.getByLabel('Enable Telegram alerts to the confirmed group');
+  const save = panel.getByRole('button', { name: 'Save notification settings', exact: true });
+  const testTelegram = panel.getByRole('button', { name: 'Send Telegram test', exact: true });
+  const saveDelivery = panel.getByRole('button', { name: 'Save delivery settings', exact: true });
+  await expect(testTelegram).toBeDisabled();
   await expect(pair).toBeDisabled();
   await expect(enabled).toBeDisabled();
   const token = panel.getByLabel('Telegram bot token', { exact: true });
@@ -60,6 +64,9 @@ try {
   await panel.getByRole('button', { name: 'Save notification settings' }).click();
   await expect(token).toHaveValue('');
   await expect(pair).toBeEnabled();
+  await save.focus();
+  await page.keyboard.press('Tab');
+  await expect(pair).toBeFocused();
   f.setHook(() => Response.json({ ok: false, error_code: 401, description: syntheticTelegramToken }, { status: 401 }));
   await pair.click();
   await expect(panel.getByRole('alert')).toContainText('Telegram rejected the saved bot token');
@@ -93,6 +100,7 @@ try {
   await expect(enabled).toBeChecked();
   await expect(from).toHaveValue('unsaved@example.test');
   await expect(panel).toContainText('Paired group: Synthetic private group');
+  await expect(testTelegram).toBeEnabled();
   assert.equal((await f.settings.getValue('notifications.smtp')).from, '');
   const alertId = randomUUID();
   await f.pool.query(
@@ -133,8 +141,40 @@ try {
   await expect(panel.getByText('Synthetic private group', { exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'Confirm group and enable Telegram alerts' }).click();
   await expect(enabled).toBeChecked();
+  await expect(enabled).toBeEnabled();
+  await enabled.focus();
+  await page.keyboard.press('Space');
+  await expect(enabled).not.toBeChecked();
+  await page.keyboard.press('Tab');
+  await expect(saveDelivery).toBeFocused();
+  await Promise.all([
+    page.waitForResponse(
+      (response) => response.url().endsWith('/api/settings/notifications') && response.request().method() === 'PUT'
+    ),
+    page.keyboard.press('Enter')
+  ]);
+  await expect(enabled).toBeEnabled();
+  await expect(saveDelivery).toBeDisabled();
+  assert.equal((await f.settings.getValue('notifications.telegram')).enabled, false);
+  await page.reload();
+  await expect(enabled).not.toBeChecked();
+  for (const width of [1360, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(await page.locator('body').evaluate((body) => body.scrollWidth <= innerWidth), true);
+    const positions = await Promise.all(
+      [save, pair, enabled, testTelegram].map(async (control) => (await control.boundingBox()).y)
+    );
+    assert.deepEqual(
+      positions,
+      [...positions].sort((a, b) => a - b),
+      'save → pair → enable → test stays in visual order'
+    );
+    await page.screenshot({ path: `/tmp/dolphino-telegram-settings-${width}.png`, fullPage: true });
+  }
+
   await token.fill('123456789:another_synthetic_token_1234567890');
   await expect(pair).toBeDisabled();
+  await expect(testTelegram).toBeDisabled();
   await token.fill('');
   await panel.getByLabel('Clear Telegram bot token').check();
   await expect(pair).toBeDisabled();

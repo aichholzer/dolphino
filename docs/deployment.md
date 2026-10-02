@@ -113,7 +113,7 @@ The override explicitly selects `PGHOST=db` and `PGPORT=5432`, using the same `P
 ## Connect Redbark yourself
 
 1. Finish HTTPS and live authentication setup. New installations need an empty dedicated live database; upgrades retain the existing live database and APP_SECRET.
-2. In administrator **Settings → RedBark**, enter the write-only Redbark API key, API version and rolling backfill days, then save. These values are encrypted/stored in PostgreSQL and applied without a restart.
+2. In administrator **Settings → Bank feeds → Redbark**, enter the write-only Redbark API key, API version and rolling backfill days, then save. These values are encrypted/stored in PostgreSQL and applied without a restart.
 3. Use **Test connection** in Settings. The documented v2 beta version is `2026-10-01.wattle`, but availability is not assumed; successful testing is required for your account.
 4. Register/reuse the supported thin event destination in Settings, which saves its encrypted signing secret. For an existing manually configured destination, explicitly enter its signing secret in Settings as described in [Redbark integration](redbark.md). The destination must be reachable by Redbark over HTTPS; use a controlled reverse proxy or tunnel you configure yourself.
 5. A failed connection test pauses integration ingestion only. Imported live data, corrections, budgets and exports remain available during provider downtime.

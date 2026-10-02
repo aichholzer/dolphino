@@ -1,12 +1,16 @@
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { createCompiledServer } from './compiled-server.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 
 // Focused UI race and error fixtures. The companion browser-bedrock-models.mjs
 // and browser-integration-settings.mjs run the same production UI over real
 // authenticated HTTP/PostgreSQL, with only outbound provider transports injected.
-const base = process.env.DOLPHINO_TEST_URL || 'http://127.0.0.1:5173';
+const server = await createCompiledServer({ root: fileURLToPath(new URL('..', import.meta.url)) });
+await server.listen();
+const base = `http://127.0.0.1:${server.httpServer.address().port}`;
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   args: ['--no-sandbox']
@@ -297,7 +301,7 @@ async function scenario(name, test) {
         destinationId: 'synthetic-destination',
         publicBaseUrl: 'https://dolphino.example.com'
       };
-    } else if (path === '/api/settings/simplefin') {
+    } else if (['/api/settings/simplefin', '/api/settings/pocketsmith'].includes(path)) {
       data = {
         configured: false,
         backfillDays: 30,
@@ -309,7 +313,7 @@ async function scenario(name, test) {
         pausedWindows: 0
       };
     } else if (path === '/api/settings/notifications') {
-      data = { smtp: {}, telegram: {} };
+      data = { smtp: { enabled: false, from: '', recipients: [] }, telegram: { enabled: false } };
     } else if (path === '/api/notifications/deliveries') {
       data = [];
     } else if (path === '/api/users') {
@@ -318,7 +322,9 @@ async function scenario(name, test) {
       data = { accounts: [], budgets: [] };
     } else if (path === '/api/import-health') {
       data = { accounts: [], jobs: [] };
-    } else if (path === '/api/accounts') {
+    } else if (path === '/api/categories' || path === '/api/settings/categories') {
+      data = { catalog: [] };
+    } else if (path === '/api/accounts' || path === '/api/settings/deleted-accounts') {
       data = { accounts: [] };
     }
 
@@ -326,7 +332,7 @@ async function scenario(name, test) {
     await route.fulfill({ status, json: data });
   });
   const nav = (name) =>
-    ['RedBark', 'Members', 'Notifications', 'Data', 'AI features'].includes(name)
+    ['Bank feeds', 'Categories', 'Members', 'Notifications', 'Data', 'AI features'].includes(name)
       ? page.getByRole('link', { name: new RegExp(`^${name}`) })
       : page.getByRole('button', { name, exact: true });
   const section = (purpose) =>
@@ -426,8 +432,8 @@ async function scenario(name, test) {
 try {
   await scenario('subsections-navigation-keyboard-mobile', async ({ page, nav, calls, openAi }) => {
     await nav('Settings').click();
-    await expect(page).toHaveURL(/#settings\/redbark$/);
-    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link')).toHaveCount(5);
+    await expect(page).toHaveURL(/#settings\/bank-feeds$/);
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link')).toHaveCount(6);
     await expect(page.getByLabel('Redbark API key', { exact: true })).toBeVisible();
     assert(
       !calls.some((call) =>
@@ -444,7 +450,7 @@ try {
     await expect(page.getByLabel('SMTP connection URL', { exact: true })).toBeVisible();
     await nav('Data').click();
     await expect(page.getByRole('heading', { name: 'Import health & history', exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'SimpleFIN optional import', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'SimpleFIN optional import', exact: true })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /^Export/ })).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(/#settings\/notifications$/);
@@ -482,19 +488,19 @@ try {
     await key.fill('synthetic-unsaved-secret');
     page.once('dialog', (dialog) => dialog.dismiss());
     await nav('AI features').click();
-    await expect(page).toHaveURL(/#settings\/redbark$/);
+    await expect(page).toHaveURL(/#settings\/bank-feeds$/);
     await expect(key).toHaveValue('synthetic-unsaved-secret');
     page.once('dialog', (dialog) => dialog.dismiss());
     await nav('Overview').click();
     await expect(key).toHaveValue('synthetic-unsaved-secret');
     page.once('dialog', (dialog) => dialog.dismiss());
     await page.goBack();
-    await expect(page).toHaveURL(/#settings\/redbark$/);
+    await expect(page).toHaveURL(/#settings\/bank-feeds$/);
     await expect(key).toHaveValue('synthetic-unsaved-secret');
     page.once('dialog', (dialog) => dialog.accept());
     await nav('AI features').click();
     await expect(page).toHaveURL(/#settings\/ai$/);
-    await nav('RedBark').click();
+    await nav('Bank feeds').click();
     await expect(key).toHaveValue('');
   });
 
@@ -870,4 +876,5 @@ try {
   console.log('Shared AI Settings race, routing, keyboard, responsive, secret and storage browser fixtures passed.');
 } finally {
   await browser.close();
+  await server.close();
 }

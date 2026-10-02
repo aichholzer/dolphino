@@ -74,7 +74,7 @@ try {
   }
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('heading', { name: 'Redbark connection', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Redbark settings', exact: true }).waitFor();
   assert(await page.getByRole('button', { name: 'Test connection', exact: true }).isDisabled());
   const exported = await (await page.request.get(base + '/api/export?month=2026-09')).json();
   assert(exported.summary && exported.transactions.length > 0);

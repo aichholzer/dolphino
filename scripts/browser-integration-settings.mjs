@@ -532,12 +532,14 @@ try {
     'Compiled Settings shows retired-envelope warnings with empty secret fields; explicit SMTP/Telegram replacement removes warnings without external sends, while SimpleFIN retains its recovery limitation'
   );
 
-  await page.getByRole('link', { name: /^Data/ }).click();
+  await page.getByRole('link', { name: /^Bank feeds/ }).click();
+  await page.locator('.bank-feed-panel > summary').filter({ hasText: 'SimpleFIN' }).click();
   await expect(page.getByText('Saved credentials cannot be decrypted.', { exact: false })).toBeVisible();
+  await page.getByRole('link', { name: /^Data/ }).click();
   await expect(page.getByRole('heading', { name: 'Import health & history', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /Export/ })).toBeVisible();
   await expect(page.getByLabel('SMTP connection URL', { exact: true })).toHaveCount(0);
-  await page.getByRole('link', { name: /^RedBark/ }).click();
+  await page.getByRole('link', { name: /^Bank feeds/ }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Redbark API key', { exact: true })).toBeEnabled();

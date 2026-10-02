@@ -4,10 +4,10 @@ Direct Redbark v2 remains Dolphino's primary integration. SimpleFIN is an additi
 
 SimpleFIN is a protocol; SimpleFIN Bridge is one provider. This adapter targets the [v1 protocol](https://www.simplefin.org/protocol-v1.html), including the date/account/balances-only parameters implemented by [Redbark](https://redbark.com/docs/api-reference/simplefin). It does not implement the v2 connection/structured-error schema.
 
-## Connect in Settings → Data
+## Connect in Settings → Bank feeds
 
 1. Sign in as an administrator in live mode. Ensure the existing APP_SECRET can encrypt credentials. No new environment variables are needed.
-2. Generate an app setup token at your provider. Paste it into **Settings → Data → SimpleFIN optional import**, acknowledge the read-only connection, and select **Connect SimpleFIN**.
+2. Generate an app setup token at your provider. Paste it into **Settings → Bank feeds → SimpleFIN optional import**, acknowledge the read-only connection, and select **Connect SimpleFIN**.
 3. The server attempts the one-use claim exactly once. The resulting Access URL is encrypted with the existing credential vault in PostgreSQL. It is never returned to the form. The new connection starts paused.
 4. Select **Test and discover accounts**. This fetches account metadata and balances, without importing transactions.
 5. For each desired account, select **Map as a new account** and confirm that it is not already being imported through another source. Nothing is silently mapped.

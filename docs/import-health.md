@@ -1,6 +1,6 @@
 # Import health and bounded backfill
 
-The shared import-health panel below describes Redbark. [PocketSmith](pocketsmith.md) and SimpleFIN manage their own account selection, history queues and retry status in their Settings → Data panels.
+The shared import-health panel below describes Redbark. [PocketSmith](pocketsmith.md) and SimpleFIN manage their own account selection, history queues and retry status in their Settings → Bank feeds panels.
 
 **Settings → Data** shows import status, account freshness, the last recorded fetch coverage window, canonical transaction counts, and the latest 30 durable jobs. Coverage describes the latest successful fetch, not a claim of complete account history or balance reconciliation. A backfill's older window can become the latest coverage window; regular reconciliation returns to its configured recent window on the next poll. All accounts continue syncing.
 

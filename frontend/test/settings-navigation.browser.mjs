@@ -1,16 +1,12 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
-import { createServer } from 'vite';
+import { createCompiledServer } from './compiled-server.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
 // Fully synthetic, isolated browser checks. No existing session, credentials,
 // database, external provider, or deployed application is contacted.
-const server = await createServer({
-  root: fileURLToPath(new URL('..', import.meta.url)),
-  configFile: fileURLToPath(new URL('../vite.config.mjs', import.meta.url)),
-  server: { host: '127.0.0.1', port: 0, strictPort: true }
-});
+const server = await createCompiledServer({ root: fileURLToPath(new URL('..', import.meta.url)) });
 await server.listen();
 const base = `http://127.0.0.1:${server.httpServer.address().port}`;
 const browser = await chromium.launch({
@@ -59,12 +55,25 @@ const features = {
 };
 const calls = [];
 const errors = [];
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const external = [];
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' });
 const noStorage = await installBrowserStorageGuard(page);
 page.on('pageerror', (error) => errors.push(error.message));
-await page.route('**/api/**', async (route) => {
+await page.route('**/*', async (route) => {
   const request = route.request();
-  const path = new URL(request.url()).pathname;
+  const url = new URL(request.url());
+  const path = url.pathname;
+  if (url.origin !== base) {
+    external.push(url.href);
+    await route.abort();
+    return;
+  }
+
+  if (!path.startsWith('/api/')) {
+    await route.continue();
+    return;
+  }
+
   calls.push({ path, method: request.method() });
   let json = {};
   if (path === '/api/session') {
@@ -101,7 +110,7 @@ await page.route('**/api/**', async (route) => {
     };
   } else if (path === '/api/settings/webhook') {
     json = { publicBaseUrl: '' };
-  } else if (path === '/api/settings/simplefin') {
+  } else if (['/api/settings/simplefin', '/api/settings/pocketsmith'].includes(path)) {
     json = {
       configured: false,
       backfillDays: 30,
@@ -112,6 +121,12 @@ await page.route('**/api/**', async (route) => {
     };
   } else if (path === '/api/import-health') {
     json = { accounts: [], jobs: [] };
+  } else if (path === '/api/settings/deleted-accounts') {
+    json = { accounts: [] };
+  } else if (path === '/api/categories' || path === '/api/settings/categories') {
+    json = { catalog: [] };
+  } else if (path === '/api/tags') {
+    json = { tags: [] };
   } else if (path === '/api/users') {
     json = { users: [], invitations: [] };
   } else if (path === '/api/users/grant-options') {
@@ -200,13 +215,35 @@ try {
   await sectionLink('Data').click();
   await expect(page.getByLabel('SMTP connection URL')).toHaveValue('synthetic-smtp-draft');
   await page.getByLabel('SMTP connection URL').fill('');
-  await sectionLink('Data').click();
+  await sectionLink('Bank feeds').click();
+  const simplefinSummary = page.locator('.bank-feed-panel > summary').filter({ hasText: 'SimpleFIN' });
+  await simplefinSummary.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'SimpleFIN optional import' })).toBeVisible();
   await page.getByLabel('One-use setup token').fill('synthetic-token-draft');
+  await simplefinSummary.click();
+  await expect(page.getByLabel('One-use setup token')).toBeHidden();
+  await simplefinSummary.focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByLabel('One-use setup token')).toHaveValue('synthetic-token-draft');
   page.once('dialog', (dialog) => dialog.dismiss());
-  await sectionLink('RedBark').click();
+  await sectionLink('Data').click();
   await expect(page.getByLabel('One-use setup token')).toHaveValue('synthetic-token-draft');
   await page.getByLabel('One-use setup token').fill('');
-  await sectionLink('RedBark').click();
+  await simplefinSummary.click();
+  const pocketSummary = page.locator('.bank-feed-panel > summary').filter({ hasText: 'PocketSmith' });
+  await pocketSummary.focus();
+  await page.keyboard.press('Enter');
+  const pocketKey = page.getByLabel('Developer key', { exact: true });
+  await pocketKey.fill('synthetic-pocket-draft');
+  await pocketSummary.click();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await sectionLink('Data').click();
+  await expect(page).toHaveURL(/#settings\/bank-feeds$/);
+  await pocketSummary.click();
+  await expect(pocketKey).toHaveValue('synthetic-pocket-draft');
+  await pocketKey.fill('');
+  await pocketSummary.click();
   await expect(page.getByRole('heading', { name: 'Redbark settings' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Redbark thin-event notifications' })).toBeVisible();
   await page.getByLabel('Redbark API key', { exact: true }).fill('synthetic-redbark-draft');
@@ -216,7 +253,7 @@ try {
   await page.getByLabel('Redbark API key', { exact: true }).fill('');
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
-    for (const name of ['RedBark', 'Members', 'Notifications', 'Data', 'AI features']) {
+    for (const name of ['Bank feeds', 'Categories', 'Members', 'Notifications', 'Data', 'AI features']) {
       await sectionLink(name).click();
       await expect(sectionLink(name)).toHaveAttribute('aria-current', 'page');
       assert.equal(
@@ -224,11 +261,18 @@ try {
         true,
         `${name} fits ${width}px`
       );
+      if (name === 'Bank feeds' || name === 'Notifications') {
+        await page.screenshot({
+          path: `/tmp/dolphino-settings-${name.toLowerCase().replaceAll(' ', '-')}-${width}.png`,
+          fullPage: true
+        });
+      }
     }
   }
 
   await noStorage();
   assert.deepEqual(errors, []);
+  assert.deepEqual(external, []);
   // Even an administrator URL cannot mount settings for a lower-privilege principal.
   session.user = { id: 'navigation-member', role: 'member', name: 'Test member' };
   session.permissions = { accounts: [{ accountId: 'allowed', access: 'view' }] };
@@ -242,7 +286,7 @@ try {
     'member deep link never fetches settings'
   );
   console.log(
-    'Settings navigation passed: deep links, active-only mounts, shared discovery, Back/Forward/reload, dirty form cancellation, responsive layouts, no browser storage and member access boundaries. All APIs mocked.'
+    'Compiled Settings navigation passed: Bank feeds grouping, keyboard accordion controls, preserved provider drafts, deep links, active-only mounts, Back/Forward/reload, dirty form cancellation, 1440/390/320px layouts, no browser storage/external requests and member access boundaries. All APIs mocked.'
   );
 } finally {
   await browser.close();

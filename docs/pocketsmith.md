@@ -1,6 +1,6 @@
 # PocketSmith personal import
 
-PocketSmith is an optional, read-only source under **Settings → Data**. It is disabled by default. Each self-hosted owner supplies a personal developer key for their own PocketSmith account. This implementation does not register an OAuth application or claim PocketSmith approval. PocketSmith documents developer keys for personal tools and registered OAuth for apps serving other PocketSmith users; operating Dolphino as such a service requires resolving that registration separately. [Official authentication guidance](https://developers.pocketsmith.com/docs/introduction), [OAuth registration](https://developers.pocketsmith.com/docs/oauth).
+PocketSmith is an optional, read-only source under **Settings → Bank feeds**. It is disabled by default. Each self-hosted owner supplies a personal developer key for their own PocketSmith account. This implementation does not register an OAuth application or claim PocketSmith approval. PocketSmith documents developer keys for personal tools and registered OAuth for apps serving other PocketSmith users; operating Dolphino as such a service requires resolving that registration separately. [Official authentication guidance](https://developers.pocketsmith.com/docs/introduction), [OAuth registration](https://developers.pocketsmith.com/docs/oauth).
 
 ## Setup
 

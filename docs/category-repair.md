@@ -5,7 +5,7 @@ Do not wipe the database or repeat a history import to fix category names. Redba
 ## Administrator steps
 
 1. Update to a version containing the category repair action. Existing migrations run normally; no destructive or one-off SQL migration is needed.
-2. In **Settings → RedBark**, test the current Redbark connection. The key needs access to the imported accounts and `categories:read`.
+2. In **Settings → Bank feeds → Redbark**, test the current Redbark connection. The key needs access to the imported accounts and `categories:read`.
 3. In **Settings → Data → Import health & history**, select **Repair category names**. This checks accessible accounts and refreshes the category taxonomy. It does not request bank balances, download transaction history, or queue a backfill.
 4. Review the result counts. A completed four-hour polling bucket does not prevent this action. Active imports and provider backoff must finish before retrying.
 5. For saved category references needing review, open **Transactions**, edit the transaction and explicitly choose its category. Review any counted budgets and rules against the repaired names. Their saved category keys are deliberately left unchanged.

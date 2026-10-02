@@ -350,7 +350,7 @@ try {
     .click();
   await page.getByText('Synthetic model test passed', { exact: true }).waitFor();
   assert(calls.some((c) => c.path === '/api/settings/provider/test-model' && c.body.acknowledgeCost === true));
-  await openSettingsSection('redbark', 'RedBark');
+  await openSettingsSection('bank-feeds', 'Bank feeds');
   await page.getByRole('button', { name: 'Register / reuse destination', exact: true }).click();
   await page
     .getByRole('status')

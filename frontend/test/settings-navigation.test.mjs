@@ -10,7 +10,7 @@ import {
 test('settings sections retain every requested destination in order', () => {
   assert.deepEqual(
     settingsSections.map((section) => section.label),
-    ['RedBark', 'Categories', 'Members', 'Notifications', 'Data', 'AI features']
+    ['Bank feeds', 'Categories', 'Members', 'Notifications', 'Data', 'AI features']
   );
 });
 
@@ -20,8 +20,9 @@ test('settings links are deterministic, refreshable, and default unknown section
     assert.deepEqual(workspaceRoute(workspaceHash(route)), route);
   }
 
-  assert.deepEqual(workspaceRoute('#settings/missing'), { page: 'Settings', section: 'redbark' });
-  assert.equal(settingsSection('__proto__'), 'redbark');
-  assert.deepEqual(workspaceRoute('#unknown'), { page: 'Overview', section: 'redbark' });
-  assert.deepEqual(workspaceRoute('#transactions'), { page: 'Transactions', section: 'redbark' });
+  assert.deepEqual(workspaceRoute('#settings/missing'), { page: 'Settings', section: 'bank-feeds' });
+  assert.deepEqual(workspaceRoute('#settings/redbark'), { page: 'Settings', section: 'bank-feeds' });
+  assert.equal(settingsSection('__proto__'), 'bank-feeds');
+  assert.deepEqual(workspaceRoute('#unknown'), { page: 'Overview', section: 'bank-feeds' });
+  assert.deepEqual(workspaceRoute('#transactions'), { page: 'Transactions', section: 'bank-feeds' });
 });

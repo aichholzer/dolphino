@@ -27,6 +27,15 @@ export function NotificationSettings({ api, demo }) {
           JSON.stringify(data.summaryFields || ['category', 'period', 'amount', 'remaining']) ||
         JSON.stringify(smtp) !== JSON.stringify(data.smtp || {}) ||
         JSON.stringify(telegram) !== JSON.stringify(data.telegram || {})));
+  const telegramReady =
+    !!data?.telegram?.credentialConfigured && data.telegram.credentialsAvailable !== false && !token && !clearToken;
+  const smtpReady =
+    !!data?.smtp?.credentialConfigured &&
+    data.smtp.credentialsAvailable !== false &&
+    !!data.smtp.from &&
+    !!data.smtp.recipients?.length &&
+    !smtpUrl &&
+    !clearSmtp;
   useSettingsDirty(dirty || busy);
   async function load({ preserveDraft = false, refreshTelegram = false } = {}) {
     const [d, history, activePairing] = await Promise.all([
@@ -36,7 +45,9 @@ export function NotificationSettings({ api, demo }) {
     ]);
     setDeliveries(Array.isArray(history) ? history : []);
     if (activePairing.active) {
-      setPairing((p) => ({ ...p, ...activePairing }));
+      setPairing((p) => (p?.pairingId === activePairing.pairingId ? { ...p, ...activePairing } : activePairing));
+    } else {
+      setPairing(null);
     }
 
     setData(d);
@@ -126,7 +137,11 @@ export function NotificationSettings({ api, demo }) {
           {notice}
         </p>
       )}
-      <form onSubmit={save}>
+      <form id="notification-settings-form" className="notification-step" onSubmit={save}>
+        <div className="notification-step-heading">
+          <span>1</span>
+          <h3>Save credentials and sharing preferences</h3>
+        </div>
         <fieldset disabled={busy || demo || !data}>
           <label className="checkbox-label">
             <input
@@ -261,166 +276,188 @@ export function NotificationSettings({ api, demo }) {
             {telegram.paired ? `Paired group: ${telegram.chatTitle || 'confirmed household'}. ` : 'No group paired. '}
             Save your bot token before starting group pairing.
           </p>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={!!telegram.enabled}
-              disabled={!telegram.paired}
-              onChange={(e) => setTelegram({ ...telegram, enabled: e.target.checked })}
-            />
-            Enable Telegram alerts to the confirmed group
-          </label>
           <div className="settings-actions">
             <Button disabled={busy || demo || !data}>Save notification settings</Button>
           </div>
         </fieldset>
       </form>
-      <div className="settings-actions">
-        <Button
-          variant="outline"
-          disabled={
-            busy ||
-            demo ||
-            !data?.telegram?.credentialConfigured ||
-            data?.telegram?.credentialsAvailable === false ||
-            !!token ||
-            clearToken
-          }
-          onClick={async () => {
-            const r = await action(() =>
-              api('/settings/telegram/pair', {
-                method: 'POST',
-                body: '{}'
-              })
-            );
-            if (r) {
-              setPairing(r);
-              setNotice('Choose your private group using the Telegram link below.');
-            }
-          }}
-        >
-          Pair Telegram group
-        </Button>
-      </div>
-      {pairing && (
-        <div className="setup-note">
-          <div>
-            <strong>Confirm the group before enabling delivery</strong>
-            {pairing.expiresAt && (
-              <p className="footnote">
-                Expires {new Date(pairing.expiresAt).toLocaleString()}. Start pairing again if this expires.
-              </p>
-            )}
-            {pairing.deepLink && (
-              <p>
-                <Button asChild>
-                  <a href={pairing.deepLink} target="_blank" rel="noreferrer">
-                    Choose group in Telegram
-                  </a>
-                </Button>
-              </p>
-            )}
-            <p className="footnote">
-              The link opens Telegram’s group chooser and sends the pairing command when you select your private group.
-              You do not need to type /start. Then return here, check for your group and confirm its name and ID.
-            </p>
-            {pairing.command && (
-              <details>
-                <summary>Group link not working? Use a manual command</summary>
-                <p className="footnote">
-                  Add the bot to your intended private group, then paste this entire command there. A plain /start does
-                  not identify this pairing request.
-                </p>
-                <p>
-                  <code>{pairing.command}</code>
-                </p>
-              </details>
-            )}
-            {!pairing.deepLink && (
-              <p className="footnote">
-                The pairing link is only shown when pairing starts. If you have not used it yet, start pairing again for
-                a new link.
-              </p>
-            )}
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={async () => {
-                const r = await action(() =>
-                  api('/settings/telegram/poll', {
-                    method: 'POST',
-                    body: JSON.stringify({ pairingId: pairing.pairingId })
-                  })
-                );
-                if (r) {
-                  setPairing({ ...pairing, ...r });
-                  if (r.active) {
-                    setNotice(
-                      r.candidate
-                        ? 'Group found. Check its name and ID below before confirming.'
-                        : 'No matching group yet. Choose your group using the Telegram link, then check again. If the link did not send the command, use the manual fallback.'
-                    );
-                  }
-                }
-              }}
-            >
-              Check for group
-            </Button>
-            {pairing.candidate && (
-              <div>
-                <p>
-                  <strong>{pairing.candidate.title}</strong>
-                  <br />
-                  Group ID: {pairing.candidate.chatId}
-                </p>
-                <Button
-                  disabled={busy}
-                  onClick={async () => {
-                    const r = await action(
-                      () =>
-                        api('/settings/telegram/confirm', {
-                          method: 'POST',
-                          body: JSON.stringify({
-                            pairingId: pairing.pairingId,
-                            chatId: pairing.candidate.chatId
-                          })
-                        }),
-                      { refreshTelegram: true }
-                    );
-                    if (r) {
-                      setPairing(null);
-                    }
-                  }}
-                >
-                  Confirm group and enable Telegram alerts
-                </Button>
-              </div>
-            )}
-          </div>
+      <div className="notification-step">
+        <div className="notification-step-heading">
+          <span>2</span>
+          <h3>Pair and confirm your Telegram group</h3>
         </div>
-      )}
-      <p className="footnote">
-        Send test delivers a synthetic message to the configured recipients or confirmed group. No financial
-        transactions are included.
-      </p>
-      <div className="settings-actions">
-        {['smtp', 'telegram'].map((channel) => (
+        <p className="footnote">
+          Use the saved bot token to choose a private group. Check its name and ID before confirming.
+        </p>
+        <div className="settings-actions">
           <Button
-            key={channel}
             variant="outline"
-            disabled={busy || demo}
-            onClick={() =>
-              action(() =>
-                api('/notifications/test', {
+            disabled={busy || demo || !telegramReady}
+            onClick={async () => {
+              const r = await action(() =>
+                api('/settings/telegram/pair', {
                   method: 'POST',
-                  body: JSON.stringify({ channel })
+                  body: '{}'
                 })
-              )
-            }
+              );
+              if (r) {
+                setPairing(r);
+                setNotice('Choose your private group using the Telegram link below.');
+              }
+            }}
           >
-            Send {channel === 'smtp' ? 'email' : 'Telegram'} test
+            Pair Telegram group
           </Button>
-        ))}
+        </div>
+        {pairing && (
+          <div className="setup-note">
+            <div>
+              <strong>Confirm the group before enabling delivery</strong>
+              {pairing.expiresAt && (
+                <p className="footnote">
+                  Expires {new Date(pairing.expiresAt).toLocaleString()}. Start pairing again if this expires.
+                </p>
+              )}
+              {pairing.deepLink && (
+                <p>
+                  <Button asChild>
+                    <a href={pairing.deepLink} target="_blank" rel="noreferrer">
+                      Choose group in Telegram
+                    </a>
+                  </Button>
+                </p>
+              )}
+              <p className="footnote">
+                The link opens Telegram’s group chooser and sends the pairing command when you select your private
+                group. You do not need to type /start. Then return here, check for your group and confirm its name and
+                ID.
+              </p>
+              {pairing.command && (
+                <details>
+                  <summary>Group link not working? Use a manual command</summary>
+                  <p className="footnote">
+                    Add the bot to your intended private group, then paste this entire command there. A plain /start
+                    does not identify this pairing request.
+                  </p>
+                  <p>
+                    <code>{pairing.command}</code>
+                  </p>
+                </details>
+              )}
+              {!pairing.deepLink && (
+                <p className="footnote">
+                  The pairing link is only shown when pairing starts. If you have not used it yet, start pairing again
+                  for a new link.
+                </p>
+              )}
+              <Button
+                variant="outline"
+                disabled={busy || demo || !telegramReady}
+                onClick={async () => {
+                  const r = await action(() =>
+                    api('/settings/telegram/poll', {
+                      method: 'POST',
+                      body: JSON.stringify({ pairingId: pairing.pairingId })
+                    })
+                  );
+                  if (r) {
+                    setPairing({ ...pairing, ...r });
+                    if (r.active) {
+                      setNotice(
+                        r.candidate
+                          ? 'Group found. Check its name and ID below before confirming.'
+                          : 'No matching group yet. Choose your group using the Telegram link, then check again. If the link did not send the command, use the manual fallback.'
+                      );
+                    }
+                  }
+                }}
+              >
+                Check for group
+              </Button>
+              {pairing.candidate && (
+                <div>
+                  <p>
+                    <strong>{pairing.candidate.title}</strong>
+                    <br />
+                    Group ID: {pairing.candidate.chatId}
+                  </p>
+                  <Button
+                    disabled={busy || demo || !telegramReady}
+                    onClick={async () => {
+                      const r = await action(
+                        () =>
+                          api('/settings/telegram/confirm', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                              pairingId: pairing.pairingId,
+                              chatId: pairing.candidate.chatId
+                            })
+                          }),
+                        { refreshTelegram: true }
+                      );
+                      if (r) {
+                        setPairing(null);
+                      }
+                    }}
+                  >
+                    Confirm group and enable Telegram alerts
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="notification-step">
+        <div className="notification-step-heading">
+          <span>3</span>
+          <h3>Manage delivery and send a test</h3>
+        </div>
+        <p className="footnote">
+          Group confirmation enables Telegram alerts when your saved sharing consent allows it. You can pause alerts
+          here.
+        </p>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={!!telegram.enabled}
+            disabled={busy || demo || !telegramReady || !telegram.paired}
+            onChange={(e) => setTelegram({ ...telegram, enabled: e.target.checked })}
+          />
+          Enable Telegram alerts to the confirmed group
+        </label>
+        <div className="settings-actions">
+          <Button
+            type="submit"
+            form="notification-settings-form"
+            disabled={busy || demo || !telegramReady || !telegram.paired || !dirty}
+          >
+            Save delivery settings
+          </Button>
+        </div>
+        <p className="footnote">
+          Send test delivers a synthetic message to the configured recipients or confirmed group. No financial
+          transactions are included.
+        </p>
+        <div className="settings-actions">
+          {['smtp', 'telegram'].map((channel) => (
+            <Button
+              key={channel}
+              variant="outline"
+              disabled={busy || demo || (channel === 'telegram' ? !telegramReady || !telegram.paired : !smtpReady)}
+              onClick={() =>
+                action(() =>
+                  api('/notifications/test', {
+                    method: 'POST',
+                    body: JSON.stringify({ channel })
+                  })
+                )
+              }
+            >
+              Send {channel === 'smtp' ? 'email' : 'Telegram'} test
+            </Button>
+          ))}
+        </div>
       </div>
       <p className="footnote">
         {data?.pendingCount || 0} pending deliveries · {data?.failedCount || 0} failed deliveries

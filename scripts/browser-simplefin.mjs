@@ -265,7 +265,8 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(base);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: /^Data/ }).click();
+  await page.getByRole('link', { name: /^Bank feeds/ }).click();
+  await page.locator('.bank-feed-panel > summary').filter({ hasText: 'SimpleFIN' }).click();
   const section = page.getByRole('region', {
     name: 'SimpleFIN optional import'
   });
@@ -299,7 +300,8 @@ try {
   );
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('link', { name: /^Data/ }).click();
+  await page.getByRole('link', { name: /^Bank feeds/ }).click();
+  await page.locator('.bank-feed-panel > summary').filter({ hasText: 'SimpleFIN' }).click();
   await expect(section.getByText('Enabled', { exact: true })).toBeVisible();
   await mkdir(screenshots, { recursive: true });
   await section.screenshot({

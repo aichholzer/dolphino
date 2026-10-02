@@ -38,7 +38,8 @@ try {
     }
   });
   const noStorage = await installBrowserStorageGuard(page);
-  await page.goto(f.url + '/#settings/data');
+  await page.goto(f.url + '/#settings/bank-feeds');
+  await page.locator('.bank-feed-panel > summary').filter({ hasText: 'PocketSmith' }).click();
   const panel = page.locator('section[aria-labelledby="pocketsmith-heading"]');
   await expect(panel.getByRole('heading', { name: 'PocketSmith personal import' })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Test and discover accounts' })).toBeDisabled();
@@ -67,6 +68,7 @@ try {
   await expect(panel.getByRole('status')).toContainText('settings saved');
   await f.finishBackfill();
   await page.reload();
+  await page.locator('.bank-feed-panel > summary').filter({ hasText: 'PocketSmith' }).click();
   await expect(panel).toContainText('Last successful import:');
   await panel.getByLabel('History from — Ocean checking').fill('2026-09-01');
   const queue = panel.getByRole('button', { name: 'Queue history for Ocean checking' });
@@ -87,7 +89,8 @@ try {
   await expect(dialog).toContainText('conference');
   await expect(dialog).toContainText('work');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.goto(f.url + '/#settings/data');
+  await page.goto(f.url + '/#settings/bank-feeds');
+  await page.locator('.bank-feed-panel > summary').filter({ hasText: 'PocketSmith' }).click();
   await panel.getByRole('button', { name: 'Disconnect locally' }).click();
   await expect(panel).toContainText('Not connected');
   assert.equal((await f.store.listTransactions()).filter((row) => row.accountId.startsWith('ps_')).length, 1);
