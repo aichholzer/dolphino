@@ -1,5 +1,7 @@
 # Historical maintainability verification — 1 October 2026
 
+**Historical scope:** this record predates the shared-AI settings change. Descriptions of independent classification/assistant credentials and per-form discovery describe that earlier implementation, not current behavior. Current production uses one shared connection, separate feature controls and one model catalog; see [shared AI settings](ai-settings.md) and [its verification record](shared-ai-settings-verification.md). The original dated evidence and counts below are preserved, not claimed as new runs.
+
 This is the earlier route/frontend refactor and PostgreSQL/proxy milestone, recorded before the subsequent `.mjs`/backend-layout and version 3 credential cleanup. Its test counts and compatibility statements describe that earlier state, not a rerun of the current release. See [current cleanup verification](module-cleanup-verification.md) and [upgrade boundaries](upgrading.md).
 
 All data, credentials, provider responses and notification destinations used here were synthetic. PostgreSQL 17.6 ran in a fresh disposable local cluster. No production deployment, real financial provider connection, model call, message delivery or live household data was used.

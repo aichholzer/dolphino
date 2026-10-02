@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { ensureDeploymentMode } from '../lib/deployment-mode.mjs';
-import { createAssistantSettings } from '../lib/assistant-settings.mjs';
+import { createAiSettings } from '../lib/ai-settings.mjs';
 import { createAssistantUsage } from '../lib/assistant-usage.mjs';
 import { createHouseholdAuth } from '../lib/household-auth.mjs';
 import { createUserManagement } from '../lib/users.mjs';
@@ -36,7 +36,7 @@ try {
   await createHouseholdAuth({ pool, config }).init();
   await ensureAccessSchema(pool);
   await createUserManagement({ pool, config, settings }).init();
-  await createAssistantSettings({ pool, appSecret: config.appSecret }).init();
+  await createAiSettings({ pool, settings, appSecret: config.appSecret }).init();
   await createAssistantUsage({ pool }).init();
   console.log('Migrations complete');
 } finally {

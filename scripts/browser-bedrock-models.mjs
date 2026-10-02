@@ -16,7 +16,7 @@ import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
 import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
 import { createRegistration } from '../backend/src/lib/registration.mjs';
 import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
-import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createAiSettings } from '../backend/src/lib/ai-settings.mjs';
 import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
 import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
 import { createImportHealth } from '../backend/src/lib/import-health.mjs';
@@ -76,7 +76,49 @@ async function runScenario(name, test) {
       await ensureDeploymentMode(pool, 'live');
       const store = new Store(pool, { mode: 'live', timezone: config.timezone });
       await store.migrate();
-      const settings = createSettingsStore({ pool, appSecret: config.appSecret });
+      const vault = createSettingsStore({ pool, appSecret: config.appSecret });
+      await vault.init();
+      if (name.startsWith('migration-') && !(await vault.getValue('llm'))) {
+        await vault.setValue('llm', {
+          provider: 'bedrock',
+          region: 'ap-southeast-2',
+          model: 'legacy-classifier',
+          enabled: true,
+          autoClassify: true,
+          autoApply: false,
+          dailyRequestLimit: 31,
+          batchSize: 6
+        });
+        await vault.setValue('assistant.llm', {
+          provider: 'bedrock',
+          region: 'ap-southeast-2',
+          model: 'legacy-assistant',
+          enabled: true,
+          dataSharingAcknowledged: true,
+          dailyRequestsPerUser: 13,
+          maxToolCalls: 4,
+          maxRounds: 3,
+          maxOutputTokens: 1024
+        });
+        for (const source of ['llm', 'assistant.llm']) {
+          await vault.setSecret(
+            `${source}.accessKeyId`,
+            'bedrock',
+            `AKIASYNTHETIC${source === 'llm' ? 'CLASSIFIER' : 'ASSISTANT'}`
+          );
+          await vault.setSecret(`${source}.secretAccessKey`, 'bedrock', `synthetic-old-${source}-secret`);
+        }
+
+        if (name === 'migration-unavailable-profile') {
+          await pool.query("UPDATE encrypted_credentials SET ciphertext=$1 WHERE setting='llm.secretAccessKey'", [
+            { v: 2, data: 'synthetic-retired-envelope' }
+          ]);
+        }
+      }
+
+      const aiSettings = createAiSettings({ pool, settings: vault, appSecret: config.appSecret });
+      await aiSettings.init();
+      const settings = { ...vault, ...aiSettings.classification };
       await settings.init();
       const redbarkSettings = createRedbarkSettings({
         pool,
@@ -112,11 +154,7 @@ async function runScenario(name, test) {
         fetchImpl: forbiddenOutbound
       });
       await classification.init();
-      const assistantSettings = createAssistantSettings({
-        pool,
-        appSecret: config.appSecret
-      });
-      await assistantSettings.init();
+      const assistantSettings = aiSettings.assistant;
       const notifications = createNotificationIntegration({
         pool,
         settings,
@@ -153,6 +191,7 @@ async function runScenario(name, test) {
         registration,
         classification,
         assistantSettings,
+        aiSettings,
         notifications,
         telegram,
         importHealth,
@@ -199,7 +238,7 @@ async function runScenario(name, test) {
           fetchImpl: forbiddenOutbound
         }
       });
-      return { app, auth };
+      return { app, auth, settings, assistantSettings };
     }
 
     let fixture = await buildApp();
@@ -257,7 +296,20 @@ async function runScenario(name, test) {
           return;
         }
 
-        const item = { event: 'request', phase, method: request.method(), path, body: request.postData() };
+        const body = request.postDataJSON();
+        const item = { event: 'request', phase, method: request.method(), path, fields: body ? Object.keys(body) : [] };
+        if (path === '/api/settings/ai/models') {
+          assert.deepEqual(Object.keys(body), ['revision']);
+        }
+
+        if (request.method() === 'PUT' && ['/api/settings/provider', '/api/settings/assistant'].includes(path)) {
+          for (const forbidden of ['provider', 'region', 'apiKey', 'accessKeyId', 'secretAccessKey']) {
+            assert(!Object.hasOwn(body, forbidden), `Feature write cannot include ${forbidden}`);
+          }
+
+          assert.match(body.aiRevision, /^[a-f0-9]{64}$/);
+        }
+
         requests.push(item);
         trace.push(item);
       });
@@ -289,12 +341,12 @@ async function runScenario(name, test) {
 
     async function enterSettings(page) {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'Save provider settings', exact: true })).toBeEnabled();
-      await expect(page.getByRole('button', { name: 'Save assistant settings', exact: true })).toBeEnabled();
+      await page.getByRole('link', { name: /^AI features/ }).click();
+      await expect(page.getByRole('button', { name: 'Save AI connection', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Save assistant settings', exact: true })).toBeVisible();
     }
 
-    const label = (purpose, name) =>
-      purpose === 'assistant' ? `Assistant ${name}` : name[0].toUpperCase() + name.slice(1);
     const namespace = (purpose) => (purpose === 'assistant' ? 'assistant' : 'provider');
     const choices = (page, purpose) => page.getByLabel(`Available ${purpose} Bedrock models`, { exact: true });
     const modelsRequests = () => requests.filter((item) => item.path.endsWith('/models'));
@@ -305,69 +357,53 @@ async function runScenario(name, test) {
           exact: true
         })
       });
-    async function save(page, purpose) {
-      phase = `${name}:save-${purpose}`;
-      const path = `/api/settings/${namespace(purpose)}`;
+    async function savePath(page, path, label) {
+      phase = `${name}:save-${path}`;
       const responsePromise = page.waitForResponse(
         (response) => new URL(response.url()).pathname === path && response.request().method() === 'PUT'
       );
-      const button = page.getByRole('button', { name: `Save ${namespace(purpose)} settings`, exact: true });
+      const button = page.getByRole('button', { name: label, exact: true });
       await button.click();
       const response = await responsePromise;
       assert.equal(response.status(), 200, await response.text());
       const state = await response.json();
-      assert.equal(state.provider, 'bedrock');
-      assert.equal(state.encryptionAvailable, true);
-      assert.equal(state.credentialsAvailable, true);
-      assert.equal(state.credentials.accessKeyId.configured, true);
-      assert.equal(state.credentials.secretAccessKey.configured, true);
-      assert.match(state.discoveryRevision, /^[a-f0-9]{64}$/);
       await expect(button).toBeEnabled();
       return state;
     }
 
-    async function configure(page, purpose, { model = '' } = {}) {
-      await page.getByLabel(label(purpose, 'provider'), { exact: true }).selectOption('bedrock');
-      await page.getByLabel(label(purpose, 'AWS region'), { exact: true }).selectOption('ap-southeast-2');
-      await page
-        .getByLabel(label(purpose, 'AWS access key ID'), { exact: true })
-        .fill(`AKIASYNTHETIC${purpose.toUpperCase()}`);
-      await page
-        .getByLabel(label(purpose, 'AWS secret access key'), { exact: true })
-        .fill(`synthetic-${purpose}-secret`);
-      if (model) {
-        await section(page, purpose)
-          .getByText('Enter a model or inference profile ID manually (optional)', { exact: true })
-          .click();
-        await page
-          .getByLabel(purpose === 'assistant' ? 'Assistant model ID' : 'Model or inference profile ID / ARN', {
-            exact: true
-          })
-          .fill(model);
-      }
-
-      return save(page, purpose);
+    const save = (page, purpose) => savePath(page, `/api/settings/${namespace(purpose)}`, `Save ${purpose} settings`);
+    const saveShared = (page) => savePath(page, '/api/settings/ai', 'Save AI connection');
+    async function configure(page) {
+      await page.getByLabel('AI provider', { exact: true }).selectOption('bedrock');
+      await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
+      await page.getByLabel('AWS access key ID', { exact: true }).fill('AKIASYNTHETICSHARED');
+      await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-shared-secret');
+      return saveShared(page);
     }
 
     async function loaded(page, purpose, version = 'current') {
       await expect(choices(page, purpose)).toBeEnabled();
       await expect(choices(page, purpose)).toContainText(`synthetic.${version}-model`);
-      assert.equal(await page.getByLabel(label(purpose, 'AWS access key ID'), { exact: true }).inputValue(), '');
-      assert.equal(await page.getByLabel(label(purpose, 'AWS secret access key'), { exact: true }).inputValue(), '');
-      const state = await read(`/api/settings/${namespace(purpose)}`);
+      assert.equal(await page.getByLabel('AWS access key ID', { exact: true }).inputValue(), '');
+      assert.equal(await page.getByLabel('AWS secret access key', { exact: true }).inputValue(), '');
+      const state = await read('/api/settings/ai');
       assert.equal(state.encryptionAvailable, true);
       assert.equal(state.credentialsAvailable, true);
       assert.equal(state.credentials.accessKeyId.configured, true);
       assert.equal(state.credentials.secretAccessKey.configured, true);
       assert.match(state.discoveryRevision, /^[a-f0-9]{64}$/);
-      assert.equal(state.enabled, false, 'Discovery never enables inference');
-      assert(!JSON.stringify(state).includes(`synthetic-${purpose}-secret`));
+      assert(!JSON.stringify(state).includes('synthetic-shared-secret'));
     }
 
     async function both(page) {
+      await configure(page);
+      await loaded(page, 'classification');
+      await loaded(page, 'assistant');
+      assert.equal(modelsRequests().length, 1, 'Both pickers share one credential-scoped catalog request');
       for (const purpose of ['classification', 'assistant']) {
-        await configure(page, purpose);
-        await loaded(page, purpose);
+        const state = await read(`/api/settings/${namespace(purpose)}`);
+        assert.equal(state.enabled, false, 'Credential discovery never enables either feature');
+        assert.equal(state.model, '', 'Credentials save does not choose a model');
       }
     }
 
@@ -405,6 +441,7 @@ async function runScenario(name, test) {
         sdk,
         read,
         save,
+        saveShared,
         configure,
         loaded,
         both,
@@ -416,9 +453,12 @@ async function runScenario(name, test) {
         restartApp,
         requests,
         trace,
-        label,
         namespace,
-        pool
+        pool,
+        runtime: async () => [
+          await fixture.settings.getProviderConfig(),
+          await fixture.assistantSettings.getRuntimeConfig()
+        ]
       });
       for (const guard of guards) {
         if (!guard.page.isClosed()) {
@@ -495,145 +535,213 @@ function gate() {
   return { promise, resolve };
 }
 
-await runScenario('save-blank-and-busy', async ({ page, both, save, loaded, choices, modelsRequests, pool }) => {
-  await both(page);
-  const before = (
-    await pool.query('SELECT setting,provider,ciphertext FROM encrypted_credentials ORDER BY setting,provider')
-  ).rows;
-  for (const purpose of ['classification', 'assistant']) {
-    await save(page, purpose);
-    await loaded(page, purpose);
-  }
+await runScenario(
+  'save-blank-and-busy',
+  async ({ page, both, save, saveShared, loaded, choices, modelsRequests, pool, read }) => {
+    await both(page);
+    const before = (
+      await pool.query('SELECT setting,provider,ciphertext FROM encrypted_credentials ORDER BY setting,provider')
+    ).rows;
+    const refreshed = await saveShared(page);
+    for (const purpose of ['classification', 'assistant']) {
+      await choices(page, purpose).selectOption('synthetic.current-model');
+      await save(page, purpose);
+      await loaded(page, purpose);
+    }
 
-  const after = (
-    await pool.query('SELECT setting,provider,ciphertext FROM encrypted_credentials ORDER BY setting,provider')
-  ).rows;
-  assert.deepEqual(after, before, 'Blank secret fields preserve the stored ciphertext');
-  const count = modelsRequests().length;
-  await page.getByRole('button', { name: 'Test saved connection', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Test saved connection', exact: true })).toBeEnabled();
-  await loaded(page, 'classification');
-  await loaded(page, 'assistant');
-  assert.equal(modelsRequests().length, count, 'A connection test cannot erase or reload an unchanged catalog');
-  await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Refresh status', exact: true })).toBeEnabled();
-  await loaded(page, 'classification');
-  assert.equal(modelsRequests().length, count, 'An unchanged status refresh cannot reload the catalog');
-  await expect(choices(page, 'assistant')).toBeEnabled();
-});
+    const after = (
+      await pool.query('SELECT setting,provider,ciphertext FROM encrypted_credentials ORDER BY setting,provider')
+    ).rows;
+    assert.deepEqual(after, before, 'Blank shared secret fields and feature saves preserve stored ciphertext');
+    assert.equal(
+      (await read('/api/settings/ai')).discoveryRevision,
+      refreshed.discoveryRevision,
+      'Feature saves do not change credential revision'
+    );
+    assert.equal(
+      modelsRequests().length,
+      2,
+      'Explicit shared save reloads once; feature saves do not reload the shared catalog'
+    );
+    const response = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/settings/ai/test-connection'
+    );
+    await page.getByRole('button', { name: 'Test saved connection', exact: true }).click();
+    assert.equal((await response).status(), 200);
+    await expect(page.getByRole('button', { name: 'Test saved connection', exact: true })).toBeEnabled();
+    await loaded(page, 'classification');
+    await loaded(page, 'assistant');
+    assert.equal(modelsRequests().length, 2, 'Credential-only connection test preserves catalog');
+  }
+);
 
 for (const navigation of ['reopen', 'refresh-settings', 'reload', 'browser-restart', 'app-restart']) {
   await runScenario(
     navigation,
     async ({ page, both, enterSettings, restartBrowser, restartApp, loaded, modelsRequests, read }) => {
       await both(page);
-      const previousProvider = await read('/api/settings/provider');
-      const previousAssistant = await read('/api/settings/assistant');
+      const previous = await read('/api/settings/ai');
       if (navigation === 'reopen') {
         await page.getByRole('button', { name: 'Overview', exact: true }).click();
-        await expect(page.getByRole('button', { name: 'Save provider settings', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toHaveCount(0);
         await enterSettings(page);
       } else if (navigation === 'refresh-settings') {
         await enterSettings(page);
       } else if (navigation === 'reload') {
         await page.reload();
-        await enterSettings(page);
+        await expect(page).toHaveURL(/#settings\/ai$/);
       } else if (navigation === 'app-restart') {
         page = await restartApp();
-        assert.deepEqual(await read('/api/settings/provider'), previousProvider);
-        assert.deepEqual(await read('/api/settings/assistant'), previousAssistant);
       } else {
         page = await restartBrowser();
       }
 
       await loaded(page, 'classification');
       await loaded(page, 'assistant');
-      assert.equal(modelsRequests().length, 4, 'Each reopened saved form automatically loads once');
+      assert.deepEqual(await read('/api/settings/ai'), previous);
+      assert.equal(modelsRequests().length, 2, 'Each reopened AI section loads one shared catalog');
     }
   );
 }
+
+await runScenario('aws-error-retry-shared', async ({ page, sdk, configure, section, loaded, read, modelsRequests }) => {
+  sdk.fail = 'AccessDeniedException';
+  await configure(page);
+  for (const purpose of ['classification', 'assistant']) {
+    await expect(section(page, purpose).getByRole('alert')).toContainText('Unable to load models');
+  }
+
+  assert(!(await page.locator('body').innerText()).includes('synthetic-secret-must-never-be-displayed'));
+  const state = await read('/api/settings/ai');
+  assert.equal(state.credentials.accessKeyId.configured, true);
+  assert.equal(state.credentials.secretAccessKey.configured, true);
+  assert.equal(state.region, 'ap-southeast-2');
+  sdk.fail = null;
+  await section(page, 'classification').getByRole('button', { name: 'Retry loading models', exact: true }).click();
+  await loaded(page, 'classification');
+  await loaded(page, 'assistant');
+  assert.equal(modelsRequests().length, 2, 'Failure stays visible until one explicit shared Retry');
+});
 
 await runScenario(
-  'successful-connection-and-delayed-summary',
-  async ({ page, configure, save, loaded, modelsRequests }) => {
-    await configure(page, 'classification', { model: 'synthetic.current-model' });
+  'slow-region-abort',
+  async ({ page, sdk, configure, saveShared, loaded, choices, modelsRequests, trace }) => {
+    const pending = gate();
+    sdk.gate = pending;
+    sdk.version = 'obsolete';
+    await configure(page);
+    await expect.poll(() => sdk.calls).toBeGreaterThan(0);
+    await expect(choices(page, 'classification')).toContainText('Loading models');
+    await page.getByLabel('AWS region', { exact: true }).selectOption('ap-south-1');
+    await expect(choices(page, 'classification')).toBeDisabled();
+    await expect(choices(page, 'assistant')).toBeDisabled();
+    sdk.gate = null;
+    sdk.version = 'current';
+    await saveShared(page);
     await loaded(page, 'classification');
-    const count = modelsRequests().length;
-    const response = page.waitForResponse(
-      (response) => new URL(response.url()).pathname === '/api/settings/provider/test-connection'
+    await loaded(page, 'assistant');
+    pending.resolve();
+    await page.waitForTimeout(100);
+    await expect(choices(page, 'classification')).not.toContainText('obsolete');
+    await expect(choices(page, 'assistant')).not.toContainText('obsolete');
+    assert.equal(modelsRequests().length, 2, 'Dirty region cancels shared discovery until saved');
+    assert(
+      trace.some((item) => item.event === 'failed' && item.path.endsWith('/models')),
+      'Superseded actual HTTP request aborted'
     );
-    await page.getByRole('button', { name: 'Test saved connection', exact: true }).click();
-    assert.equal((await response).status(), 200);
-    await expect(page.getByRole('button', { name: 'Test saved connection', exact: true })).toBeEnabled();
-    await loaded(page, 'classification');
-    assert.equal(modelsRequests().length, count);
-    // Delay transport only. The actual backend still produces the whole response.
-    await page.route('**/api/settings', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await route.continue();
-    });
-    await save(page, 'classification');
-    await loaded(page, 'classification');
-    assert.equal(modelsRequests().length, count + 1);
   }
 );
-
-for (const purpose of ['classification', 'assistant']) {
-  await runScenario(
-    `aws-error-retry-${purpose}`,
-    async ({ page, sdk, configure, section, loaded, read, namespace, modelsRequests }) => {
-      sdk.fail = 'AccessDeniedException';
-      await configure(page, purpose);
-      await expect(section(page, purpose).getByRole('alert')).toContainText('Unable to load models');
-      assert(!(await page.locator('body').innerText()).includes('synthetic-secret-must-never-be-displayed'));
-      const state = await read(`/api/settings/${namespace(purpose)}`);
-      assert.equal(state.credentials.accessKeyId.configured, true);
-      assert.equal(state.credentials.secretAccessKey.configured, true);
-      assert.equal(state.region, 'ap-southeast-2');
-      assert.equal(state.enabled, false);
-      sdk.fail = null;
-      await section(page, purpose).getByRole('button', { name: 'Retry loading models', exact: true }).click();
-      await loaded(page, purpose);
-      assert.equal(modelsRequests().length, 2, 'Failure does not create an automatic retry loop');
-    }
-  );
-  await runScenario(
-    `slow-abort-${purpose}`,
-    async ({ page, sdk, configure, save, loaded, choices, label, modelsRequests, trace }) => {
-      const pending = gate();
-      sdk.gate = pending;
-      sdk.version = 'obsolete';
-      await configure(page, purpose);
-      await expect.poll(() => sdk.calls).toBeGreaterThan(0);
-      await expect(choices(page, purpose)).toContainText('Loading models');
-      await page.getByLabel(label(purpose, 'AWS region'), { exact: true }).selectOption('ap-south-1');
-      await expect(choices(page, purpose)).toBeDisabled();
-      sdk.gate = null;
-      sdk.version = 'current';
-      await save(page, purpose);
-      await loaded(page, purpose);
-      pending.resolve();
-      await page.waitForTimeout(100);
-      await expect(choices(page, purpose)).not.toContainText('obsolete');
-      assert.equal(modelsRequests().length, 2, 'Dirty region cancels discovery until explicitly saved');
-      assert(
-        trace.some((item) => item.event === 'failed' && item.path.endsWith('/models')),
-        'Superseded actual HTTP request was aborted'
-      );
-    }
-  );
-}
 
 await runScenario('slow-busy-preserves-request', async ({ page, sdk, configure, loaded, modelsRequests }) => {
   const pending = gate();
   sdk.gate = pending;
-  await configure(page, 'classification', { model: 'synthetic.current-model' });
+  await configure(page);
   await expect.poll(() => sdk.calls).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Test saved connection', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Test saved connection', exact: true })).toBeEnabled();
   sdk.gate = null;
   pending.resolve();
   await loaded(page, 'classification');
-  assert.equal(modelsRequests().length, 1, 'Unchanged connection/status refresh preserves in-flight discovery');
+  await loaded(page, 'assistant');
+  assert.equal(modelsRequests().length, 1, 'Unchanged connection test preserves the in-flight catalog');
 });
-console.log('Bedrock saved-settings lifecycle passed against real HTTP/PostgreSQL and compiled frontend.');
+
+await runScenario(
+  'slow-unmount-and-return',
+  async ({ page, sdk, configure, enterSettings, loaded, choices, modelsRequests }) => {
+    const pending = gate();
+    sdk.gate = pending;
+    sdk.version = 'obsolete';
+    await configure(page);
+    await expect.poll(() => sdk.calls).toBeGreaterThan(0);
+    await page.getByRole('link', { name: /^Data/ }).click();
+    await expect(choices(page, 'classification')).toHaveCount(0);
+    sdk.gate = null;
+    sdk.version = 'current';
+    await enterSettings(page);
+    await loaded(page, 'classification');
+    await loaded(page, 'assistant');
+    pending.resolve();
+    await page.waitForTimeout(100);
+    await expect(choices(page, 'classification')).not.toContainText('obsolete');
+    assert.equal(modelsRequests().length, 2, 'Unmounted request cannot populate the reopened section');
+  }
+);
+for (const migration of ['conflict', 'unavailable-profile']) {
+  await runScenario(
+    `migration-${migration}`,
+    async ({ page, read, saveShared, loaded, pool, modelsRequests, runtime }) => {
+      const before = await read('/api/settings/ai');
+      assert.equal(before.migration.status, migration === 'conflict' ? 'conflict' : 'credentials-unavailable');
+      assert.equal(before.migration.sources.length, 2);
+      for (const config of await runtime()) {
+        assert.equal(
+          config.llmEnabled,
+          false,
+          'Migration blocks actual inference regardless of retained enable preferences'
+        );
+      }
+
+      await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeDisabled();
+      const resolution = page.getByLabel('Resolve existing AI credentials', { exact: true });
+      await expect(resolution).toBeVisible();
+      if (migration !== 'conflict') {
+        assert.equal(
+          await resolution.locator('option[value="classification"]').evaluate((option) => option.disabled),
+          true
+        );
+      }
+
+      await resolution.selectOption('assistant');
+      const saved = await saveShared(page);
+      assert.equal(saved.migration.status, 'ready');
+      await loaded(page, 'classification');
+      await loaded(page, 'assistant');
+      const classification = await read('/api/settings/provider');
+      const assistant = await read('/api/settings/assistant');
+      assert.equal(classification.model, 'legacy-classifier');
+      assert.equal(classification.dailyRequestLimit, 31);
+      assert.equal(assistant.model, 'legacy-assistant');
+      assert.equal(assistant.dailyRequestsPerUser, 13);
+      assert.equal(classification.enabled, false);
+      assert.equal(assistant.enabled, false);
+      assert.equal(modelsRequests().length, 1);
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM encrypted_credentials WHERE setting LIKE 'llm.%' OR setting LIKE 'assistant.llm.%'"
+          )
+        ).rowCount,
+        0,
+        'Explicit profile resolution retires both old credential namespaces'
+      );
+      const text = await page.locator('body').innerText();
+      assert(
+        !text.includes('synthetic-old-') && !text.includes('AKIASYNTHETIC'),
+        'Migration never displays secret values'
+      );
+    }
+  );
+}
+
+console.log('Shared AI saved-settings lifecycle passed against real HTTP/PostgreSQL and compiled frontend.');

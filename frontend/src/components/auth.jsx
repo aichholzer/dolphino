@@ -1,3 +1,4 @@
+import { useSettingsDirty } from '../features/settings/settings-dirty';
 import { useState } from 'react';
 import { BrandMark } from './brand';
 import { Button } from './ui/button';
@@ -180,6 +181,7 @@ export function PasswordForm({ api, onChanged }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
+  useSettingsDirty(current || password || confirm || busy);
   return (
     <form
       onSubmit={async (e) => {

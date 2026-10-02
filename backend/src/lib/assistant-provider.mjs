@@ -262,7 +262,12 @@ function validateCalls(calls) {
 
 /** Only the server orchestrator may supply tool definitions/native history. This
  * adapter parses calls; the executor separately authorizes and schema-validates them. */
-export async function sendAssistantTurn({ config, system, messages, tools, signal }, deps = {}) {
+export async function sendAssistantTurn({ config, system, messages, tools, signal, assertConfiguration }, deps = {}) {
+  const assertCurrent = async () => {
+    await assertConfiguration?.();
+    await deps.assertConfiguration?.();
+  };
+
   if (!['openai', 'bedrock'].includes(config.llmProvider) || !isProviderConfigured(config)) {
     throw failure('Configure an assistant provider and model first', 409);
   }
@@ -305,6 +310,7 @@ export async function sendAssistantTurn({ config, system, messages, tools, signa
   bounded({ system, input, tools }, INPUT_BYTES);
   try {
     if (config.llmProvider === 'openai') {
+      await assertCurrent();
       const response = await (deps.fetchImpl ?? fetch)('https://api.openai.com/v1/responses', {
         method: 'POST',
         redirect: 'error',
@@ -387,7 +393,8 @@ export async function sendAssistantTurn({ config, system, messages, tools, signa
       };
     }
 
-    await verifyBedrockAvailability(config, { ...deps, signal: abortSignal });
+    await verifyBedrockAvailability(config, { ...deps, signal: abortSignal, assertConfiguration: assertCurrent });
+    await assertCurrent();
     if (abortSignal.aborted) {
       throw failure('Assistant request cancelled', 409);
     }
@@ -410,6 +417,7 @@ export async function sendAssistantTurn({ config, system, messages, tools, signa
 
     let body;
     try {
+      await assertCurrent();
       body = await client.send(
         new ConverseCommand({
           modelId: config.llmModel,

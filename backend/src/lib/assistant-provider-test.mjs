@@ -33,7 +33,9 @@ export async function testAssistantModel(config, dependencies = {}) {
     ],
     tools
   };
+  await dependencies.assertConfiguration?.();
   const first = await sendAssistantTurn(input, dependencies);
+  await dependencies.assertConfiguration?.();
   const call = first.toolCalls[0];
   if (
     first.toolCalls.length !== 1 ||
@@ -45,6 +47,7 @@ export async function testAssistantModel(config, dependencies = {}) {
     throw invalid();
   }
 
+  await dependencies.assertConfiguration?.();
   const second = await sendAssistantTurn(
     {
       ...input,
@@ -65,6 +68,7 @@ export async function testAssistantModel(config, dependencies = {}) {
     },
     dependencies
   );
+  await dependencies.assertConfiguration?.();
   if (second.toolCalls.length || !second.text.trim()) {
     throw invalid();
   }

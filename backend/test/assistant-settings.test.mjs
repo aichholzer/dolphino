@@ -29,7 +29,7 @@ test('assistant settings require explicit sharing and enforce independent hard b
 });
 const database = readTestPostgresConfig();
 test(
-  'assistant credentials are isolated, atomic, write-only and fail closed without classification fallback',
+  'legacy assistant profiles remain isolated, atomic and write-only for migration',
   { skip: !database },
   async () => {
     const admin = new pg.Pool(database);

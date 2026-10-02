@@ -179,7 +179,7 @@ test(
 );
 
 test(
-  'assistant settings, consent, request limits and secrets are read from the same isolated snapshot',
+  'legacy assistant profile settings, consent, limits and secrets use one isolated snapshot',
   { skip: !database },
   async () =>
     fixture(async ({ pool, appSecret, store }) => {

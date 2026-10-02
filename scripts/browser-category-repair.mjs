@@ -151,6 +151,7 @@ async function noOpaqueText(page) {
 
 async function enterSettings(page) {
   await navigate(page, 'Settings');
+  await page.getByRole('link', { name: /^Data/ }).click();
   await expect(
     page.locator('.import-health').getByRole('heading', { name: 'Import health & history', exact: true })
   ).toBeVisible();
@@ -535,6 +536,7 @@ try {
     state.gates.push(pending);
     await page.getByRole('button', { name: 'Repair category names', exact: true }).click();
     await expect.poll(() => repairs(state).length).toBe(1);
+    page.once('dialog', (dialog) => dialog.accept());
     await navigate(page, 'Transactions');
     await expect(page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true }).click();

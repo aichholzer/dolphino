@@ -5,6 +5,7 @@ import { reportQuery, reportingMonth } from './lib/report-query.mjs';
 import { workspaceAccess } from './lib/workspace-access.mjs';
 import { useWorkspaceData } from './hooks/use-workspace-data.mjs';
 import { useTransactionFilters } from './hooks/use-transaction-filters.mjs';
+import { useWorkspaceNavigation } from './hooks/use-workspace-navigation.mjs';
 import { accountTransactionFilters, drilldownFilters } from './features/transactions/transaction-model.mjs';
 import { AppShell } from './components/app-shell';
 import { PageHeading } from './components/page-heading';
@@ -24,7 +25,7 @@ import { RulesPage, RuleDialog } from './features/rules/rules-page';
 import { SettingsPage } from './features/settings/settings-page';
 
 export function FinancialWorkspace({ session, onSession }) {
-  const [page, setPage] = useState('Overview');
+  const { page, section, changeRoute, confirmLeave, onDirtyChange } = useWorkspaceNavigation();
   const [month, setMonth] = useState(() => reportingMonth(session));
   const [currency, setCurrency] = useState(session?.currency || 'AUD');
   const [period, setPeriod] = useState(1);
@@ -48,23 +49,33 @@ export function FinancialWorkspace({ session, onSession }) {
 
   useEffect(() => {
     if (session?.authenticated && !isAdmin && !canNavigate(page)) {
-      setPage(hasAccountAccess ? 'Overview' : 'Budgets');
+      changeRoute(hasAccountAccess ? 'Overview' : 'Budgets', undefined, { replace: true, force: true });
     }
   }, [session, page, isAdmin, hasAccountAccess, hasBudgetAccess]);
 
-  function navigate(next) {
+  function navigate(next, nextSection) {
     if (!canNavigate(next)) {
       next = hasAccountAccess ? 'Overview' : 'Budgets';
     }
 
-    if (next === page) {
+    if (next === page && (!nextSection || nextSection === section)) {
+      if (!confirmLeave()) {
+        return;
+      }
+
       load();
       setMenu(false);
       return;
     }
 
-    resetPage();
-    setPage(next);
+    if (!changeRoute(next, nextSection)) {
+      return;
+    }
+
+    if (next !== page) {
+      resetPage();
+    }
+
     setMenu(false);
   }
 
@@ -94,6 +105,10 @@ export function FinancialWorkspace({ session, onSession }) {
       hasFinancialAccess={hasFinancialAccess}
       onChangePassword={() => setChangePassword(true)}
       onSignOut={async () => {
+        if (!confirmLeave()) {
+          return;
+        }
+
         await api('/logout', { method: 'POST' });
         onSession({ authenticated: false });
       }}
@@ -278,8 +293,11 @@ export function FinancialWorkspace({ session, onSession }) {
               <ReviewsPage reviews={data.reviews || []} busy={busy} onEdit={setEdit} mutate={mutate} />
             )}
             {page === 'Rules' && <RulesPage rules={data.rules || []} onEdit={setRule} />}
-            {page === 'Settings' && (
+            {page === 'Settings' && isAdmin && (
               <SettingsPage
+                section={section}
+                navigateSection={(nextSection) => navigate('Settings', nextSection)}
+                onDirtyChange={onDirtyChange}
                 data={data}
                 session={session}
                 month={month}

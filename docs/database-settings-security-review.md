@@ -1,5 +1,7 @@
 # Database integration settings: independent adversarial review
 
+**Historical scope:** this record predates the shared-AI settings change. Descriptions of independent classification/assistant credentials and per-form discovery describe that earlier implementation, not current behavior. Current production uses one shared connection, separate feature controls and one model catalog; see [shared AI settings](ai-settings.md) and [its verification record](shared-ai-settings-verification.md). The original dated evidence and counts below are preserved, not claimed as new runs.
+
 Review date: 2026-10-01. Scope: the database-only Redbark, classification-provider and separate assistant-provider changes in this worktree.
 
 ## Findings and fixes

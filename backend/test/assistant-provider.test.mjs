@@ -455,3 +455,28 @@ test('OpenAI enables strict native finance tools after recursive schema checks a
     /output limit/
   );
 });
+
+test('OpenAI assistant checks the current shared identity immediately before dispatch', async () => {
+  let calls = 0;
+  let checks = 0;
+  await assert.rejects(
+    sendAssistantTurn(
+      {
+        ...request,
+        config: openai,
+        assertConfiguration: async () => {
+          checks++;
+          throw Object.assign(Error('Shared identity changed'), { status: 409 });
+        }
+      },
+      {
+        fetchImpl: async () => {
+          calls++;
+          throw Error('No dispatch allowed');
+        }
+      }
+    )
+  );
+  assert.equal(checks, 1);
+  assert.equal(calls, 0);
+});

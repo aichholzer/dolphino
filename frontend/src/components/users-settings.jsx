@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
+import { useSettingsDirty } from '../features/settings/settings-dirty';
 import { PasswordForm } from './auth';
 export function UsersSettings({ api, session, onSession }) {
   const [data, setData] = useState({ users: [], invitations: [] }),
@@ -10,6 +11,7 @@ export function UsersSettings({ api, session, onSession }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
+  useSettingsDirty(busy || email || role !== 'member' || grants.accounts.length || grants.budgets.length);
   async function load() {
     const [people, options] = await Promise.all([api('/users'), api('/users/grant-options')]);
     setData(people);
@@ -70,29 +72,33 @@ export function UsersSettings({ api, session, onSession }) {
                 })
               ) {
                 setEmail('');
+                setRole('member');
+                setGrants({ accounts: [], budgets: [] });
               }
             }}
           >
-            <h3>Invite someone</h3>
-            <label>
-              Invitation email address
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label>
-              Invitation role
-              <select aria-label="Invitation role" value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="member">Member</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </label>
-            {role === 'member' && (
-              <GrantFields catalog={catalog} grants={grants} setGrants={setGrants} prefix="Invitation" />
-            )}
-            <p className="footnote">
-              An expiring, single-use activation link is sent by email. Members receive no financial access unless you
-              grant it explicitly. Administrators can access all household data and settings.
-            </p>
-            <Button disabled={busy}>Send invitation email</Button>
+            <fieldset disabled={busy}>
+              <h3>Invite someone</h3>
+              <label>
+                Invitation email address
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              </label>
+              <label>
+                Invitation role
+                <select aria-label="Invitation role" value={role} onChange={(e) => setRole(e.target.value)}>
+                  <option value="member">Member</option>
+                  <option value="admin">Administrator</option>
+                </select>
+              </label>
+              {role === 'member' && (
+                <GrantFields catalog={catalog} grants={grants} setGrants={setGrants} prefix="Invitation" />
+              )}
+              <p className="footnote">
+                An expiring, single-use activation link is sent by email. Members receive no financial access unless you
+                grant it explicitly. Administrators can access all household data and settings.
+              </p>
+              <Button disabled={busy}>Send invitation email</Button>
+            </fieldset>
           </form>
           <h3>People</h3>
           {data.users?.map((u) => (
@@ -239,7 +245,14 @@ function GrantFields({ catalog, grants, setGrants, prefix }) {
 
 function UserGrants({ user, catalog, busy, save }) {
   const [grants, setGrants] = useState(user.grants || { accounts: [], budgets: [] });
-  useEffect(() => setGrants(user.grants || { accounts: [], budgets: [] }), [user]);
+  const saved = useRef(user.grants || { accounts: [], budgets: [] });
+  useSettingsDirty(JSON.stringify(grants) !== JSON.stringify(user.grants || { accounts: [], budgets: [] }));
+  useEffect(() => {
+    const next = user.grants || { accounts: [], budgets: [] };
+    const previous = saved.current;
+    setGrants((current) => (JSON.stringify(current) === JSON.stringify(previous) ? next : current));
+    saved.current = next;
+  }, [user]);
   return (
     <details className="user-grants">
       <summary>Manage financial access</summary>

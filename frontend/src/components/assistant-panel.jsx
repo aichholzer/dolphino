@@ -325,7 +325,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                 <h3>Your assistant is not enabled yet</h3>
                 <p>
                   {status?.disabledReason ||
-                    'An administrator must configure a separate assistant provider and enable financial data sharing in Settings.'}
+                    'An administrator must configure the shared AI connection and enable the assistant and financial data sharing in Settings → AI features.'}
                 </p>
                 <p>Classification credentials are not reused. You can keep using dolphino without an assistant.</p>
                 <Button variant="outline" onClick={refresh}>

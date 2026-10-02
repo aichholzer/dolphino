@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
+import { useSettingsDirty } from '../features/settings/settings-dirty';
 export function NotificationSettings({ api, demo }) {
   const [data, setData] = useState(null),
     [deliveries, setDeliveries] = useState([]),
@@ -15,7 +16,19 @@ export function NotificationSettings({ api, demo }) {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [pairing, setPairing] = useState(null);
-  async function load() {
+  const dirty =
+    !!smtpUrl ||
+    !!token ||
+    clearSmtp ||
+    clearToken ||
+    (data &&
+      (audienceConfirmed !== !!data.audienceConfirmed ||
+        JSON.stringify(summaryFields) !==
+          JSON.stringify(data.summaryFields || ['category', 'period', 'amount', 'remaining']) ||
+        JSON.stringify(smtp) !== JSON.stringify(data.smtp || {}) ||
+        JSON.stringify(telegram) !== JSON.stringify(data.telegram || {})));
+  useSettingsDirty(dirty || busy);
+  async function load({ preserveDraft = false } = {}) {
     const [d, history, activePairing] = await Promise.all([
       api('/settings/notifications'),
       api('/notifications/deliveries'),
@@ -27,6 +40,10 @@ export function NotificationSettings({ api, demo }) {
     }
 
     setData(d);
+    if (preserveDraft) {
+      return;
+    }
+
     setAudienceConfirmed(!!d.audienceConfirmed);
     setSummaryFields(d.summaryFields || ['category', 'period', 'amount', 'remaining']);
     setSmtp(d.smtp || {});
@@ -36,14 +53,18 @@ export function NotificationSettings({ api, demo }) {
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
-  async function action(fn) {
+  async function action(fn, { saveForm = false } = {}) {
+    if (busy) {
+      return null;
+    }
+
     setBusy(true);
     setError('');
     setNotice('');
     try {
       const r = await fn();
       setNotice(r.message || 'Notification settings updated.');
-      await load();
+      await load({ preserveDraft: dirty && !saveForm });
       return r;
     } catch (e) {
       setError(e.message);
@@ -70,11 +91,13 @@ export function NotificationSettings({ api, demo }) {
       }
     };
     if (
-      await action(() =>
-        api('/settings/notifications', {
-          method: 'PUT',
-          body: JSON.stringify(body)
-        })
+      await action(
+        () =>
+          api('/settings/notifications', {
+            method: 'PUT',
+            body: JSON.stringify(body)
+          }),
+        { saveForm: true }
       )
     ) {
       setSmtpUrl('');
@@ -101,146 +124,152 @@ export function NotificationSettings({ api, demo }) {
         </p>
       )}
       <form onSubmit={save}>
-        <label className="checkbox-label">
-          <input type="checkbox" checked={audienceConfirmed} onChange={(e) => setAudienceConfirmed(e.target.checked)} />
-          I understand notifications can show whole-household category totals to these email and Telegram recipients,
-          independently of their app permissions.
-        </label>
-        <h3>What to share</h3>
-        <p className="footnote">
-          Choose fields included in household budget summaries. Bank account names and transaction descriptions are
-          never included.
-        </p>
-        {[
-          ['category', 'Category'],
-          ['period', 'Budget period'],
-          ['amount', 'Overspend amount'],
-          ['remaining', 'Remaining allowance']
-        ].map(([key, label]) => (
-          <label key={key} className="checkbox-label">
+        <fieldset disabled={busy || demo || !data}>
+          <label className="checkbox-label">
             <input
               type="checkbox"
-              checked={summaryFields.includes(key)}
-              disabled={summaryFields.length === 1 && summaryFields.includes(key)}
+              checked={audienceConfirmed}
+              onChange={(e) => setAudienceConfirmed(e.target.checked)}
+            />
+            I understand notifications can show whole-household category totals to these email and Telegram recipients,
+            independently of their app permissions.
+          </label>
+          <h3>What to share</h3>
+          <p className="footnote">
+            Choose fields included in household budget summaries. Bank account names and transaction descriptions are
+            never included.
+          </p>
+          {[
+            ['category', 'Category'],
+            ['period', 'Budget period'],
+            ['amount', 'Overspend amount'],
+            ['remaining', 'Remaining allowance']
+          ].map(([key, label]) => (
+            <label key={key} className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={summaryFields.includes(key)}
+                disabled={summaryFields.length === 1 && summaryFields.includes(key)}
+                onChange={(e) =>
+                  setSummaryFields(e.target.checked ? [...summaryFields, key] : summaryFields.filter((f) => f !== key))
+                }
+              />
+              {label}
+            </label>
+          ))}
+          <div className="setup-note">
+            <div>
+              <strong>Synthetic summary preview</strong>
+              <p>
+                {summaryFields
+                  .map(
+                    (f) =>
+                      ({
+                        category: 'Dining',
+                        period: 'September 2026',
+                        amount: 'Over budget by AUD 12.34',
+                        remaining: 'Remaining: −AUD 12.34'
+                      })[f]
+                  )
+                  .join(' · ')}
+              </p>
+            </div>
+          </div>
+
+          <h3>Email · SMTP</h3>
+          <label>
+            SMTP connection URL
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={smtpUrl}
+              disabled={clearSmtp}
+              placeholder="Leave blank to preserve saved connection"
+              onChange={(e) => setSmtpUrl(e.target.value)}
+            />
+          </label>
+          <p className="footnote">
+            {data?.smtp?.credentialConfigured ? 'Saved · hidden. ' : 'Not configured. '}
+            Use smtp://login:password@host:587 with STARTTLS or smtps://login:password@host:465. URL-encode special
+            characters in credentials. Connection details are encrypted.
+          </p>
+          {data?.smtp?.credentialsAvailable === false && (
+            <p role="status" className="setup-note">
+              The saved SMTP connection cannot be decrypted. Verify APP_SECRET or replace the saved connection. Retired
+              credential formats must be replaced; financial records are unchanged.
+            </p>
+          )}
+          <label className="checkbox-label">
+            <input type="checkbox" checked={clearSmtp} onChange={(e) => setClearSmtp(e.target.checked)} />
+            Clear SMTP connection
+          </label>
+          <label>
+            From email address
+            <input type="email" value={smtp.from || ''} onChange={(e) => setSmtp({ ...smtp, from: e.target.value })} />
+          </label>
+          <label>
+            Recipients (comma separated)
+            <input
+              value={(smtp.recipients || []).join(', ')}
               onChange={(e) =>
-                setSummaryFields(e.target.checked ? [...summaryFields, key] : summaryFields.filter((f) => f !== key))
+                setSmtp({
+                  ...smtp,
+                  recipients: e.target.value.split(',').map((s) => s.trim())
+                })
               }
             />
-            {label}
           </label>
-        ))}
-        <div className="setup-note">
-          <div>
-            <strong>Synthetic summary preview</strong>
-            <p>
-              {summaryFields
-                .map(
-                  (f) =>
-                    ({
-                      category: 'Dining',
-                      period: 'September 2026',
-                      amount: 'Over budget by AUD 12.34',
-                      remaining: 'Remaining: −AUD 12.34'
-                    })[f]
-                )
-                .join(' · ')}
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={!!smtp.enabled}
+              onChange={(e) => setSmtp({ ...smtp, enabled: e.target.checked })}
+            />
+            Enable email alerts
+          </label>
+          <h3>Telegram · private household group</h3>
+          <label>
+            Telegram bot token
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={token}
+              disabled={clearToken}
+              placeholder="Leave blank to preserve saved token"
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={clearToken} onChange={(e) => setClearToken(e.target.checked)} />
+            Clear Telegram bot token
+          </label>
+          {data?.telegram?.credentialsAvailable === false && (
+            <p role="status" className="setup-note">
+              The saved Telegram token cannot be decrypted. Verify APP_SECRET or replace the saved token. Retired
+              credential formats must be replaced. Replacing the token requires pairing the group again.
             </p>
+          )}
+          <p className="footnote">
+            Create a dedicated private group, then add your household members and bot yourself. Keep bot privacy mode
+            on; no administrator permissions are needed. dolphino does not manage membership.
+          </p>
+          <p className="footnote">
+            {telegram.paired ? `Paired group: ${telegram.chatTitle || 'confirmed household'}. ` : 'No group paired. '}
+            Save your bot token before starting group pairing.
+          </p>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={!!telegram.enabled}
+              disabled={!telegram.paired}
+              onChange={(e) => setTelegram({ ...telegram, enabled: e.target.checked })}
+            />
+            Enable Telegram alerts to the confirmed group
+          </label>
+          <div className="settings-actions">
+            <Button disabled={busy || demo || !data}>Save notification settings</Button>
           </div>
-        </div>
-
-        <h3>Email · SMTP</h3>
-        <label>
-          SMTP connection URL
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={smtpUrl}
-            disabled={clearSmtp}
-            placeholder="Leave blank to preserve saved connection"
-            onChange={(e) => setSmtpUrl(e.target.value)}
-          />
-        </label>
-        <p className="footnote">
-          {data?.smtp?.credentialConfigured ? 'Saved · hidden. ' : 'Not configured. '}
-          Use smtp://login:password@host:587 with STARTTLS or smtps://login:password@host:465. URL-encode special
-          characters in credentials. Connection details are encrypted.
-        </p>
-        {data?.smtp?.credentialsAvailable === false && (
-          <p role="status" className="setup-note">
-            The saved SMTP connection cannot be decrypted. Verify APP_SECRET or replace the saved connection. Retired
-            credential formats must be replaced; financial records are unchanged.
-          </p>
-        )}
-        <label className="checkbox-label">
-          <input type="checkbox" checked={clearSmtp} onChange={(e) => setClearSmtp(e.target.checked)} />
-          Clear SMTP connection
-        </label>
-        <label>
-          From email address
-          <input type="email" value={smtp.from || ''} onChange={(e) => setSmtp({ ...smtp, from: e.target.value })} />
-        </label>
-        <label>
-          Recipients (comma separated)
-          <input
-            value={(smtp.recipients || []).join(', ')}
-            onChange={(e) =>
-              setSmtp({
-                ...smtp,
-                recipients: e.target.value.split(',').map((s) => s.trim())
-              })
-            }
-          />
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={!!smtp.enabled}
-            onChange={(e) => setSmtp({ ...smtp, enabled: e.target.checked })}
-          />
-          Enable email alerts
-        </label>
-        <h3>Telegram · private household group</h3>
-        <label>
-          Telegram bot token
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={token}
-            disabled={clearToken}
-            placeholder="Leave blank to preserve saved token"
-            onChange={(e) => setToken(e.target.value)}
-          />
-        </label>
-        <label className="checkbox-label">
-          <input type="checkbox" checked={clearToken} onChange={(e) => setClearToken(e.target.checked)} />
-          Clear Telegram bot token
-        </label>
-        {data?.telegram?.credentialsAvailable === false && (
-          <p role="status" className="setup-note">
-            The saved Telegram token cannot be decrypted. Verify APP_SECRET or replace the saved token. Retired
-            credential formats must be replaced. Replacing the token requires pairing the group again.
-          </p>
-        )}
-        <p className="footnote">
-          Create a dedicated private group, then add your household members and bot yourself. Keep bot privacy mode on;
-          no administrator permissions are needed. dolphino does not manage membership.
-        </p>
-        <p className="footnote">
-          {telegram.paired ? `Paired group: ${telegram.chatTitle || 'confirmed household'}. ` : 'No group paired. '}
-          Save your bot token before starting group pairing.
-        </p>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={!!telegram.enabled}
-            disabled={!telegram.paired}
-            onChange={(e) => setTelegram({ ...telegram, enabled: e.target.checked })}
-          />
-          Enable Telegram alerts to the confirmed group
-        </label>
-        <div className="settings-actions">
-          <Button disabled={busy || demo || !data}>Save notification settings</Button>
-        </div>
+        </fieldset>
       </form>
       <div className="settings-actions">
         <Button

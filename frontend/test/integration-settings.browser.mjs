@@ -1,87 +1,22 @@
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 
-// Run against the Vite frontend. Every API is intercepted; no provider calls,
-// credentials, database, or external account is required.
+// Focused UI race and error fixtures. The companion browser-bedrock-models.mjs
+// and browser-integration-settings.mjs run the same production UI over real
+// authenticated HTTP/PostgreSQL, with only outbound provider transports injected.
+const base = process.env.DOLPHINO_TEST_URL || 'http://127.0.0.1:5173';
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   args: ['--no-sandbox']
 });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-const assertPageStorageUnused = await installBrowserStorageGuard(page);
-const calls = [],
-  errors = [],
-  responses = [];
+const evidence = [];
+const output = process.env.DOLPHINO_SCREENSHOT_DIR || 'artifacts/settings-races';
+await mkdir(output, { recursive: true });
 let revision = 0;
 const nextRevision = () => (++revision).toString(16).padStart(64, '0');
-page.on('pageerror', (error) => errors.push(error.message));
-const credential = (configured = false) => ({
-  configured,
-  masked: configured ? '••••••••' : ''
-});
-const redbark = {
-  version: '2026-10-01.wattle',
-  backfillDays: 90,
-  source: 'database',
-  configured: false,
-  encryptionAvailable: true,
-  credentialsAvailable: true,
-  signingSecretAssociated: false,
-  credentials: { apiKey: credential(), signingSecret: credential() }
-};
-const provider = {
-  discoveryRevision: nextRevision(),
-  provider: 'openai',
-  model: '',
-  region: '',
-  enabled: false,
-  autoClassify: false,
-  autoApply: false,
-  dailyRequestLimit: 20,
-  batchSize: 5,
-  encryptionAvailable: true,
-  credentialsAvailable: true,
-  configured: false,
-  credentials: {
-    apiKey: credential(),
-    accessKeyId: credential(),
-    secretAccessKey: credential()
-  },
-  regionCatalog: {
-    regions: [
-      { id: 'ap-southeast-2', label: 'Sydney' },
-      { id: 'us-east-1', label: 'Northern Virginia' }
-    ]
-  }
-};
-const assistant = {
-  discoveryRevision: nextRevision(),
-  provider: 'openai',
-  model: '',
-  region: '',
-  enabled: false,
-  dataSharingAcknowledged: false,
-  dailyRequestsPerUser: 10,
-  maxToolCalls: 4,
-  maxRounds: 3,
-  maxOutputTokens: 1024,
-  encryptionAvailable: true,
-  credentialsAvailable: true,
-  credentials: {},
-  regionCatalog: provider.regionCatalog
-};
-let failSave = false,
-  demo = false,
-  discoveryMode = 'success',
-  saveMode = 'success',
-  connectionMode = 'success';
-const pendingDiscovery = [],
-  pendingSave = [],
-  pendingConnection = [];
-let explicitConnectionTests = 0;
+const credential = (configured = false) => ({ configured, masked: configured ? '••••••••' : '' });
 const models = [
   {
     id: 'synthetic.text-v1',
@@ -120,837 +55,819 @@ const models = [
     compatibility: 'unverified'
   }
 ];
-function savePublic(target, body, names) {
-  for (const [key, value] of Object.entries(body)) {
-    if (names.includes(key)) {
-      if (value !== '') {
-        target.credentials[key] = credential(value !== null);
-      }
-    } else {
-      target[key] = value;
-    }
+
+async function scenario(name, test) {
+  if (process.env.DOLPHINO_SETTINGS_SCENARIO && process.env.DOLPHINO_SETTINGS_SCENARIO !== name) {
+    return;
   }
 
-  if (target.provider) {
-    target.discoveryRevision = nextRevision();
-    target.configured = !!target.model;
-  }
-}
-
-await page.route('**/api/**', async (route) => {
-  const request = route.request();
-  const path = new URL(request.url()).pathname;
-  const body = request.postDataJSON();
-  calls.push({ path, method: request.method(), body });
-  let data = {},
-    status = 200;
-  if (path === '/api/session') {
-    data = {
-      authenticated: true,
-      demo,
-      currency: 'AUD',
-      timeZone: 'Australia/Brisbane',
-      user: {
-        id: 'admin',
-        name: 'Synthetic administrator',
-        email: 'admin@example.com',
-        role: 'admin'
-      }
-    };
-  } else if (path === '/api/dashboard') {
-    data = { incomeMinor: '0', expensesMinor: '0', netMinor: '0' };
-  } else if (path === '/api/settings') {
-    data = {
-      redbark: { configured: redbark.configured, version: redbark.version }
-    };
-  } else if (path === '/api/settings/redbark') {
-    if (request.method() === 'PUT') {
-      if (failSave) {
-        data = { error: 'Invalid Redbark settings' };
-        status = 400;
-      } else {
-        savePublic(redbark, body, ['apiKey', 'signingSecret']);
-        redbark.configured = redbark.credentials.apiKey.configured;
-        redbark.signingSecretAssociated = redbark.credentials.signingSecret.configured;
-      }
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const checkStorage = await installBrowserStorageGuard(page);
+  const calls = [],
+    errors = [],
+    responses = [],
+    pending = { discovery: [], save: [], connection: [] };
+  const mode = {
+    discovery: 'success',
+    save: 'success',
+    connection: 'success',
+    demo: false,
+    role: 'admin',
+    authenticated: true
+  };
+  const redbark = {
+    version: '2026-10-01.wattle',
+    backfillDays: 90,
+    source: 'database',
+    configured: false,
+    encryptionAvailable: true,
+    credentialsAvailable: true,
+    signingSecretAssociated: false,
+    credentials: { apiKey: credential(), signingSecret: credential() }
+  };
+  const shared = {
+    provider: 'openai',
+    region: '',
+    discoveryRevision: nextRevision(),
+    source: 'database',
+    encryptionAvailable: true,
+    credentialsAvailable: true,
+    configured: false,
+    migration: { status: 'ready', message: null, sources: [] },
+    credentials: { apiKey: credential(), accessKeyId: credential(), secretAccessKey: credential() },
+    regionCatalog: {
+      regions: [
+        { id: 'ap-southeast-2', label: 'Sydney' },
+        { id: 'us-east-1', label: 'Northern Virginia' }
+      ]
     }
-
-    if (status === 200) {
-      data = redbark;
+  };
+  const features = {
+    provider: { model: '', enabled: false, autoClassify: false, autoApply: false, dailyRequestLimit: 20, batchSize: 5 },
+    assistant: {
+      model: '',
+      enabled: false,
+      dataSharingAcknowledged: false,
+      dailyRequestsPerUser: 10,
+      maxToolCalls: 4,
+      maxRounds: 3,
+      maxOutputTokens: 1024,
+      disclosure:
+        'When enabled, questions and authorized financial data may be sent to the selected AI provider. The assistant is read-only.'
     }
-  } else if (path === '/api/settings/provider/models' || path === '/api/settings/assistant/models') {
-    const target = path.includes('/assistant/') ? assistant : provider;
-    assert.deepEqual(Object.keys(body), ['revision'], 'discovery sends only a saved revision');
-    assert.match(body.revision, /^[a-f0-9]{64}$/);
-    if (body.revision !== target.discoveryRevision) {
-      return route.fulfill({ status: 409, json: { error: 'Saved configuration changed. Refresh settings.' } });
-    }
-
-    data = {
-      revision: target.discoveryRevision,
-      region: target.region,
-      models: discoveryMode === 'empty' ? [] : models,
-      warnings: ['Model access and compatibility have not been verified.'],
-      truncated: discoveryMode === 'partial'
-    };
-    if (discoveryMode === 'permission') {
-      status = 403;
-      data = { error: 'Bedrock discovery permission denied.' };
-    } else if (discoveryMode === 'stale') {
-      status = 409;
-      data = { error: 'Saved configuration changed. Refresh settings.' };
-    } else if (discoveryMode === 'mismatch') {
-      data.revision = 'f'.repeat(64);
-    } else if (discoveryMode === 'deferred') {
-      await new Promise((resolve) => pendingDiscovery.push(resolve));
-    }
-  } else if (path === '/api/settings/provider/test-connection') {
-    data = { message: 'Synthetic saved connection tested.' };
-    if (connectionMode === 'deferred') {
-      await new Promise((resolve) => pendingConnection.push(resolve));
-    }
-  } else if (path === '/api/settings/provider') {
-    if (request.method() === 'PUT') {
-      assert.equal(
-        body.provider === 'bedrock' && body.enabled && !body.model.trim(),
-        false,
-        'UI never sends enabled Bedrock with a blank model'
-      );
-      if (saveMode === 'deferred-failure') {
-        await new Promise((resolve) => pendingSave.push(resolve));
-        return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
-      }
-
-      if (saveMode === 'failure') {
-        return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
-      }
-
-      savePublic(provider, body, ['apiKey', 'accessKeyId', 'secretAccessKey']);
-      if (saveMode === 'deferred') {
-        await new Promise((resolve) => pendingSave.push(resolve));
-      }
-    }
-
-    data = provider;
-  } else if (path === '/api/settings/assistant') {
-    if (request.method() === 'PUT') {
-      assert.equal(
-        body.provider === 'bedrock' && body.enabled && !body.model.trim(),
-        false,
-        'UI never sends enabled Bedrock with a blank model'
-      );
-      if (saveMode === 'deferred-failure') {
-        await new Promise((resolve) => pendingSave.push(resolve));
-        return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
-      }
-
-      if (saveMode === 'failure') {
-        return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
-      }
-
-      savePublic(assistant, body, ['apiKey', 'accessKeyId', 'secretAccessKey']);
-      if (saveMode === 'deferred') {
-        await new Promise((resolve) => pendingSave.push(resolve));
-      }
-    }
-
-    data = assistant;
-  } else if (path === '/api/settings/webhook') {
-    data = {
-      state: 'registered',
-      destinationId: 'synthetic-destination',
-      publicBaseUrl: 'https://dolphino.example.com'
-    };
-  } else if (path === '/api/settings/webhook/register') {
-    data = { message: 'Synthetic registration reused' };
-  } else if (path === '/api/settings/notifications') {
-    data = { smtp: {}, telegram: {} };
-  } else if (path === '/api/notifications/deliveries') {
-    data = [];
-  } else if (path === '/api/users') {
-    data = { users: [], invitations: [] };
-  } else if (path === '/api/users/grant-options') {
-    data = { accounts: [], budgets: [] };
-  } else if (path === '/api/import-health') {
-    data = { accounts: [], jobs: [] };
-  }
-
-  responses.push(JSON.stringify(data));
-  await route.fulfill({ status, json: data });
-});
-const lastWrite = (path) => calls.filter((c) => c.path === path && c.method === 'PUT').at(-1)?.body;
-const saveRedbark = async () => {
-  await page.getByRole('button', { name: 'Save Redbark settings', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Redbark settings saved' }).waitFor();
-  await expect(page.getByRole('button', { name: 'Save Redbark settings', exact: true })).toBeEnabled();
-};
-
-try {
-  await page.goto(process.env.DOLPHINO_TEST_URL || 'http://127.0.0.1:5173');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByLabel('Redbark API key', { exact: true }).fill('synthetic-redbark-key');
-  await page.getByLabel('Redbark API version', { exact: true }).fill('2026-10-02.wattle');
-  await page.getByLabel('Rolling backfill days', { exact: true }).fill('180');
-  await saveRedbark();
-  assert.deepEqual(lastWrite('/api/settings/redbark'), {
-    version: '2026-10-02.wattle',
-    backfillDays: 180,
-    apiKey: 'synthetic-redbark-key'
-  });
-  assert.equal(await page.getByLabel('Redbark API key', { exact: true }).inputValue(), '');
-  await saveRedbark();
-  assert.equal(Object.hasOwn(lastWrite('/api/settings/redbark'), 'apiKey'), false, 'blank preserves key');
-  await page.getByText('Existing destination signing secret', { exact: true }).click();
-  await page.getByLabel('Redbark signing secret', { exact: true }).fill('synthetic-signing-secret');
-  await saveRedbark();
-  assert.equal(lastWrite('/api/settings/redbark').signingSecret, 'synthetic-signing-secret');
-  assert.equal(await page.getByLabel('Redbark signing secret', { exact: true }).inputValue(), '');
-  await page
-    .getByRole('checkbox', {
-      name: 'Clear saved Redbark signing secret',
-      exact: true
-    })
-    .check();
-  await saveRedbark();
-  assert.equal(lastWrite('/api/settings/redbark').signingSecret, null);
-  await page.getByRole('checkbox', { name: 'Clear saved Redbark API key', exact: true }).check();
-  await saveRedbark();
-  assert.equal(lastWrite('/api/settings/redbark').apiKey, null);
-  failSave = true;
-  await page.getByLabel('Redbark API key', { exact: true }).fill('synthetic-retry-key');
-  await page.getByRole('button', { name: 'Save Redbark settings', exact: true }).click();
-  await page.getByRole('alert').filter({ hasText: 'Invalid Redbark settings' }).waitFor();
-  assert.equal(
-    await page.getByLabel('Redbark API key', { exact: true }).inputValue(),
-    'synthetic-retry-key',
-    'failed save retains draft'
-  );
-  failSave = false;
-  await saveRedbark();
-  await page.getByLabel('Model', { exact: true }).fill('synthetic-model');
-  await page.getByLabel('OpenAI API key', { exact: true }).fill('synthetic-openai-key');
-  await page.getByRole('checkbox', { name: 'Enable AI classification', exact: true }).check();
-  await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Settings updated.' }).waitFor();
-  let body = lastWrite('/api/settings/provider');
-  assert.equal(Object.hasOwn(body, 'region'), false, 'OpenAI first save omits blank Bedrock region');
-  assert.equal(body.enabled, true);
-  assert.equal(body.autoClassify, false, 'on-demand only supported');
-  assert.equal(body.autoApply, false);
-  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
-  await page
-    .getByRole('checkbox', {
-      name: 'Automatically suggest categories for unresolved imports',
-      exact: true
-    })
-    .check();
-  await page
-    .getByRole('checkbox', {
-      name: 'Automatically apply validated category suggestions',
-      exact: true
-    })
-    .check();
-  await page.getByLabel('Requests per UTC day', { exact: true }).fill('30');
-  await page.getByLabel('Maximum import batch', { exact: true }).fill('6');
-  await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Settings updated.' }).waitFor();
-  body = lastWrite('/api/settings/provider');
-  assert.equal(body.autoClassify, true);
-  assert.equal(body.autoApply, true);
-  assert.equal(body.dailyRequestLimit, 30);
-  assert.equal(body.batchSize, 6);
-  assert.equal(Object.hasOwn(body, 'apiKey'), false, 'blank LLM key preserves saved value');
-  await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant');
-  await page.getByLabel('Assistant OpenAI API key', { exact: true }).fill('synthetic-assistant-key');
-  await page.getByRole('checkbox', { name: 'Enable the household assistant', exact: true }).check();
-  await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
-  await page.getByRole('button', { name: 'Save assistant settings', exact: true }).click();
-  await page.getByText('Assistant settings saved.', { exact: true }).waitFor();
-  assert.equal(Object.hasOwn(lastWrite('/api/settings/assistant'), 'region'), false);
-  await page.getByRole('button', { name: 'Register / reuse destination', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Thin-event notifications registered/reused' }).waitFor();
-  assert(
-    calls.some(
-      (c) => c.path === '/api/settings/webhook/register' && c.body.publicBaseUrl === 'https://dolphino.example.com'
-    )
-  );
-  const pickerCases = [
-    {
-      heading: 'Optional AI classification',
-      purpose: 'classification',
-      providerLabel: 'Provider',
-      modelLabel: 'Model or inference profile ID / ARN',
-      regionLabel: 'AWS region',
-      keyLabel: 'AWS access key ID',
-      secretLabel: 'AWS secret access key',
-      saveLabel: 'Save provider settings',
-      enableLabel: 'Enable AI classification',
-      limitLabel: 'Requests per UTC day',
-      path: '/api/settings/provider',
-      target: provider
-    },
-    {
-      heading: 'Read-only financial assistant',
-      purpose: 'assistant',
-      providerLabel: 'Assistant provider',
-      modelLabel: 'Assistant model ID',
-      regionLabel: 'Assistant AWS region',
-      keyLabel: 'Assistant AWS access key ID',
-      secretLabel: 'Assistant AWS secret access key',
-      saveLabel: 'Save assistant settings',
-      enableLabel: 'Enable the household assistant',
-      limitLabel: 'Daily requests per user',
-      path: '/api/settings/assistant',
-      target: assistant
-    }
-  ];
-  for (const config of pickerCases) {
-    const section = page
-      .locator('section')
-      .filter({ has: page.getByRole('heading', { name: config.heading, exact: true }) });
-    const model = section.getByLabel(config.modelLabel, { exact: true });
-    const choices = section.getByLabel(`Available ${config.purpose} Bedrock models`, { exact: true });
-    const search = section.getByLabel(`Search ${config.purpose} Bedrock models`, { exact: true });
-    const key = section.getByLabel(config.keyLabel, { exact: true });
-    const secret = section.getByLabel(config.secretLabel, { exact: true });
-    const region = section.getByLabel(config.regionLabel, { exact: true });
-    const providerSelect = section.getByLabel(config.providerLabel, { exact: true });
-    const enable = section.getByRole('checkbox', { name: config.enableLabel, exact: true });
-    const limit = section.getByLabel(config.limitLabel, { exact: true });
-    const clear = section.getByRole('checkbox', { name: 'Clear saved value', exact: true }).first();
-    const button = section.getByRole('button', { name: config.saveLabel, exact: true });
-    const retry = section.getByRole('button', { name: 'Retry loading models', exact: true });
-    const discoveryCount = () => calls.filter((call) => call.path === `${config.path}/models`).length;
-    const save = async () => {
-      await Promise.all([
-        page.waitForResponse(
-          (response) => response.url().endsWith(config.path) && response.request().method() === 'PUT'
-        ),
-        button.click()
-      ]);
-      await expect(button).toBeEnabled();
-      await expect(key).toHaveValue('');
-      await expect(secret).toHaveValue('');
-    };
-
-    const loadSuccessful = async (mode = 'success') => {
-      discoveryMode = mode;
-      await save();
-      await expect(section.getByRole('status').filter({ hasText: 'choices returned' })).toBeVisible();
-      await expect(choices.locator('option')).toHaveCount(mode === 'empty' ? 1 : 5);
-    };
-
-    const beginDeferred = async () => {
-      discoveryMode = 'deferred';
-      await save();
-      await expect.poll(() => pendingDiscovery.length).toBe(1);
-      await expect(choices).toBeDisabled();
-    };
-
-    const endDeferred = async ({ stale = false, busy = false } = {}) => {
-      const release = pendingDiscovery.shift();
-      const count = responses.length;
-      release();
-      await expect.poll(() => responses.length).toBeGreaterThan(count);
-      if (stale) {
-        await expect(choices).toBeDisabled();
-        await expect(choices.locator('option')).toHaveCount(1);
-      } else {
-        await expect(choices.locator('option')).toHaveCount(5);
-        if (!busy) {
-          await expect(choices).toBeEnabled();
-        }
-      }
-    };
-
-    const assertCatalogReady = async () => {
-      await expect(choices).toBeEnabled();
-      await expect(choices.locator('option')).toHaveCount(5);
-    };
-
-    const testConnection = async () => {
-      explicitConnectionTests++;
-      await section.getByRole('button', { name: 'Test saved connection', exact: true }).click();
-    };
-
-    // An enabled OpenAI configuration can switch to Bedrock and save keys with
-    // no model. The dropdown is primary and manual input is only an optional fallback.
-    await expect(enable).toBeChecked();
-    await providerSelect.selectOption('bedrock');
-    await region.selectOption('ap-southeast-2');
-    await expect(choices).toBeVisible();
-    await expect(choices).toBeDisabled();
-    await expect(choices).toContainText('Save credentials and region to load models');
-    await expect(model).toBeHidden();
-    await section.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
-    await expect(model).toHaveValue('');
-    assert.equal(await model.evaluate((element) => element.required), false, 'blank Bedrock model never blocks Save');
-    await expect(enable).not.toBeChecked();
-    await expect(enable).toBeDisabled();
-    await key.fill(`synthetic-${config.purpose}-access-key`);
-    await secret.fill(`synthetic-${config.purpose}-secret-key`);
-    const firstDiscovery = discoveryCount();
-    await loadSuccessful();
-    assert.equal(discoveryCount(), firstDiscovery + 1, 'ordinary Save automatically loads choices once');
-    assert.equal(lastWrite(config.path).model, '', 'actual submit saves credentials before choosing a model');
-    assert.equal(lastWrite(config.path).enabled, false, 'incomplete configuration is persisted disabled');
-    assert.equal(config.target.configured, false);
-    assert.equal(config.target.credentials.accessKeyId.configured, true);
-    assert.equal(config.target.credentials.secretAccessKey.configured, true);
-    await expect(model).toHaveValue('');
-    await expect(enable).toBeDisabled();
-    await expect(page.getByRole('status').filter({ hasText: 'Credentials and settings saved.' })).toBeVisible();
-    assert.deepEqual(calls.filter((call) => call.path === `${config.path}/models`).at(-1).body, {
-      revision: config.target.discoveryRevision
-    });
-    const optionText = (await choices.locator('option').allTextContents()).join(' ');
-    for (const description of [
-      'Foundation model',
-      'System inference profile',
-      'Application inference profile',
-      'LEGACY',
-      'Unverified'
-    ]) {
-      assert(optionText.includes(description), `discovery labels ${description}`);
-    }
-
-    await search.fill('Household');
-    await expect(choices.locator('option')).toHaveCount(2);
-    await choices.selectOption('synthetic-application-profile');
-    await expect(model).toHaveValue('synthetic-application-profile');
-    await expect(enable).not.toBeChecked();
-    await loadSuccessful();
-    assert.equal(lastWrite(config.path).enabled, false, 'selecting and saving never auto-enables');
-    await enable.check();
-    await loadSuccessful();
-    assert.equal(lastWrite(config.path).enabled, true, 'explicit enable works after selection');
-    await model.fill('');
-    await expect(enable).not.toBeChecked();
-    await expect(enable).toBeDisabled();
-    await loadSuccessful();
-    assert.equal(lastWrite(config.path).enabled, false, 'clearing an enabled model saves a disabled configuration');
-    assert.equal(lastWrite(config.path).model, '');
-    await expect(model).toHaveValue('');
-
-    await model.fill('custom.model-or-profile');
-    await loadSuccessful();
-    await expect(model).toHaveValue('custom.model-or-profile');
-    await search.fill('Legacy');
-    await choices.selectOption('synthetic.legacy-v1');
-    await loadSuccessful();
-    await expect(model).toHaveValue('synthetic.legacy-v1');
-    await loadSuccessful('partial');
-    await expect(section.getByText('This list is incomplete.', { exact: false })).toBeVisible();
-    await loadSuccessful('empty');
-    await expect(choices).toBeDisabled();
-    await expect(model).toHaveValue('synthetic.legacy-v1');
-    for (const mode of ['permission', 'stale', 'mismatch']) {
-      discoveryMode = mode;
-      await key.fill(`synthetic-${config.purpose}-access-key`);
-      await save();
-      await expect(section.getByRole('alert')).toContainText('Unable to load models');
-      await expect(section.getByRole('alert')).toContainText('bedrock:ListInferenceProfiles');
-      await expect(section.getByRole('alert')).toContainText('saved settings and credentials are retained');
-      await expect(choices).toBeDisabled();
-      await expect(model).toHaveValue('synthetic.legacy-v1');
-      await expect(model).toBeEditable();
-      assert.equal(config.target.credentials.accessKeyId.configured, true);
-      const beforeErrorEdits = discoveryCount();
-      await model.fill('manual-model-after-error');
-      await enable.check();
-      await limit.fill('14');
-      await expect(section.getByRole('alert')).toContainText('Unable to load models');
-      await expect(retry).toBeEnabled();
-      await expect(model).toHaveValue('manual-model-after-error');
-      await model.fill('synthetic.legacy-v1');
-      await enable.uncheck();
-      if (config.purpose === 'classification') {
-        await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
-        await expect(button).toBeEnabled();
-        await expect(section.getByRole('alert')).toContainText('Unable to load models');
-      }
-
-      // Allow effects and network work to settle: failures must wait for an
-      // explicit Retry or a changed discovery key, even after other rerenders.
-      await page.waitForTimeout(150);
-      assert.equal(discoveryCount(), beforeErrorEdits, 'errors remain visible without automatic retry loops');
-      const puts = calls.filter((call) => call.path === config.path && call.method === 'PUT').length;
-      discoveryMode = 'success';
-      await retry.click();
-      await expect(choices).toBeEnabled();
-      assert.equal(
-        calls.filter((call) => call.path === config.path && call.method === 'PUT').length,
-        puts,
-        'retry uses saved credentials without re-entry or another save'
-      );
-    }
-
-    // A failed save does not start discovery or discard write-only draft keys.
-    saveMode = 'failure';
-    await key.fill('synthetic-retry-draft');
-    const beforeFailedSave = discoveryCount();
-    await button.click();
-    await expect(page.getByRole('alert').filter({ hasText: 'Synthetic settings save failed' })).toBeVisible();
-    await expect(key).toHaveValue('synthetic-retry-draft');
-    assert.equal(discoveryCount(), beforeFailedSave);
-    saveMode = 'success';
-    await loadSuccessful();
-
-    // Model selection, enable flags and ordinary limits do not change discovery identity.
-    const beforeFormEdits = discoveryCount();
-    await model.fill('catalog-preserved-model');
-    await enable.check();
-    await limit.fill('12');
-    await assertCatalogReady();
-    await choices.selectOption('synthetic.text-v1');
-    await assertCatalogReady();
-    await enable.uncheck();
-    assert.equal(discoveryCount(), beforeFormEdits, 'irrelevant form edits never refetch the catalog');
-
-    // Dirty credentials, clear flags and regions hide old choices. Returning to
-    // the saved configuration recovers automatically without another Save.
-    for (const change of ['key', 'secret', 'clear', 'region']) {
-      const beforeDirty = discoveryCount();
-      if (change === 'key') {
-        await key.fill('synthetic-unsaved-key');
-      } else if (change === 'secret') {
-        await secret.fill('synthetic-unsaved-secret');
-      } else if (change === 'clear') {
-        await clear.check();
-      } else {
-        await region.selectOption('us-east-1');
-      }
-
-      await expect(choices).toBeDisabled();
-      await expect(choices.locator('option')).toHaveCount(1);
-      assert.equal(discoveryCount(), beforeDirty, 'dirty credentials and regions cannot start discovery');
-      if (change === 'key') {
-        await key.fill('');
-      } else if (change === 'secret') {
-        await secret.fill('');
-      } else if (change === 'clear') {
-        await clear.uncheck();
-      } else {
-        await region.selectOption('ap-southeast-2');
-      }
-
-      await assertCatalogReady();
-      assert.equal(discoveryCount(), beforeDirty + 1, 'returning to saved settings automatically reloads');
-    }
-
-    // Double Save and double Retry are fenced before React disables controls.
-    // Model edits preserve a pending catalog request and are never overwritten.
-    discoveryMode = 'deferred';
-    const beforeDouble = discoveryCount();
-    await button.evaluate((element) => {
-      element.click();
-      element.click();
-    });
-    await expect.poll(() => pendingDiscovery.length).toBe(1);
-    assert.equal(discoveryCount(), beforeDouble + 1);
-    await model.fill('manual-model-after-request');
-    await endDeferred();
-    await expect(model).toHaveValue('manual-model-after-request');
-    assert.equal(discoveryCount(), beforeDouble + 1, 'manual input retains the original pending request');
-    discoveryMode = 'permission';
-    await save();
-    await expect(retry).toBeEnabled();
-    discoveryMode = 'deferred';
-    const beforeRetry = discoveryCount();
-    await retry.evaluate((element) => {
-      element.click();
-      element.click();
-    });
-    await expect.poll(() => pendingDiscovery.length).toBe(1);
-    assert.equal(discoveryCount(), beforeRetry + 1);
-    await model.fill('second-manual-model');
-    await enable.check();
-    await limit.fill('13');
-    await endDeferred();
-    await expect(model).toHaveValue('second-manual-model');
-    await expect(enable).toBeChecked();
-    assert.equal(discoveryCount(), beforeRetry + 1, 'model, enable and limit edits preserve pending discovery');
-    await enable.uncheck();
-
-    // Late discovery from a dirty configuration cannot repopulate the picker.
-    // A clean return starts a new request, and the old request cannot win it.
-    for (const change of ['secret', 'clear', 'region', 'provider']) {
-      await beginDeferred();
-      const beforeDirty = discoveryCount();
-      if (change === 'secret') {
-        await secret.fill('synthetic-unsaved-secret');
-      } else if (change === 'clear') {
-        await clear.check();
-      } else if (change === 'region') {
-        await region.selectOption('us-east-1');
-      } else {
-        await providerSelect.selectOption('openai');
-      }
-
-      if (change === 'secret') {
-        await secret.fill('');
-      } else if (change === 'clear') {
-        await clear.uncheck();
-      } else if (change === 'region') {
-        await region.selectOption('ap-southeast-2');
-      } else {
-        await providerSelect.selectOption('bedrock');
-      }
-
-      await expect.poll(() => pendingDiscovery.length).toBe(2);
-      assert.equal(discoveryCount(), beforeDirty + 1, 'a clean return replaces cancelled discovery');
-      await endDeferred({ stale: true });
-      await endDeferred();
-      if (change === 'provider') {
-        await section.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
-        await expect(model).toHaveValue('');
-      } else {
-        await expect(model).toHaveValue('second-manual-model');
-      }
-    }
-
-    await model.fill('second-manual-model');
-    await beginDeferred();
-    await loadSuccessful();
-    await endDeferred();
-    await expect(model).toHaveValue('second-manual-model');
-
-    // Late PUT responses cannot overwrite newer region, provider or credential
-    // edits, and cannot launch discovery with the stale response's revision.
-    for (const change of ['region', 'provider', 'credentials']) {
-      saveMode = 'deferred';
-      const beforeStaleSave = discoveryCount();
-      await button.click();
-      await expect.poll(() => pendingSave.length).toBe(1);
-      if (change === 'region') {
-        await region.selectOption('us-east-1');
-      } else if (change === 'provider') {
-        await providerSelect.selectOption('openai');
-      } else {
-        await key.fill('synthetic-newer-draft');
-      }
-
-      pendingSave.shift()();
-      await expect(button).toBeEnabled();
-      await expect(page.getByRole('status').filter({ hasText: 'form changed while saving' })).toBeVisible();
-      assert.equal(discoveryCount(), beforeStaleSave, 'stale save response never starts discovery');
-      if (change === 'region') {
-        await expect(region).toHaveValue('us-east-1');
-        await region.selectOption('ap-southeast-2');
-      } else if (change === 'provider') {
-        await expect(providerSelect).toHaveValue('openai');
-        await providerSelect.selectOption('bedrock');
-        await section.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
-      } else {
-        await expect(key).toHaveValue('synthetic-newer-draft');
-      }
-
-      saveMode = 'success';
-      await loadSuccessful();
-    }
-
-    saveMode = 'deferred-failure';
-    const beforeStaleFailure = discoveryCount();
-    await button.click();
-    await expect.poll(() => pendingSave.length).toBe(1);
-    await key.fill('synthetic-newer-draft');
-    pendingSave.shift()();
-    await expect(
-      page.getByRole('alert').filter({ hasText: 'Settings were not saved. Your current changes are retained' })
-    ).toBeVisible();
-    await expect(key).toHaveValue('synthetic-newer-draft');
-    assert.equal(discoveryCount(), beforeStaleFailure);
-    saveMode = 'success';
-    await model.fill('saved-manual-profile');
-    await loadSuccessful();
-    await expect(model).toHaveValue('saved-manual-profile');
-    if (process.env.DOLPHINO_BROWSER_ARTIFACT_DIR) {
-      await mkdir(process.env.DOLPHINO_BROWSER_ARTIFACT_DIR, { recursive: true });
-      await choices.selectOption('apac.synthetic.text-v1');
-      for (const [size, viewport] of [
-        ['desktop', { width: 1440, height: 1000 }],
-        ['mobile', { width: 390, height: 844 }]
-      ]) {
-        await page.setViewportSize(viewport);
-        assert.equal(
-          await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth),
-          true,
-          `${config.purpose} loaded picker ${size} overflow`
-        );
-        await section.screenshot({
-          path: join(process.env.DOLPHINO_BROWSER_ARTIFACT_DIR, `bedrock-${config.purpose}-${size}.png`),
-          animations: 'disabled'
-        });
-      }
-
-      await page.setViewportSize({ width: 1440, height: 1000 });
-      await model.fill('saved-manual-profile');
-    }
-
-    if (config.purpose === 'assistant') {
-      await expect(section.getByText('the assistant also requires tool use', { exact: false })).toBeVisible();
-    } else {
-      // Shared busy flags and same-key settings GETs retain an existing catalog.
-      const beforeConnection = discoveryCount();
-      connectionMode = 'deferred';
-      await testConnection();
-      await expect.poll(() => pendingConnection.length).toBe(1);
-      await expect(choices).toBeDisabled();
-      await expect(choices.locator('option')).toHaveCount(5);
-      pendingConnection.shift()();
-      await expect(button).toBeEnabled();
-      await assertCatalogReady();
-      assert.equal(discoveryCount(), beforeConnection, 'connection status never clears or refetches choices');
-
-      // Discovery may finish during an unrelated busy operation, then become
-      // selectable when that operation and its unchanged settings GET finish.
-      await beginDeferred();
-      const beforePendingConnection = discoveryCount();
-      await testConnection();
-      await expect.poll(() => pendingConnection.length).toBe(1);
-      await endDeferred({ busy: true });
-      await expect(choices).toBeDisabled();
-      pendingConnection.shift()();
-      await expect(button).toBeEnabled();
-      await assertCatalogReady();
-      assert.equal(discoveryCount(), beforePendingConnection, 'connection test preserves pending discovery');
-      connectionMode = 'success';
-
-      await beginDeferred();
-      const beforeRefresh = discoveryCount();
-      await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
-      await expect(page.getByRole('status').filter({ hasText: 'Registration status refreshed.' })).toBeVisible();
-      await expect(button).toBeEnabled();
-      await endDeferred();
-      assert.equal(discoveryCount(), beforeRefresh, 'status refresh preserves pending discovery');
-      await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
-      await expect(button).toBeEnabled();
-      await assertCatalogReady();
-      assert.equal(discoveryCount(), beforeRefresh, 'status refresh preserves a loaded catalog');
-    }
-  }
-
-  // Unmounting cancels pending requests. Returning automatically rediscovers
-  // both saved configurations, with no new Save and no browser persistence.
-  discoveryMode = 'deferred';
-  await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
-  await expect.poll(() => pendingDiscovery.length).toBe(1);
-  await page.getByRole('button', { name: 'Save assistant settings', exact: true }).click();
-  await expect.poll(() => pendingDiscovery.length).toBe(2);
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  while (pendingDiscovery.length) {
-    pendingDiscovery.shift()();
-  }
-
-  discoveryMode = 'success';
-  const allDiscoveryCount = () => calls.filter((call) => call.path.endsWith('/models')).length;
-  const assertBothLoaded = async () => {
-    await expect(page.getByLabel(/Available .* Bedrock models/)).toHaveCount(2);
-    for (const select of await page.getByLabel(/Available .* Bedrock models/).all()) {
-      await expect(select).toBeEnabled();
-      await expect(select.locator('option')).toHaveCount(5);
+  };
+  page.on('pageerror', (error) => errors.push(error.message));
+  const release = (kind) => {
+    for (const resolve of pending[kind].splice(0)) {
+      resolve();
     }
   };
 
-  for (const lifecycle of ['return', 'same-page refresh', 'browser reload']) {
-    const beforeMount = allDiscoveryCount();
-    if (lifecycle === 'browser reload') {
-      await page.reload();
+  const wait = (kind) => new Promise((resolve) => pending[kind].push(resolve));
+  const featureState = (key) => ({
+    ...shared,
+    ...features[key],
+    configured: shared.configured && !!features[key].model
+  });
+  await page.route('**/api/**', async (route) => {
+    const request = route.request(),
+      path = new URL(request.url()).pathname,
+      body = request.postDataJSON();
+    calls.push({ path, method: request.method(), body });
+    let data = {},
+      status = 200;
+    if (path === '/api/session') {
+      data = {
+        authenticated: mode.authenticated,
+        demo: mode.demo,
+        currency: 'AUD',
+        timeZone: 'Australia/Brisbane',
+        user: {
+          id: `${mode.role}-synthetic`,
+          name: 'Synthetic user',
+          email: `${mode.role}@example.com`,
+          role: mode.role
+        },
+        permissions: { financialAccess: true, accounts: [{ accountId: 'one', access: 'view' }], budgets: [] }
+      };
+    } else if (path === '/api/logout') {
+      mode.authenticated = false;
+      data = { ok: true };
+    } else if (path === '/api/login') {
+      mode.authenticated = true;
+      data = { ok: true };
+    } else if (path === '/api/dashboard') {
+      data = { incomeMinor: '0', expensesMinor: '0', netMinor: '0' };
+    } else if (path === '/api/settings') {
+      data = { redbark: { configured: redbark.configured, version: redbark.version } };
+    } else if (path === '/api/settings/redbark') {
+      if (request.method() === 'PUT') {
+        if (mode.save === 'failure') {
+          return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
+        }
+
+        for (const key of ['version', 'backfillDays']) {
+          if (Object.hasOwn(body, key)) {
+            redbark[key] = body[key];
+          }
+        }
+
+        for (const key of ['apiKey', 'signingSecret']) {
+          if (Object.hasOwn(body, key) && body[key] !== '') {
+            redbark.credentials[key] = credential(body[key] !== null);
+          }
+        }
+
+        redbark.configured = redbark.credentials.apiKey.configured;
+        redbark.signingSecretAssociated = redbark.credentials.signingSecret.configured;
+      }
+
+      data = redbark;
+    } else if (path === '/api/settings/ai/models') {
+      assert.deepEqual(Object.keys(body), ['revision']);
+      assert.equal(body.revision, shared.discoveryRevision);
+      data = {
+        revision: shared.discoveryRevision,
+        region: shared.region,
+        models: mode.discovery === 'empty' ? [] : models,
+        warnings: ['Model compatibility has not been verified.'],
+        truncated: mode.discovery === 'partial'
+      };
+      if (mode.discovery === 'permission') {
+        status = 403;
+        data = { error: 'Bedrock discovery permission denied.' };
+      }
+
+      if (mode.discovery === 'stale') {
+        status = 409;
+        data = { error: 'Saved configuration changed. Refresh settings.' };
+      }
+
+      if (mode.discovery === 'mismatch') {
+        data.revision = 'f'.repeat(64);
+      }
+
+      data = structuredClone(data);
+      if (mode.discovery === 'deferred') {
+        await wait('discovery');
+      }
+    } else if (path === '/api/settings/ai/test-connection') {
+      assert(!body || !Object.hasOwn(body, 'model'), 'Shared connection test is credential-only');
+      data = { message: 'Synthetic shared connection tested.' };
+      if (mode.connection === 'deferred') {
+        await wait('connection');
+      }
+    } else if (path === '/api/settings/ai') {
+      if (request.method() === 'PUT') {
+        assert.equal(body.revision, shared.discoveryRevision);
+        assert(!Object.hasOwn(body, 'model'));
+        if (mode.save === 'failure' || mode.save === 'deferred-failure') {
+          if (mode.save === 'deferred-failure') {
+            await wait('save');
+          }
+
+          return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
+        }
+
+        const providerChanged = shared.provider !== body.provider;
+        const changed =
+          providerChanged ||
+          (body.provider === 'bedrock' && shared.region !== body.region) ||
+          ['apiKey', 'accessKeyId', 'secretAccessKey'].some((key) => Object.hasOwn(body, key) && body[key] !== '');
+        shared.provider = body.provider;
+        shared.region = body.provider === 'bedrock' ? body.region : '';
+        for (const key of ['apiKey', 'accessKeyId', 'secretAccessKey']) {
+          if (Object.hasOwn(body, key) && body[key] !== '') {
+            shared.credentials[key] = credential(body[key] !== null);
+          }
+        }
+
+        shared.configured =
+          shared.provider === 'bedrock'
+            ? shared.credentials.accessKeyId.configured && shared.credentials.secretAccessKey.configured
+            : shared.credentials.apiKey.configured;
+        shared.discoveryRevision = nextRevision();
+        if (changed) {
+          for (const feature of Object.values(features)) {
+            feature.enabled = false;
+            if (providerChanged) {
+              feature.model = '';
+            }
+          }
+        }
+      }
+
+      data = structuredClone(shared);
+      if (request.method() === 'PUT' && mode.save === 'deferred') {
+        await wait('save');
+      }
+    } else if (['/api/settings/provider', '/api/settings/assistant'].includes(path)) {
+      const key = path.split('/').at(-1);
+      if (request.method() === 'PUT') {
+        for (const field of ['provider', 'region', 'apiKey', 'accessKeyId', 'secretAccessKey']) {
+          assert(!Object.hasOwn(body, field));
+        }
+
+        if (body.aiRevision !== shared.discoveryRevision) {
+          return route.fulfill({
+            status: 409,
+            json: { error: 'Shared AI connection changed. Reload saved settings before saving.' }
+          });
+        }
+
+        if (mode.save === 'failure' || mode.save === 'deferred-failure') {
+          if (mode.save === 'deferred-failure') {
+            await wait('save');
+          }
+
+          return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
+        }
+
+        const { aiRevision: _revision, ...values } = body;
+        Object.assign(features[key], values);
+      }
+
+      data = structuredClone(featureState(key));
+      if (request.method() === 'PUT' && mode.save === 'deferred') {
+        await wait('save');
+      }
+    } else if (path === '/api/settings/webhook') {
+      data = {
+        state: 'registered',
+        destinationId: 'synthetic-destination',
+        publicBaseUrl: 'https://dolphino.example.com'
+      };
+    } else if (path === '/api/settings/simplefin') {
+      data = {
+        configured: false,
+        backfillDays: 30,
+        enabled: false,
+        encryptionAvailable: true,
+        credentialsAvailable: true,
+        accounts: [],
+        queuedWindows: 0,
+        pausedWindows: 0
+      };
+    } else if (path === '/api/settings/notifications') {
+      data = { smtp: {}, telegram: {} };
+    } else if (path === '/api/notifications/deliveries') {
+      data = [];
+    } else if (path === '/api/users') {
+      data = { users: [], invitations: [] };
+    } else if (path === '/api/users/grant-options') {
+      data = { accounts: [], budgets: [] };
+    } else if (path === '/api/import-health') {
+      data = { accounts: [], jobs: [] };
+    } else if (path === '/api/accounts') {
+      data = { accounts: [] };
     }
 
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await assertBothLoaded();
-    assert.equal(allDiscoveryCount(), beforeMount + 2, `${lifecycle} automatically discovers each saved provider`);
-    for (const config of pickerCases) {
-      const section = page
-        .locator('section')
-        .filter({ has: page.getByRole('heading', { name: config.heading, exact: true }) });
-      await expect(section.getByLabel(config.keyLabel, { exact: true })).toHaveValue('');
-      await expect(section.getByLabel(config.secretLabel, { exact: true })).toHaveValue('');
-      await expect(section.getByLabel(config.modelLabel, { exact: true })).toHaveValue('saved-manual-profile');
+    responses.push(JSON.stringify(data));
+    await route.fulfill({ status, json: data });
+  });
+  const nav = (name) =>
+    ['RedBark', 'Members', 'Notifications', 'Data', 'AI features'].includes(name)
+      ? page.getByRole('link', { name: new RegExp(`^${name}`) })
+      : page.getByRole('button', { name, exact: true });
+  const section = (purpose) =>
+    page.locator('.integration-settings').filter({
+      has: page.getByRole('heading', {
+        name: purpose === 'assistant' ? 'Read-only financial assistant' : 'Optional AI classification',
+        exact: true
+      })
+    });
+  const choices = (purpose) => page.getByLabel(`Available ${purpose} Bedrock models`, { exact: true });
+  const count = () => calls.filter((call) => call.path === '/api/settings/ai/models').length;
+  const lastWrite = (path) => calls.filter((call) => call.path === path && call.method === 'PUT').at(-1)?.body;
+  async function save(label = 'Save AI connection', path = '/api/settings/ai') {
+    await Promise.all([
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === path && response.request().method() === 'PUT'
+      ),
+      nav(label).click()
+    ]);
+    await expect(nav(label)).toBeEnabled();
+  }
+
+  async function openAi() {
+    await nav('Settings').click();
+    await nav('AI features').click();
+    await expect(nav('Save AI connection')).toBeVisible();
+    if (!mode.demo) {
+      await expect(nav('Save AI connection')).toBeEnabled();
     }
   }
 
-  await expect(page.getByRole('button', { name: 'Load models', exact: true })).toHaveCount(0);
-
-  // An unmounted save does not launch discovery when its response arrives.
-  saveMode = 'deferred';
-  const beforeUnmountedSave = calls.filter((call) => call.path.endsWith('/models')).length;
-  await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
-  await expect.poll(() => pendingSave.length).toBe(1);
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  const beforeRelease = responses.length;
-  pendingSave.shift()();
-  await expect.poll(() => responses.length).toBeGreaterThan(beforeRelease);
-  assert.equal(calls.filter((call) => call.path.endsWith('/models')).length, beforeUnmountedSave);
-  saveMode = 'success';
-  discoveryMode = 'success';
-
-  // Unusable saved credentials and demo mode cannot issue discovery requests.
-  provider.credentialsAvailable = false;
-  assistant.credentialsAvailable = false;
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const beforeUnusable = calls.filter((call) => call.path.endsWith('/models')).length;
-  for (const label of ['Save provider settings', 'Save assistant settings']) {
-    await page.getByRole('button', { name: label, exact: true }).click();
-    await expect(page.getByRole('button', { name: label, exact: true })).toBeEnabled();
+  async function configure() {
+    await page.getByLabel('AI provider', { exact: true }).selectOption('bedrock');
+    await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
+    await page.getByLabel('AWS access key ID', { exact: true }).fill('AKIASYNTHETICONLY');
+    await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-shared-secret');
+    await save();
   }
 
-  assert.equal(calls.filter((call) => call.path.endsWith('/models')).length, beforeUnusable);
-  provider.credentialsAvailable = true;
-  assistant.credentialsAvailable = true;
-  demo = true;
-  await page.reload();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByText('Model discovery is unavailable in the fictional demo.', { exact: true })).toHaveCount(2);
-  for (const label of ['Save provider settings', 'Save assistant settings']) {
-    await expect(page.getByRole('button', { name: label, exact: true })).toBeDisabled();
+  async function ready() {
+    for (const purpose of ['classification', 'assistant']) {
+      await expect(choices(purpose)).toBeEnabled();
+    }
   }
 
-  const discoveryCalls = calls.filter((call) => call.path.endsWith('/models'));
-  assert(discoveryCalls.length > 0);
-  assert(discoveryCalls.every((call) => call.method === 'POST' && Object.keys(call.body).join() === 'revision'));
-  const publicResponses = responses.join(' ');
-  for (const secret of [
-    'synthetic-classification-access-key',
-    'synthetic-classification-secret-key',
-    'synthetic-assistant-access-key',
-    'synthetic-assistant-secret-key',
-    'synthetic-unsaved-key',
-    'synthetic-unsaved-secret',
-    'synthetic-retry-draft',
-    'synthetic-newer-draft'
-  ]) {
-    assert.equal(publicResponses.includes(secret), false, 'API responses never return write-only credentials');
-    assert.equal(
-      (await page.locator('body').innerText()).includes(secret),
-      false,
-      'credentials are absent from rendered content'
+  try {
+    await page.goto(base);
+    await test({
+      page,
+      calls,
+      mode,
+      redbark,
+      shared,
+      features,
+      responses,
+      pending,
+      release,
+      nav,
+      section,
+      choices,
+      count,
+      lastWrite,
+      save,
+      openAi,
+      configure,
+      ready
+    });
+    await checkStorage();
+    assert.deepEqual(errors, [], 'No browser exceptions');
+    for (const response of responses) {
+      assert(!response.includes('synthetic-shared-secret'), 'No secret returned in public responses');
+    }
+
+    evidence.push({
+      name,
+      result: 'passed',
+      requests: calls.map(({ path, method, body }) => ({ path, method, fields: body ? Object.keys(body) : [] }))
+    });
+    console.log(`PASS ${name}`);
+  } catch (error) {
+    await page.screenshot({ path: `${output}/${name}-failure.png`, fullPage: true });
+    evidence.push({ name, result: 'failed', error: error.message });
+    throw error;
+  } finally {
+    for (const kind of Object.keys(pending)) {
+      release(kind);
+    }
+
+    await page.close();
+    await writeFile(
+      `${output}/evidence.json`,
+      JSON.stringify({ mockedApiResponses: true, cases: evidence }, null, 2) + '\n'
+    );
+  }
+}
+
+try {
+  await scenario('subsections-navigation-keyboard-mobile', async ({ page, nav, calls, openAi }) => {
+    await nav('Settings').click();
+    await expect(page).toHaveURL(/#settings\/redbark$/);
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link')).toHaveCount(5);
+    await expect(page.getByLabel('Redbark API key', { exact: true })).toBeVisible();
+    assert(
+      !calls.some((call) =>
+        ['/api/settings/ai', '/api/users', '/api/settings/notifications', '/api/import-health'].includes(call.path)
+      ),
+      'Inactive subsection does not mount or fetch'
+    );
+    await nav('Members').focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#settings\/members$/);
+    await expect(page.getByLabel('Redbark API key', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Invitation email address', { exact: true })).toBeVisible();
+    await nav('Notifications').click();
+    await expect(page.getByLabel('SMTP connection URL', { exact: true })).toBeVisible();
+    await nav('Data').click();
+    await expect(page.getByRole('heading', { name: 'Import health & history', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'SimpleFIN optional import', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Export/ })).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/#settings\/notifications$/);
+    await page.goForward();
+    await expect(page).toHaveURL(/#settings\/data$/);
+    await page.reload();
+    await expect(page).toHaveURL(/#settings\/data$/);
+    await expect(page.getByRole('heading', { name: 'Import health & history', exact: true })).toBeVisible();
+    await openAi();
+    for (const width of [1440, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert(
+        await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth),
+        `${width}px has no page overflow`
+      );
+      await page.screenshot({ path: `${output}/ai-${width}.png`, fullPage: true, animations: 'disabled' });
+    }
+  });
+
+  await scenario('redbark-secrets-and-unsaved-navigation', async ({ page, nav, save, lastWrite, mode }) => {
+    await nav('Settings').click();
+    const key = page.getByLabel('Redbark API key', { exact: true });
+    await key.fill('synthetic-redbark-key');
+    mode.save = 'failure';
+    await save('Save Redbark settings', '/api/settings/redbark');
+    await expect(key).toHaveValue('synthetic-redbark-key');
+    mode.save = 'success';
+    await save('Save Redbark settings', '/api/settings/redbark');
+    await expect(key).toHaveValue('');
+    await save('Save Redbark settings', '/api/settings/redbark');
+    assert(!Object.hasOwn(lastWrite('/api/settings/redbark'), 'apiKey'));
+    await page.getByRole('checkbox', { name: 'Clear saved Redbark API key', exact: true }).check();
+    await save('Save Redbark settings', '/api/settings/redbark');
+    assert.equal(lastWrite('/api/settings/redbark').apiKey, null);
+    await key.fill('synthetic-unsaved-secret');
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await nav('AI features').click();
+    await expect(page).toHaveURL(/#settings\/redbark$/);
+    await expect(key).toHaveValue('synthetic-unsaved-secret');
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await nav('Overview').click();
+    await expect(key).toHaveValue('synthetic-unsaved-secret');
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await page.goBack();
+    await expect(page).toHaveURL(/#settings\/redbark$/);
+    await expect(key).toHaveValue('synthetic-unsaved-secret');
+    page.once('dialog', (dialog) => dialog.accept());
+    await nav('AI features').click();
+    await expect(page).toHaveURL(/#settings\/ai$/);
+    await nav('RedBark').click();
+    await expect(key).toHaveValue('');
+  });
+
+  await scenario(
+    'one-openai-key-independent-features',
+    async ({ page, nav, openAi, save, lastWrite, features, shared }) => {
+      await openAi();
+      await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveCount(1);
+      await expect(page.getByLabel('Assistant OpenAI API key', { exact: true })).toHaveCount(0);
+      await page.getByLabel('OpenAI API key', { exact: true }).fill('synthetic-shared-secret');
+      await save();
+      assert(!Object.hasOwn(lastWrite('/api/settings/ai'), 'model'));
+      assert(!Object.hasOwn(lastWrite('/api/settings/ai'), 'region'));
+      await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
+      await page.getByLabel('Classification model ID', { exact: true }).fill('synthetic-classifier');
+      await page.getByRole('checkbox', { name: 'Enable AI classification', exact: true }).check();
+      await page
+        .getByRole('checkbox', { name: 'Automatically suggest categories for unresolved imports', exact: true })
+        .check();
+      await page.getByLabel('Requests per UTC day', { exact: true }).fill('29');
+      await save('Save classification settings', '/api/settings/provider');
+      await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant');
+      await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
+      await page.getByRole('checkbox', { name: 'Enable the household assistant', exact: true }).check();
+      await page.getByLabel('Daily requests per user', { exact: true }).fill('17');
+      await save('Save assistant settings', '/api/settings/assistant');
+      assert.equal(features.provider.model, 'synthetic-classifier');
+      assert.equal(features.provider.dailyRequestLimit, 29);
+      assert.equal(features.assistant.model, 'synthetic-assistant');
+      assert.equal(features.assistant.dailyRequestsPerUser, 17);
+      assert.equal(lastWrite('/api/settings/provider').aiRevision, shared.discoveryRevision);
+      assert.equal(lastWrite('/api/settings/assistant').aiRevision, shared.discoveryRevision);
+      await nav('Test saved connection').click();
+      await expect(page.getByRole('status').filter({ hasText: 'Synthetic shared connection tested.' })).toBeVisible();
+    }
+  );
+
+  await scenario(
+    'shared-catalog-manual-search-and-feature-saves',
+    async ({ openAi, configure, ready, choices, count, section, save, features }) => {
+      await openAi();
+      await configure();
+      await ready();
+      assert.equal(count(), 1);
+      for (const purpose of ['classification', 'assistant']) {
+        const key = purpose === 'classification' ? 'provider' : 'assistant';
+        const group = section(purpose);
+        const model = group.getByLabel(
+          purpose === 'assistant' ? 'Assistant model ID' : 'Model or inference profile ID / ARN',
+          { exact: true }
+        );
+        await expect(model).toBeHidden();
+        const options = await choices(purpose).innerText();
+        for (const label of [
+          'Foundation model',
+          'System inference profile',
+          'Application inference profile',
+          'LEGACY',
+          'Unverified'
+        ]) {
+          assert(options.includes(label));
+        }
+
+        await group.getByLabel(`Search ${purpose} Bedrock models`, { exact: true }).fill('Household');
+        await choices(purpose).selectOption('synthetic-application-profile');
+        await save(`Save ${purpose} settings`, `/api/settings/${key}`);
+        assert.equal(features[key].model, 'synthetic-application-profile');
+        assert.equal(features[key].enabled, false);
+        await group.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
+        await model.fill('manual-unlisted-profile');
+        await save(`Save ${purpose} settings`, `/api/settings/${key}`);
+        await expect(model).toHaveValue('manual-unlisted-profile');
+        assert.equal(count(), 1, 'Model-only saves retain the catalog without refetch');
+      }
+    }
+  );
+
+  await scenario(
+    'catalog-error-retry-empty-and-partial',
+    async ({ page, openAi, configure, ready, choices, count, section, mode, nav }) => {
+      await openAi();
+      mode.discovery = 'permission';
+      await configure();
+      for (const purpose of ['classification', 'assistant']) {
+        await expect(section(purpose).getByRole('alert')).toContainText('Unable to load models');
+      }
+
+      const retry = section('classification').getByRole('button', { name: 'Retry loading models', exact: true });
+      const start = count();
+      await page.waitForTimeout(100);
+      assert.equal(count(), start, 'Discovery failure does not create a retry loop');
+      for (const response of ['stale', 'mismatch']) {
+        mode.discovery = response;
+        await retry.click();
+        await expect(retry).toBeEnabled();
+        await expect(section('assistant').getByRole('alert')).toContainText('Unable to load models');
+      }
+
+      mode.discovery = 'success';
+      await retry.click();
+      await ready();
+      for (const response of ['partial', 'empty']) {
+        mode.discovery = response;
+        await nav('Data').click();
+        await nav('AI features').click();
+        if (response === 'partial') {
+          await ready();
+          await expect(section('classification').getByText('This list is incomplete.', { exact: false })).toBeVisible();
+        } else {
+          await expect(choices('classification')).toBeDisabled();
+          await expect(
+            section('classification').getByText('No matching models were returned.', { exact: false })
+          ).toBeVisible();
+        }
+      }
+    }
+  );
+
+  await scenario(
+    'dirty-shared-credentials-cancel-catalog',
+    async ({ page, openAi, configure, ready, choices, count }) => {
+      await openAi();
+      await configure();
+      await ready();
+      const key = page.getByLabel('AWS access key ID', { exact: true });
+      const secret = page.getByLabel('AWS secret access key', { exact: true });
+      const region = page.getByLabel('AWS region', { exact: true });
+      const clear = page.getByRole('checkbox', { name: 'Clear saved AWS access key ID', exact: true });
+      for (const field of ['key', 'secret', 'region', 'clear']) {
+        const before = count();
+        if (field === 'key') {
+          await key.fill('synthetic-unsaved-key');
+        }
+
+        if (field === 'secret') {
+          await secret.fill('synthetic-unsaved-secret');
+        }
+
+        if (field === 'region') {
+          await region.selectOption('us-east-1');
+        }
+
+        if (field === 'clear') {
+          await clear.check();
+        }
+
+        await expect(choices('classification')).toBeDisabled();
+        await expect(choices('assistant')).toBeDisabled();
+        assert.equal(count(), before);
+        if (field === 'key') {
+          await key.fill('');
+        }
+
+        if (field === 'secret') {
+          await secret.fill('');
+        }
+
+        if (field === 'region') {
+          await region.selectOption('ap-southeast-2');
+        }
+
+        if (field === 'clear') {
+          await clear.uncheck();
+        }
+
+        await ready();
+        assert.equal(count(), before + 1, 'Returning to clean saved identity reloads one shared catalog');
+      }
+    }
+  );
+
+  await scenario(
+    'pending-catalog-feature-edits-and-connection',
+    async ({ page, openAi, configure, ready, section, count, mode, pending, release, nav }) => {
+      await openAi();
+      mode.discovery = 'deferred';
+      await configure();
+      await expect.poll(() => pending.discovery.length).toBe(1);
+      await section('classification')
+        .getByText('Enter a model or inference profile ID manually (optional)', { exact: true })
+        .click();
+      const model = page.getByLabel('Model or inference profile ID / ARN', { exact: true });
+      await model.fill('manual-after-discovery-start');
+      await page.getByLabel('Requests per UTC day', { exact: true }).fill('37');
+      await nav('Test saved connection').click();
+      await expect(nav('Test saved connection')).toBeEnabled();
+      release('discovery');
+      await ready();
+      await expect(model).toHaveValue('manual-after-discovery-start');
+      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('37');
+      assert.equal(count(), 1);
+    }
+  );
+
+  await scenario(
+    'stale-shared-discovery-and-section-unmount',
+    async ({ page, openAi, configure, ready, choices, mode, pending, release, save, nav, count }) => {
+      await openAi();
+      mode.discovery = 'deferred';
+      await configure();
+      await expect.poll(() => pending.discovery.length).toBe(1);
+      await page.getByLabel('AWS region', { exact: true }).selectOption('us-east-1');
+      mode.discovery = 'success';
+      await save();
+      await ready();
+      release('discovery');
+      await expect(choices('classification')).toContainText('synthetic.text-v1');
+      assert.equal(count(), 2);
+      await nav('Data').click();
+      mode.discovery = 'deferred';
+      await nav('AI features').click();
+      await expect.poll(() => pending.discovery.length).toBe(1);
+      await nav('Notifications').click();
+      mode.discovery = 'success';
+      await nav('AI features').click();
+      await ready();
+      release('discovery');
+      assert.equal(count(), 4);
+    }
+  );
+
+  await scenario(
+    'dirty-feature-revision-requires-explicit-reload',
+    async ({ page, openAi, configure, ready, mode, section, save, features }) => {
+      await openAi();
+      await configure();
+      await ready();
+      await page.getByLabel('Requests per UTC day', { exact: true }).fill('49');
+      await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-rotated-secret');
+      await save();
+      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('49');
+      await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeDisabled();
+      assert.equal(features.provider.dailyRequestLimit, 20);
+      const reload = section('classification').getByRole('button', { name: 'Reload saved settings', exact: true });
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await reload.click();
+      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('49');
+      page.once('dialog', (dialog) => dialog.accept());
+      await reload.click();
+      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('20');
+      await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeEnabled();
+      mode.save = 'success';
+    }
+  );
+
+  for (const outcome of ['deferred', 'deferred-failure']) {
+    await scenario(
+      `save-race-${outcome}`,
+      async ({ page, openAi, configure, ready, section, mode, pending, release, nav, calls }) => {
+        await openAi();
+        await configure();
+        await ready();
+        await section('classification')
+          .getByText('Enter a model or inference profile ID manually (optional)', { exact: true })
+          .click();
+        const model = page.getByLabel('Model or inference profile ID / ARN', { exact: true });
+        await model.fill('submitted-model');
+        mode.save = outcome;
+        const before = calls.filter((call) => call.path === '/api/settings/provider' && call.method === 'PUT').length;
+        await nav('Save classification settings').evaluate((element) => {
+          element.click();
+          element.click();
+        });
+        await expect.poll(() => pending.save.length).toBe(1);
+        await model.fill('newer-unsaved-model');
+        release('save');
+        await expect(model).toHaveValue('newer-unsaved-model');
+        await expect(section('classification').getByText(/Your current changes are retained/)).toBeVisible();
+        assert.equal(
+          calls.filter((call) => call.path === '/api/settings/provider' && call.method === 'PUT').length,
+          before + 1
+        );
+        if (outcome === 'deferred') {
+          await expect(nav('Save classification settings')).toBeDisabled();
+        }
+      }
     );
   }
 
-  assert.equal(
-    calls.some((call) => /test-model/.test(call.path)),
-    false,
-    'discovery never invokes inference tests'
+  await scenario(
+    'shared-save-keeps-newer-secret-draft',
+    async ({ page, openAi, mode, pending, release, nav, calls }) => {
+      await openAi();
+      await page.getByLabel('OpenAI API key', { exact: true }).fill('synthetic-submitted-key');
+      mode.save = 'deferred';
+      await nav('Save AI connection').evaluate((element) => {
+        element.click();
+        element.click();
+      });
+      await expect.poll(() => pending.save.length).toBe(1);
+      await page.getByLabel('AI provider', { exact: true }).selectOption('bedrock');
+      await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
+      await page.getByLabel('AWS access key ID', { exact: true }).fill('AKIANEWERDRAFT');
+      await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-newer-secret');
+      release('save');
+      await expect(page.getByLabel('AI provider', { exact: true })).toHaveValue('bedrock');
+      await expect(page.getByLabel('AWS secret access key', { exact: true })).toHaveValue('synthetic-newer-secret');
+      await expect(nav('Save AI connection')).toBeDisabled();
+      assert.equal(
+        calls.filter((call) => call.path === '/api/settings/ai' && call.method === 'PUT').length,
+        1,
+        'Repeated submit is fenced before controls disable'
+      );
+      const sharedSection = page.getByRole('region', { name: 'Shared AI connection', exact: true });
+      page.once('dialog', (dialog) => dialog.accept());
+      await sharedSection.getByRole('button', { name: 'Reload saved settings', exact: true }).click();
+      await expect(page.getByLabel('AI provider', { exact: true })).toHaveValue('openai');
+      await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
+    }
   );
-  assert.equal(
-    calls.filter((call) => /test-connection/.test(call.path)).length,
-    explicitConnectionTests,
-    'connection tests run only when explicitly clicked, never as a discovery side effect'
-  );
-  assert.equal(await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth), true);
-  await page.setViewportSize({ width: 390, height: 844 });
-  assert.equal(
-    await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth),
-    true,
-    'mobile Settings overflow'
-  );
-  assert.deepEqual(errors, []);
-  await assertPageStorageUnused();
-  console.log(
-    'Database Settings browser checks passed: Redbark write-only save/preserve/clear, signing-secret controls, failed-save retry, OpenAI first save, independent classification flags/limits, Bedrock saved-configuration automatic discovery across Save, clean return, Settings remount and browser reload, model-free setup for classification and assistant, searchable foundation/profile choices, manual/legacy preservation, empty/partial results, permission/stale failures, dirty drafts, failed-save and failed-discovery retries, repeated Save/Retry, stale PUT and credential/region/provider/save/unmount races, catalog and in-flight preservation across model/enable/limit edits and unrelated connection/status refreshes, demo controls, no inference, no secret disclosure, webhook registration and responsive layout. All APIs mocked.'
-  );
+
+  await scenario('refresh-signout-and-principal-isolation', async ({ page, mode, openAi, nav, calls }) => {
+    await openAi();
+    const key = page.getByLabel('OpenAI API key', { exact: true });
+    await key.fill('synthetic-private-draft');
+    let sawBeforeUnload = false;
+    page.once('dialog', async (dialog) => {
+      sawBeforeUnload = dialog.type() === 'beforeunload';
+      await dialog.dismiss();
+    });
+    await page
+      .reload({ timeout: 1500 })
+      .catch((error) => assert.match(error.message, /ERR_ABORTED|Navigation.*cancelled|net::ERR|Timeout/));
+    assert(sawBeforeUnload, 'Browser refresh warns before losing draft credentials');
+    await expect(key).toHaveValue('synthetic-private-draft');
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await nav('Sign out').click();
+    await expect(key).toHaveValue('synthetic-private-draft');
+    assert(!calls.some((call) => call.path === '/api/logout'), 'Cancelled signout does not end the session');
+    page.once('dialog', (dialog) => dialog.accept());
+    await nav('Sign out').click();
+    await expect(page.getByRole('heading', { name: 'Welcome home.' })).toBeVisible();
+    mode.role = 'member';
+    const start = calls.length;
+    await page.getByLabel('Email address', { exact: true }).fill('member@example.com');
+    await page.getByLabel('Your password', { exact: true }).fill('synthetic-member-password');
+    await nav('Sign in').click();
+    await expect(nav('Sign out')).toBeVisible();
+    await expect(key).toHaveCount(0);
+    await expect(nav('Settings')).toHaveCount(0);
+    assert(
+      !calls.slice(start).some((call) => call.path.startsWith('/api/settings')),
+      'New member identity cannot inherit the old AI form or requests'
+    );
+    await nav('Sign out').click();
+    await expect(page.getByRole('heading', { name: 'Welcome home.' })).toBeVisible();
+    mode.role = 'admin';
+    await page.getByLabel('Email address', { exact: true }).fill('admin@example.com');
+    await page.getByLabel('Your password', { exact: true }).fill('synthetic-admin-password');
+    await nav('Sign in').click();
+    await openAi();
+    await expect(key).toHaveValue('');
+  });
+
+  await scenario('member-deeplink-and-demo-boundaries', async ({ page, mode, nav, openAi, calls }) => {
+    mode.role = 'member';
+    const before = calls.length;
+    await page.goto(base + '/#settings/ai');
+    await expect(nav('Settings')).toHaveCount(0);
+    await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveCount(0);
+    assert(
+      !calls.slice(before).some((call) => call.path.startsWith('/api/settings/')),
+      'Member deep link cannot fetch administrator forms'
+    );
+    mode.role = 'admin';
+    mode.demo = true;
+    await page.goto(base);
+    await openAi();
+    await expect(nav('Save AI connection')).toBeDisabled();
+    await expect(nav('Save classification settings')).toBeDisabled();
+    await expect(nav('Save assistant settings')).toBeDisabled();
+  });
+  console.log('Shared AI Settings race, routing, keyboard, responsive, secret and storage browser fixtures passed.');
 } finally {
   await browser.close();
 }

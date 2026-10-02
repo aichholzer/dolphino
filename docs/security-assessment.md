@@ -1,5 +1,7 @@
 # dolphino isolated adversarial security assessment
 
+**Historical scope:** this record predates the shared-AI settings change. Descriptions of independent classification/assistant credentials and per-form discovery describe that earlier implementation, not current behavior. Current production uses one shared connection, separate feature controls and one model catalog; see [shared AI settings](ai-settings.md) and [its verification record](shared-ai-settings-verification.md). The original dated evidence and counts below are preserved, not claimed as new runs.
+
 Assessment date: 2026-09-30. Scope: this checkout, an ephemeral loopback HTTP app, unique disposable schemas in the isolated test PostgreSQL database, synthetic users/transactions, Chromium and mocked external transports. An independent implementation reviewer performed the additional HTTP/browser probes and SMTP review. This is an engineering adversarial assessment, **not a third-party penetration test, certification or a guarantee that the app is bulletproof**.
 
 No GitHub, bank, Redbark, AWS, OpenAI, Telegram, Brevo, public SMTP host or home-LAN endpoint was probed. No real credentials, financial records, emails or messages were used. DNS and SMTP checks use explicit mocks; the public IP literals in test results never receive connections. No load/destructive scanner was run. Tests create and drop only their own random PostgreSQL schemas.

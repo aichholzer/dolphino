@@ -1,5 +1,7 @@
 # Historical MVP verification — 30 September–1 October 2026
 
+**Historical scope:** this record predates the shared-AI settings change. Descriptions of independent classification/assistant credentials and per-form discovery describe that earlier implementation, not current behavior. Current production uses one shared connection, separate feature controls and one model catalog; see [shared AI settings](ai-settings.md) and [its verification record](shared-ai-settings-verification.md). The original dated evidence and counts below are preserved, not claimed as new runs.
+
 These are dated development milestones before the subsequent module/identifier cleanup. Test counts and compatibility claims are historical, not current rerun results. Current code accepts only version 3 credential envelopes, current branded environment names and `dolphino_session`; former alias/cookie/ciphertext checks below describe behavior that has since been removed. See [current cleanup verification](module-cleanup-verification.md) and [mandatory upgrade boundaries](upgrading.md).
 
 Historical results below include earlier URL-based configuration. Current runtime and test reproduction use individual `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`/`PGPASSWORD_FILE` and explicit off-host `PGSSLMODE` settings. See [deployment and TLS migration](deployment.md); `DATABASE_URL`/`DATABASE_URL_FILE` are retired. `TEST_DATABASE_URL` remains an optional test-only override. Synthetic TLS tests require the `openssl` executable.

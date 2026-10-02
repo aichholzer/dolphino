@@ -1,7 +1,7 @@
 import { createSimplefinIntegration } from './lib/simplefin.mjs';
 import pg from 'pg';
 import { ensureDeploymentMode } from './lib/deployment-mode.mjs';
-import { createAssistantSettings } from './lib/assistant-settings.mjs';
+import { createAiSettings } from './lib/ai-settings.mjs';
 import { createAssistantUsage } from './lib/assistant-usage.mjs';
 import { createAssistant } from './lib/assistant.mjs';
 import { sendAssistantTurn } from './lib/assistant-provider.mjs';
@@ -30,11 +30,15 @@ pool.on('error', () => console.error('Database connection unavailable'));
 await ensureDeploymentMode(pool, config.mode);
 const store = new Store(pool, { mode: config.mode, timezone: config.timezone });
 await store.migrate();
-const settings = createSettingsStore({
+const credentialStore = createSettingsStore({
   pool,
   appSecret: config.appSecret
 });
-await settings.init();
+await credentialStore.init();
+const aiSettings = createAiSettings({ pool, settings: credentialStore, appSecret: config.appSecret });
+await aiSettings.init();
+const settings = { ...credentialStore, ...aiSettings.classification };
+const assistantSettings = aiSettings.assistant;
 const redbarkSettings = createRedbarkSettings({
   pool,
   settings,
@@ -78,11 +82,6 @@ await auth.init();
 await ensureAccessSchema(pool);
 const users = createUserManagement({ pool, config, settings });
 await users.init();
-const assistantSettings = createAssistantSettings({
-  pool,
-  appSecret: config.appSecret
-});
-await assistantSettings.init();
 const assistantUsage = createAssistantUsage({ pool });
 await assistantUsage.init();
 const assistant = createAssistant({
@@ -96,6 +95,7 @@ const assistant = createAssistant({
   tools: FINANCE_TOOLS
 });
 const app = createApp({
+  aiSettings,
   assistant,
   assistantSettings,
   auth,

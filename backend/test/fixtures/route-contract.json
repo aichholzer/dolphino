@@ -77,5 +77,9 @@
   ["post", "/api/transactions/:id/suggest", "admin"],
   ["get", "/api/export", "financial"],
   ["post", "/api/settings/provider/models", "admin"],
-  ["post", "/api/settings/assistant/models", "admin"]
+  ["post", "/api/settings/assistant/models", "admin"],
+  ["get", "/api/settings/ai", "admin"],
+  ["put", "/api/settings/ai", "admin"],
+  ["post", "/api/settings/ai/models", "admin"],
+  ["post", "/api/settings/ai/test-connection", "admin"]
 ]

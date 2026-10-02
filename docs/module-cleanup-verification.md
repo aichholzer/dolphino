@@ -1,4 +1,6 @@
-# Module cleanup verification — 2 October 2026
+# Historical module cleanup verification — 2 October 2026
+
+**Historical scope:** this record predates the shared-AI settings change. Descriptions of independent classification/assistant credentials and per-form discovery describe that earlier implementation, not current behavior. Current production uses one shared connection, separate feature controls and one model catalog; see [shared AI settings](ai-settings.md) and [its verification record](shared-ai-settings-verification.md). The original dated evidence and counts below are preserved, not claimed as new runs.
 
 This record covers the `.mjs`/backend-layout cleanup and removal of transitional identifiers, starting from commit `688931c44b0fd0bbcc9f848a932f4f6150540f24`. Earlier results in [maintainability verification](maintainability-verification.md) and [MVP verification](verification.md) are historical.
 

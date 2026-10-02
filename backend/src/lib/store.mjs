@@ -107,20 +107,33 @@ export class Store {
       await this.pool.query(await readFile(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
     }
   }
-  async atomic(fn, { refresh = true, client } = {}) {
+  async atomic(fn, { refresh = true, client, inTransaction = false } = {}) {
+    if (inTransaction && !client) {
+      throw Error('An existing transaction requires its database client');
+    }
+
     const c = client || (await this.pool.connect());
     try {
-      await c.query('BEGIN');
+      if (!inTransaction) {
+        await c.query('BEGIN');
+      }
+
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`dolphino:${this.mode}`]);
       const result = await fn(c);
       if (refresh) {
         await this.refreshAlerts(c);
       }
 
-      await c.query('COMMIT');
+      if (!inTransaction) {
+        await c.query('COMMIT');
+      }
+
       return result;
     } catch (e) {
-      await c.query('ROLLBACK');
+      if (!inTransaction) {
+        await c.query('ROLLBACK');
+      }
+
       throw e;
     } finally {
       if (!client) {
@@ -1090,7 +1103,7 @@ export class Store {
       { client, refresh: false }
     );
   }
-  async acceptAutomaticClassification(id, category, expectedTx, client) {
+  async acceptAutomaticClassification(id, category, expectedTx, client, { inTransaction = false } = {}) {
     return this.atomic(
       async (c) => {
         const tx = (await this.listTransactions({ ids: [id] }, c))[0];
@@ -1123,7 +1136,7 @@ export class Store {
         );
         return { applied: true };
       },
-      { client }
+      { client, inTransaction }
     );
   }
   async listReviews() {

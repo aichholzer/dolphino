@@ -9,7 +9,7 @@ import { createApp } from '../src/app.mjs';
 import { createHouseholdAuth } from '../src/lib/household-auth.mjs';
 import { createSettingsStore } from '../src/lib/settings.mjs';
 import { createRedbarkSettings } from '../src/lib/redbark-settings.mjs';
-import { createAssistantSettings } from '../src/lib/assistant-settings.mjs';
+import { sharedAiSettings } from './helpers/shared-ai.mjs';
 import { createRedbarkIntegration } from '../src/lib/worker.mjs';
 import { createClassificationIntegration } from '../src/lib/classification.mjs';
 import { createRegistration } from '../src/lib/registration.mjs';
@@ -23,7 +23,6 @@ import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 // exclusively mocked at the supported dependency boundary, with calls recorded.
 const database = readTestPostgresConfig();
 const baseProvider = {
-  provider: 'openai',
   model: 'synthetic-model',
   enabled: true,
   autoClassify: false,
@@ -35,7 +34,7 @@ const secrets = {
   redbark: 'synthetic-redbark-api-A',
   signing: 'synthetic-redbark-signing-A',
   provider: 'synthetic-classifier-api-A',
-  assistant: 'synthetic-assistant-api-A'
+  assistant: 'synthetic-classifier-api-A'
 };
 const signature = (raw, secret) => {
   const timestamp = Math.floor(Date.now() / 1000);
@@ -73,15 +72,16 @@ async function fixture(t) {
   };
   const store = new Store(pool, { mode: 'live' });
   await store.migrate();
-  const settings = createSettingsStore({
+  const shared = sharedAiSettings({
     pool,
     appSecret,
     envConfig: config,
     allowEnvironmentFallback: true
   });
+  const { settings, assistantSettings, aiSettings } = shared;
   await settings.init();
+  await aiSettings.init();
   const redbark = createRedbarkSettings({ pool, settings, appSecret });
-  const assistantSettings = createAssistantSettings({ pool, appSecret });
   const outbound = [],
     remote = [];
   let hook;
@@ -193,6 +193,7 @@ async function fixture(t) {
       settings,
       redbarkSettings: redbark,
       assistantSettings,
+      aiSettings,
       auth,
       integration,
       classification,
@@ -233,6 +234,7 @@ async function fixture(t) {
     await admin.end();
   });
   return {
+    ...shared,
     pool,
     appSecret,
     settings,
@@ -262,6 +264,10 @@ dbTest('adversarial live HTTP: every settings route rejects anonymous/member and
   const f = await fixture(t);
   const routes = [
     ['/api/settings', 'GET'],
+    ['/api/settings/ai', 'GET'],
+    ['/api/settings/ai', 'PUT'],
+    ['/api/settings/ai/models', 'POST'],
+    ['/api/settings/ai/test-connection', 'POST'],
     ['/api/settings/redbark', 'GET'],
     ['/api/settings/redbark', 'PUT'],
     ['/api/settings/provider', 'GET'],
@@ -338,16 +344,16 @@ dbTest(
     });
     assert.equal(ignored.llmApiKey, undefined);
     assert.equal(ignored.redbarkApiKey, undefined);
+    const sharedState = await f.saveAi({ provider: 'openai', apiKey: secrets.provider });
     for (const [kind, value] of [
-      ['provider', { ...baseProvider, apiKey: secrets.provider }],
+      ['provider', { ...baseProvider, aiRevision: sharedState.discoveryRevision }],
       [
         'assistant',
         {
-          provider: 'openai',
+          aiRevision: sharedState.discoveryRevision,
           model: 'synthetic-assistant',
           enabled: true,
-          dataSharingAcknowledged: true,
-          apiKey: secrets.assistant
+          dataSharingAcknowledged: true
         }
       ],
       ['redbark', { apiKey: secrets.redbark, signingSecret: secrets.signing }]
@@ -416,21 +422,16 @@ dbTest(
 dbTest('adversarial live HTTP: sensitive settings and connection tests are bounded to five requests', async (t) => {
   const f = await fixture(t);
   await f.redbark.save({ apiKey: secrets.redbark });
-  await f.settings.saveProvider({
-    ...baseProvider,
-    apiKey: secrets.provider
-  });
-  await f.assistantSettings.save({
-    provider: 'openai',
-    model: 'synthetic-model',
-    apiKey: secrets.assistant
-  });
+  await f.saveAi({ provider: 'openai', apiKey: secrets.provider });
+  await f.saveClassification(baseProvider);
+  await f.saveAssistant({ model: 'synthetic-model' });
+  const aiRevision = (await f.aiSettings.getPublic()).discoveryRevision;
   const endpoints = [
     ['/api/settings/provider/test-connection', 'POST', {}, 200],
     ['/api/settings/assistant/test-connection', 'POST', {}, 200],
     ['/api/connection/test', 'POST', {}, 200],
-    ['/api/settings/provider', 'PUT', { ...baseProvider }, 200],
-    ['/api/settings/assistant', 'PUT', { provider: 'openai', model: 'synthetic-model' }, 200],
+    ['/api/settings/provider', 'PUT', { ...baseProvider, aiRevision }, 200],
+    ['/api/settings/assistant', 'PUT', { model: 'synthetic-model', aiRevision }, 200],
     ['/api/settings/redbark', 'PUT', { apiKey: secrets.redbark }, 200],
     ['/api/settings/provider/test-model', 'POST', {}, 400],
     ['/api/settings/assistant/test-model', 'POST', {}, 400],
@@ -454,17 +455,9 @@ dbTest('adversarial live HTTP: wrong key, tampering and cross-slot ciphertext fa
     apiKey: secrets.redbark,
     signingSecret: secrets.signing
   });
-  await f.settings.saveProvider({
-    ...baseProvider,
-    apiKey: secrets.provider
-  });
-  await f.assistantSettings.save({
-    provider: 'openai',
-    model: 'synthetic-model',
-    enabled: true,
-    dataSharingAcknowledged: true,
-    apiKey: secrets.assistant
-  });
+  await f.saveAi({ provider: 'openai', apiKey: secrets.provider });
+  await f.saveClassification(baseProvider);
+  await f.saveAssistant({ model: 'synthetic-model', enabled: true, dataSharingAcknowledged: true });
   const wrongSecret = randomBytes(32).toString('base64'),
     wrongSettings = createSettingsStore({
       pool: f.pool,
@@ -484,14 +477,12 @@ dbTest('adversarial live HTTP: wrong key, tampering and cross-slot ciphertext fa
       throw Error('MUST NOT FETCH');
     }
   });
+  const wrongAi = sharedAiSettings({ pool: f.pool, appSecret: wrongSecret });
   const wrong = await f.serve({
+    ...wrongAi,
     settings: wrongSettings,
     redbarkSettings: wrongRedbark,
-    integration: wrongIntegration,
-    assistantSettings: createAssistantSettings({
-      pool: f.pool,
-      appSecret: wrongSecret
-    })
+    integration: wrongIntegration
   });
   for (const kind of ['redbark', 'provider', 'assistant']) {
     assert.equal((await wrong(`/api/settings/${kind}`)).json.credentialsAvailable, false);
@@ -506,17 +497,12 @@ dbTest('adversarial live HTTP: wrong key, tampering and cross-slot ciphertext fa
   }
 
   const rows = (await f.pool.query('SELECT * FROM encrypted_credentials')).rows;
-  await f.pool.query("UPDATE encrypted_credentials SET ciphertext=$1 WHERE setting='llm.apiKey'", [
-    rows.find((r) => r.setting === 'assistant.llm.apiKey').ciphertext
+  await f.pool.query("UPDATE encrypted_credentials SET ciphertext=$1 WHERE setting='ai.apiKey'", [
+    rows.find((r) => r.setting === 'redbark.apiKey').ciphertext
   ]);
   await f.pool.query("UPDATE encrypted_credentials SET ciphertext=$1 WHERE setting='redbark.apiKey'", [
     rows.find((r) => r.setting === 'redbark.webhook.signingSecret').ciphertext
   ]);
-  const tampered = {
-    ...rows.find((r) => r.setting === 'assistant.llm.apiKey').ciphertext,
-    tag: randomBytes(16).toString('base64')
-  };
-  await f.pool.query("UPDATE encrypted_credentials SET ciphertext=$1 WHERE setting='assistant.llm.apiKey'", [tampered]);
   for (const kind of ['redbark', 'provider', 'assistant']) {
     assert.equal((await f.request(`/api/settings/${kind}`)).json.credentialsAvailable, false);
   }
@@ -659,10 +645,8 @@ dbTest(
       kind: 'expense',
       description: 'Hidden merchant'
     });
-    await f.settings.saveProvider({
-      ...baseProvider,
-      apiKey: secrets.provider
-    });
+    await f.saveAi({ provider: 'openai', apiKey: secrets.provider });
+    await f.saveClassification(baseProvider);
     await f.classification.tick();
     assert.equal(f.outbound.length, 0);
     assert.equal(
@@ -723,7 +707,7 @@ dbTest(
       ).status,
       403
     );
-    await f.settings.saveProvider({ ...baseProvider, enabled: false });
+    await f.saveClassification({ ...baseProvider, enabled: false });
     assert.equal(
       (
         await f.request(`/api/transactions/${tx.id}/suggest`, {
@@ -738,19 +722,12 @@ dbTest(
 );
 
 dbTest(
-  'adversarial live HTTP: in-flight provider tests keep coherent key/model revisions during a hot save',
+  'adversarial live HTTP: in-flight provider tests reject rotated shared credentials and both features use the new key',
   async (t) => {
     const f = await fixture(t);
-    await f.settings.saveProvider({
-      ...baseProvider,
-      model: 'model-A',
-      apiKey: 'synthetic-key-A'
-    });
-    await f.assistantSettings.save({
-      provider: 'openai',
-      model: 'assistant-A',
-      apiKey: 'synthetic-assistant-A'
-    });
+    await f.saveAi({ provider: 'openai', apiKey: 'synthetic-key-A' });
+    await f.saveClassification({ ...baseProvider, model: 'model-A' });
+    await f.saveAssistant({ model: 'assistant-A' });
     let release, started;
     const ready = new Promise((resolve) => {
       started = resolve;
@@ -765,50 +742,26 @@ dbTest(
         });
       }
     });
-    const pending = f.request('/api/settings/provider/test-connection', {
-      method: 'POST',
-      value: {}
-    });
+    const pending = f.request('/api/settings/provider/test-connection', { method: 'POST', value: {} });
     await ready;
+    await f.saveAi({ provider: 'openai', apiKey: 'synthetic-key-B' });
+    await f.saveClassification({ ...baseProvider, model: 'model-B' });
     assert.equal(
-      (
-        await f.request('/api/settings/provider', {
-          method: 'PUT',
-          value: {
-            ...baseProvider,
-            model: 'model-B',
-            apiKey: 'synthetic-key-B'
-          }
-        })
-      ).status,
+      (await f.request('/api/settings/provider/test-connection', { method: 'POST', value: {} })).status,
       200
     );
     assert.equal(
-      (
-        await f.request('/api/settings/provider/test-connection', {
-          method: 'POST',
-          value: {}
-        })
-      ).status,
-      200
-    );
-    assert.equal(
-      (
-        await f.request('/api/settings/assistant/test-connection', {
-          method: 'POST',
-          value: {}
-        })
-      ).status,
+      (await f.request('/api/settings/assistant/test-connection', { method: 'POST', value: {} })).status,
       200
     );
     release();
-    assert.equal((await pending).status, 200);
+    assert.equal((await pending).status, 409);
     assert.deepEqual(
       f.outbound.map((c) => [new URL(c.url).pathname, c.headers.Authorization]),
       [
         ['/v1/models/model-A', 'Bearer synthetic-key-A'],
         ['/v1/models/model-B', 'Bearer synthetic-key-B'],
-        ['/v1/models/assistant-A', 'Bearer synthetic-assistant-A']
+        ['/v1/models/assistant-A', 'Bearer synthetic-key-B']
       ]
     );
     assert.equal((await f.request('/api/settings/provider')).json.model, 'model-B');
@@ -816,7 +769,7 @@ dbTest(
 );
 
 dbTest(
-  'adversarial live HTTP: Bedrock SDK ignores environment endpoints and uses separate explicit database credentials',
+  'adversarial live HTTP: Bedrock SDK ignores environment endpoints and uses one explicit shared database credential pair',
   async (t) => {
     const f = await fixture(t),
       sdkCalls = [];
@@ -889,37 +842,29 @@ dbTest(
 
     try {
       const provider = {
-        ...baseProvider,
         provider: 'bedrock',
-        model: 'synthetic-model',
         region: 'us-east-1',
-        accessKeyId: 'AKIASYNTHETICCLASSIFY',
-        secretAccessKey: 'synthetic-classifier-secret'
+        accessKeyId: 'AKIASYNTHETICSHARED',
+        secretAccessKey: 'synthetic-shared-secret'
       };
-      assert.equal(
-        (
-          await f.request('/api/settings/provider', {
-            method: 'PUT',
-            value: provider
-          })
-        ).status,
-        200
-      );
-      assert.equal(
-        (
-          await f.request('/api/settings/assistant', {
-            method: 'PUT',
-            value: {
-              provider: 'bedrock',
-              model: 'synthetic-model',
-              region: 'us-east-1',
-              accessKeyId: 'AKIASYNTHETICASSISTANT',
-              secretAccessKey: 'synthetic-assistant-secret'
-            }
-          })
-        ).status,
-        200
-      );
+      const before = await f.aiSettings.getPublic();
+      const saved = await f.request('/api/settings/ai', {
+        method: 'PUT',
+        value: { ...provider, revision: before.discoveryRevision }
+      });
+      assert.equal(saved.status, 200);
+      for (const namespace of ['provider', 'assistant']) {
+        assert.equal(
+          (
+            await f.request(`/api/settings/${namespace}`, {
+              method: 'PUT',
+              value: { model: 'synthetic-model', aiRevision: saved.json.discoveryRevision }
+            })
+          ).status,
+          200
+        );
+      }
+
       assert.equal(
         (
           await f.request('/api/settings/provider/test-connection', {
@@ -949,15 +894,13 @@ dbTest(
       );
       assert(sdkCalls.length >= 5);
       assert(sdkCalls.every((c) => c.ignored === true && c.region === 'us-east-1'));
-      assert.equal(sdkCalls[0].credentials.accessKeyId, 'AKIASYNTHETICCLASSIFY');
-      assert.equal(sdkCalls[1].credentials.accessKeyId, 'AKIASYNTHETICASSISTANT');
-      assert(sdkCalls.slice(2).every((c) => c.credentials.accessKeyId === 'AKIASYNTHETICCLASSIFY'));
+      assert(sdkCalls.every((c) => c.credentials.accessKeyId === 'AKIASYNTHETICSHARED'));
       assert.equal(f.outbound.length, 0);
       assert.equal(
         (
-          await f.request('/api/settings/provider', {
+          await f.request('/api/settings/ai', {
             method: 'PUT',
-            value: { ...provider, accessKeyId: 'ASIASYNTHETICTEMPORARY' }
+            value: { ...provider, revision: saved.json.discoveryRevision, accessKeyId: 'ASIASYNTHETICTEMPORARY' }
           })
         ).status,
         400
@@ -997,10 +940,8 @@ test(
     );
     const f = await fixture(t);
     await f.redbark.save({ apiKey: secrets.redbark });
-    await f.settings.saveProvider({
-      ...baseProvider,
-      apiKey: secrets.provider
-    });
+    await f.saveAi({ provider: 'openai', apiKey: secrets.provider });
+    await f.saveClassification(baseProvider);
     const pgctl = process.env.DOLPHINO_TEST_PG_CTL;
     const data = process.env.DOLPHINO_TEST_PG_DATA_DIR;
     try {

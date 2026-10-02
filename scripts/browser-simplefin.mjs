@@ -16,7 +16,7 @@ import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
 import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
 import { createRegistration } from '../backend/src/lib/registration.mjs';
 import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
-import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createAiSettings } from '../backend/src/lib/ai-settings.mjs';
 import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
 import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
 import { createImportHealth } from '../backend/src/lib/import-health.mjs';
@@ -57,7 +57,10 @@ try {
   await ensureDeploymentMode(pool, 'live');
   const store = new Store(pool, { mode: 'live', timezone: config.timezone });
   await store.migrate();
-  const settings = createSettingsStore({ pool, appSecret: config.appSecret });
+  const vault = createSettingsStore({ pool, appSecret: config.appSecret });
+  const aiSettings = createAiSettings({ pool, settings: vault, appSecret: config.appSecret });
+  await aiSettings.init();
+  const settings = { ...vault, ...aiSettings.classification };
   await settings.init();
   const redbarkSettings = createRedbarkSettings({
     pool,
@@ -92,11 +95,7 @@ try {
     fetchImpl: forbiddenOutbound
   });
   await classification.init();
-  const assistantSettings = createAssistantSettings({
-    pool,
-    appSecret: config.appSecret
-  });
-  await assistantSettings.init();
+  const assistantSettings = aiSettings.assistant;
   const notifications = createNotificationIntegration({
     pool,
     settings,
@@ -223,6 +222,7 @@ try {
     registration,
     classification,
     assistantSettings,
+    aiSettings,
     notifications,
     telegram,
     importHealth,
@@ -265,6 +265,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(base);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: /^Data/ }).click();
   const section = page.getByRole('region', {
     name: 'SimpleFIN optional import'
   });
@@ -298,6 +299,7 @@ try {
   );
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: /^Data/ }).click();
   await expect(section.getByText('Enabled', { exact: true })).toBeVisible();
   await mkdir(screenshots, { recursive: true });
   await section.screenshot({

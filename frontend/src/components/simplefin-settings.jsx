@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
+import { useSettingsDirty } from '../features/settings/settings-dirty';
 const explanations = {
   simplefin_retry_after_out_of_range:
     'The provider requested an unsupported retry delay of more than ten years. This connection is paused and requires explicit reconnection; no early retry will be attempted.',
@@ -34,8 +35,14 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
     [days, setDays] = useState(30),
     [enabled, setEnabled] = useState(false),
     [ranges, setRanges] = useState({});
-  const accept = (value) => {
+  const draftDirty = !!state && (Number(days) !== state.backfillDays || enabled !== state.enabled);
+  useSettingsDirty(busy || token || ack || draftDirty || Object.values(ranges).some((range) => range.from || range.to));
+  const accept = (value, replaceDraft = true) => {
     setState(value);
+    if (!replaceDraft) {
+      return;
+    }
+
     setDays(value.backfillDays);
     setEnabled(value.enabled);
   };
@@ -70,7 +77,11 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
         method,
         body: JSON.stringify(payload)
       });
-      accept(result);
+      accept(result, !draftDirty || (path === '' && method === 'PUT'));
+      if (path === '/backfill') {
+        setRanges((current) => ({ ...current, [payload.key]: {} }));
+      }
+
       setNotice(result.message || message);
       await onUpdated?.();
     } catch (e) {

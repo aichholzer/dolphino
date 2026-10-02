@@ -52,3 +52,32 @@ test('LLM rejects invalid category and legacy arbitrary endpoints', async () => 
     /disabled/
   );
 });
+
+test('OpenAI classification checks the current shared identity immediately before dispatch', async () => {
+  let calls = 0;
+  let checks = 0;
+  await assert.rejects(
+    suggestCategory(
+      { description: 'Synthetic' },
+      ['Groceries'],
+      {
+        llmProvider: 'openai',
+        llmApiKey: 'synthetic-outdated-key',
+        llmModel: 'synthetic-model',
+        llmEnabled: true
+      },
+      {
+        assertConfiguration: async () => {
+          checks++;
+          throw Object.assign(Error('Shared identity changed'), { status: 409 });
+        },
+        fetchImpl: async () => {
+          calls++;
+          throw Error('No dispatch allowed');
+        }
+      }
+    )
+  );
+  assert.equal(checks, 1);
+  assert.equal(calls, 0);
+});

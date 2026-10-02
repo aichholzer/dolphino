@@ -23,6 +23,8 @@ const moneyReport = {
   coverage: { reason: 'Synthetic browser test data' }
 };
 const provider = {
+  discoveryRevision: '1'.repeat(64),
+  migration: { status: 'ready', message: null, sources: [] },
   provider: 'openai',
   model: 'synthetic-model',
   enabled: false,
@@ -97,8 +99,23 @@ await page.route('**/api/**', async (route) => {
       pageSize: 50,
       totalPages: 3
     };
+  } else if (path === '/api/settings/simplefin') {
+    data = {
+      configured: false,
+      backfillDays: 30,
+      enabled: false,
+      encryptionAvailable: true,
+      credentialsAvailable: true
+    };
+  } else if (path === '/api/settings/ai') {
+    if (req.method() === 'PUT') {
+      provider.discoveryRevision = '2'.repeat(64);
+    }
+
+    data = provider;
   } else if (path === '/api/settings/assistant') {
     data = {
+      ...provider,
       provider: 'openai',
       model: 'synthetic-assistant-model',
       enabled: false,
@@ -131,6 +148,14 @@ await page.route('**/api/**', async (route) => {
     data = { message: 'Synthetic registration reused' };
   } else if (path === '/api/settings/webhook/test') {
     data = { message: 'Synthetic test event queued' };
+  } else if (path === '/api/settings/redbark') {
+    data = {
+      version: '2026-10-01.wattle',
+      backfillDays: 90,
+      encryptionAvailable: true,
+      credentialsAvailable: true,
+      credentials: {}
+    };
   } else if (path === '/api/settings/notifications') {
     data = {
       smtp: {
@@ -208,25 +233,28 @@ try {
   await page.getByText('Page 1', { exact: true }).waitFor();
   await page
     .getByRole('button', {
-      name: 'Settings → Import health & history → backfill',
+      name: 'Settings → Data → Import health & history → backfill',
       exact: true
     })
     .click();
-  await page.getByLabel('Assistant OpenAI API key', { exact: true }).fill('synthetic-assistant-key');
-  await page.getByRole('button', { name: 'Save assistant settings', exact: true }).click();
-  await page.getByText('Assistant settings saved.', { exact: true }).waitFor();
-  await expect(page.getByLabel('Assistant OpenAI API key', { exact: true })).toHaveValue('');
+  await page.getByRole('heading', { name: 'Import health & history', exact: true }).waitFor();
+  await page.getByRole('link', { name: /^AI features/ }).click();
+  await page.getByLabel('OpenAI API key', { exact: true }).fill('synthetic-browser-only');
+  await page.getByRole('button', { name: 'Save AI connection', exact: true }).click();
+  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
   assert(
     calls.some(
-      (c) => c.path === '/api/settings/assistant' && c.method === 'PUT' && c.body.apiKey === 'synthetic-assistant-key'
+      (call) =>
+        call.path === '/api/settings/ai' && call.method === 'PUT' && call.body.apiKey === 'synthetic-browser-only'
     )
   );
-  await page.getByLabel('OpenAI API key', { exact: true }).waitFor();
-  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
-  await page.getByLabel('OpenAI API key', { exact: true }).fill('synthetic-browser-only');
-  await page.getByRole('button', { name: 'Save provider settings', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Settings updated.' }).waitFor();
-  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Save assistant settings', exact: true }).click();
+  await page.getByText('Assistant settings saved.', { exact: true }).waitFor();
+  assert(
+    calls.some(
+      (call) => call.path === '/api/settings/assistant' && call.method === 'PUT' && !Object.hasOwn(call.body, 'apiKey')
+    )
+  );
   await page
     .getByRole('button', {
       name: 'Test saved model · may incur cost',
@@ -235,6 +263,7 @@ try {
     .click();
   await page.getByText('Synthetic model test passed', { exact: true }).waitFor();
   assert(calls.some((c) => c.path === '/api/settings/provider/test-model' && c.body.acknowledgeCost === true));
+  await page.getByRole('link', { name: /^RedBark/ }).click();
   await page.getByRole('button', { name: 'Register / reuse destination', exact: true }).click();
   await page
     .getByRole('status')
@@ -242,11 +271,14 @@ try {
       hasText: 'Thin-event notifications registered/reused: sync_run.succeeded and connection.refreshed'
     })
     .waitFor();
-  await page.getByLabel('Provider', { exact: true }).selectOption('bedrock');
+  await page.getByRole('link', { name: /^AI features/ }).click();
+  await page.getByLabel('AI provider', { exact: true }).selectOption('bedrock');
   await page.getByLabel('AWS region', { exact: true }).waitFor();
   assert.equal(await page.getByLabel('AWS secret access key', { exact: true }).inputValue(), '');
   await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
   assert.equal(await page.getByLabel('Session token', { exact: false }).count(), 0);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('link', { name: /^Notifications/ }).click();
   await page.getByRole('checkbox', { name: 'Budget period', exact: true }).uncheck();
   await page.getByLabel('SMTP connection URL', { exact: true }).fill('smtps://synthetic:only@mail.example.com:465');
   await page.getByRole('button', { name: 'Save notification settings', exact: true }).click();
@@ -275,6 +307,7 @@ try {
   );
   await page.getByRole('button', { name: 'Send email test', exact: true }).click();
   await page.getByText('Synthetic delivery queued', { exact: true }).waitFor();
+  await page.getByRole('link', { name: /^Data/ }).click();
   await page.getByLabel('Account for history import', { exact: true }).selectOption('a1');
   await page.getByLabel('History from', { exact: true }).fill('2026-01-01');
   await page.getByLabel('History to', { exact: true }).fill('2026-02-01');

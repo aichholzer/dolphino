@@ -38,8 +38,11 @@ export function createApp({
   auth = createHouseholdAuth({ pool: store.pool, config }),
   users,
   assistant,
-  assistantSettings
+  assistantSettings,
+  aiSettings
 }) {
+  settings = aiSettings ? { ...settings, ...aiSettings.classification } : settings;
+  assistantSettings = aiSettings?.assistant ?? assistantSettings;
   const securityHeaders = createSecurityHeaders(config);
   const app = rayo({
     host: config.host,
@@ -58,6 +61,7 @@ export function createApp({
   registerUserRoutes({ route, users, sensitive });
   registerAssistantRoutes({ route, store, auth, assistant, assistantSettings, config });
   registerSettingsRoutes({
+    aiSettings,
     route,
     config,
     integration,

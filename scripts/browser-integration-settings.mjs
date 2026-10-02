@@ -16,7 +16,7 @@ import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
 import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
 import { createRegistration } from '../backend/src/lib/registration.mjs';
 import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
-import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createAiSettings } from '../backend/src/lib/ai-settings.mjs';
 import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
 import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
 import { createImportHealth } from '../backend/src/lib/import-health.mjs';
@@ -72,7 +72,10 @@ try {
   await ensureDeploymentMode(pool, 'live');
   const store = new Store(pool, { mode: 'live', timezone: config.timezone });
   await store.migrate();
-  const settings = createSettingsStore({ pool, appSecret: config.appSecret });
+  const vault = createSettingsStore({ pool, appSecret: config.appSecret });
+  const aiSettings = createAiSettings({ pool, settings: vault, appSecret: config.appSecret });
+  await aiSettings.init();
+  const settings = { ...vault, ...aiSettings.classification };
   await settings.init();
   const redbarkSettings = createRedbarkSettings({
     pool,
@@ -108,11 +111,7 @@ try {
     fetchImpl: forbiddenOutbound
   });
   await classification.init();
-  const assistantSettings = createAssistantSettings({
-    pool,
-    appSecret: config.appSecret
-  });
-  await assistantSettings.init();
+  const assistantSettings = aiSettings.assistant;
   const notifications = createNotificationIntegration({
     pool,
     settings,
@@ -194,6 +193,7 @@ try {
     registration,
     classification,
     assistantSettings,
+    aiSettings,
     notifications,
     telegram,
     importHealth,
@@ -388,107 +388,126 @@ try {
     'Redbark credential/version change hot-reloads, invalidates connection proof and retains but disassociates the prior signing secret'
   );
 
-  await page.getByLabel('Model', { exact: true }).fill('synthetic-model');
+  await page.getByRole('link', { name: /^AI features/ }).click();
+  await expect(page.getByLabel('Redbark API key', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveCount(1);
+  await expect(page.getByLabel('Assistant OpenAI API key', { exact: true })).toHaveCount(0);
   await page.getByLabel('OpenAI API key', { exact: true }).fill(openaiKey);
+  const firstShared = await save('Save AI connection', '/api/settings/ai');
+  assert.equal(firstShared.configured, true);
+  assert.equal(Object.hasOwn(lastWrite('/api/settings/ai'), 'region'), false);
+  assert.equal(Object.hasOwn(lastWrite('/api/settings/ai'), 'model'), false);
+  assert(!JSON.stringify(firstShared).includes(openaiKey));
+  await expect(page.getByLabel('OpenAI API key', { exact: true })).toHaveValue('');
+  await page.getByLabel('Classification model ID', { exact: true }).fill('synthetic-model');
   await page.getByRole('checkbox', { name: 'Enable AI classification', exact: true }).check();
-  const firstProvider = await save('Save provider settings', '/api/settings/provider');
-  assert.equal(Object.hasOwn(lastWrite('/api/settings/provider'), 'region'), false);
+  const firstProvider = await save('Save classification settings', '/api/settings/provider');
   assert.equal(firstProvider.configured, true);
   assert.equal(firstProvider.enabled, true);
   assert.equal(firstProvider.autoClassify, false);
-  assert(!JSON.stringify(firstProvider).includes(openaiKey));
-  assert.equal((await settings.getProviderConfig()).llmEnabled, true);
-  assert.equal((await settings.getProviderConfig()).llmAutoClassify, false);
-  assert.equal(await page.getByLabel('OpenAI API key', { exact: true }).inputValue(), '');
+  await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant-model');
+  await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
+  await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
+  await page.getByRole('checkbox', { name: 'Enable the household assistant', exact: true }).check();
+  await save('Save assistant settings', '/api/settings/assistant');
+  for (const path of ['/api/settings/provider', '/api/settings/assistant']) {
+    for (const field of ['provider', 'region', 'apiKey', 'accessKeyId', 'secretAccessKey']) {
+      assert.equal(Object.hasOwn(lastWrite(path), field), false, `Feature write excludes ${field}`);
+    }
+
+    assert.equal(lastWrite(path).aiRevision, firstShared.discoveryRevision);
+  }
+
+  assert.equal((await settings.getProviderConfig()).llmApiKey, openaiKey);
+  assert.equal((await assistantSettings.getRuntimeConfig()).llmApiKey, openaiKey);
   proof(
-    'Fresh first OpenAI browser save succeeds against the real schema with no region; on-demand-only settings persist'
+    'One OpenAI credential config powers separately selected and enabled classification and assistant models; feature writes contain no credentials'
   );
 
   await page
-    .getByRole('checkbox', {
-      name: 'Automatically suggest categories for unresolved imports',
-      exact: true
-    })
+    .getByRole('checkbox', { name: 'Automatically suggest categories for unresolved imports', exact: true })
     .check();
-  await page
-    .getByRole('checkbox', {
-      name: 'Automatically apply validated category suggestions',
-      exact: true
-    })
-    .check();
+  await page.getByRole('checkbox', { name: 'Automatically apply validated category suggestions', exact: true }).check();
   await page.getByLabel('Requests per UTC day', { exact: true }).fill('30');
   await page.getByLabel('Maximum import batch', { exact: true }).fill('6');
-  await save('Save provider settings', '/api/settings/provider');
+  await save('Save classification settings', '/api/settings/provider');
   const automatic = await api('/api/settings/provider');
   assert.equal(automatic.autoClassify, true);
   assert.equal(automatic.autoApply, true);
   assert.equal(automatic.dailyRequestLimit, 30);
   assert.equal(automatic.batchSize, 6);
-  assert.equal(Object.hasOwn(lastWrite('/api/settings/provider'), 'apiKey'), false);
-  assert.equal((await settings.getProviderConfig()).llmApiKey, openaiKey);
   await page.getByRole('checkbox', { name: 'Enable AI classification', exact: true }).uncheck();
-  await save('Save provider settings', '/api/settings/provider');
+  await save('Save classification settings', '/api/settings/provider');
   const disabled = await api('/api/settings/provider');
   assert.equal(disabled.enabled, false);
-  assert.equal(disabled.autoClassify, true, 'automatic preference stays independent');
+  assert.equal(disabled.autoClassify, true);
   assert.equal(disabled.autoApply, true);
-  assert.equal((await settings.getProviderConfig()).llmEnabled, false);
+  assert.equal((await assistantSettings.getRuntimeConfig()).llmEnabled, true);
   await assert.rejects(classification.suggest(transaction.id), /disabled/);
   await classification.tick();
   proof(
-    'Independent master/automatic/apply flags and numeric limits persist; disabling master blocks actual classification while preserving preferences'
+    'Classification master, automatic/apply flags and limits remain independent; disabling classification leaves assistant enabled'
   );
 
-  await page.getByLabel('Provider', { exact: true }).selectOption('bedrock');
+  await page.getByLabel('AI provider', { exact: true }).selectOption('bedrock');
   await page.getByLabel('AWS region', { exact: true }).selectOption('ap-southeast-2');
   await page.getByLabel('AWS access key ID', { exact: true }).fill('AKIASYNTHETICONLY0000');
   await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-bedrock-secret-key');
-  await save('Save provider settings', '/api/settings/provider');
+  await save('Save AI connection', '/api/settings/ai');
   const bedrockChoices = page.getByLabel('Available classification Bedrock models', { exact: true });
+  const assistantChoices = page.getByLabel('Available assistant Bedrock models', { exact: true });
   await expect(bedrockChoices).toBeEnabled();
-  assert.equal(bedrockDiscoveryCalls, 2, 'Saving credentials automatically calls both read-only catalog APIs');
-  assert.equal((await settings.getProviderConfig()).llmModel, '', 'No model ID needed before credentials save');
-  assert.equal(
-    (await settings.getProviderConfig()).llmEnabled,
-    false,
-    'Credentials-first save never enables inference'
-  );
+  await expect(assistantChoices).toBeEnabled();
+  assert.equal(bedrockDiscoveryCalls, 2, 'One shared request calls the two read-only Bedrock APIs once');
+  for (const state of [await settings.getProviderConfig(), await assistantSettings.getRuntimeConfig()]) {
+    assert.equal(state.llmModel, '', 'Provider switch clears both incompatible model IDs');
+    assert.equal(state.llmEnabled, false, 'Provider switch pauses both features');
+    assert.equal(state.llmAccessKeyId, 'AKIASYNTHETICONLY0000');
+  }
+
   await bedrockChoices.selectOption('synthetic.bedrock-model');
-  assert.equal(
-    (await settings.getProviderConfig()).llmModel,
-    '',
-    'Selecting a model does not silently save or enable it'
-  );
-  assert.equal((await settings.getProviderConfig()).llmProvider, 'bedrock');
-  assert.equal((await settings.getProviderConfig()).llmRegion, 'ap-southeast-2');
-  assert.equal((await settings.getProviderConfig()).llmEnabled, false);
-  assert.equal(await page.getByLabel('AWS secret access key', { exact: true }).inputValue(), '');
-  await page.getByLabel('Provider', { exact: true }).selectOption('openai');
-  await page.getByLabel('Model', { exact: true }).fill('synthetic-model');
+  await save('Save classification settings', '/api/settings/provider');
+  await assistantChoices.selectOption('synthetic.bedrock-model');
+  await save('Save assistant settings', '/api/settings/assistant');
+  assert.equal(bedrockDiscoveryCalls, 2, 'Separate model saves never reload unchanged shared catalog');
   await page.getByRole('checkbox', { name: 'Enable AI classification', exact: true }).check();
-  await page
-    .getByRole('checkbox', {
-      name: 'Automatically suggest categories for unresolved imports',
-      exact: true
-    })
-    .uncheck();
-  await page
-    .getByRole('checkbox', {
-      name: 'Automatically apply validated category suggestions',
-      exact: true
-    })
-    .uncheck();
-  await save('Save provider settings', '/api/settings/provider');
-  assert.equal((await settings.getProviderConfig()).llmApiKey, openaiKey);
-  assert.equal((await settings.getProviderConfig()).llmEnabled, true);
-  assert.equal((await api('/api/settings/provider')).credentials.accessKeyId.configured, false);
+  await save('Save classification settings', '/api/settings/provider');
+  await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
+  await page.getByRole('checkbox', { name: 'Enable the household assistant', exact: true }).check();
+  await save('Save assistant settings', '/api/settings/assistant');
+  await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-rotated-shared-secret');
+  await save('Save AI connection', '/api/settings/ai');
+  await expect(bedrockChoices).toBeEnabled();
+  for (const path of ['/api/settings/provider', '/api/settings/assistant']) {
+    const state = await api(path);
+    assert.equal(state.enabled, false, 'Credential rotation pauses both features');
+    assert.equal(state.model, 'synthetic.bedrock-model', 'Credential rotation retains separate model selection');
+  }
+
+  assert.equal((await api('/api/settings/provider')).dailyRequestLimit, 30);
   proof(
-    'Bedrock Save stores credentials without a model and automatically loads the mocked catalog; selection stays disabled and switching back preserves the original OpenAI key'
+    'Shared Bedrock keys populate both pickers once, provider changes clear both models, and credential changes pause both while retaining models and limits'
   );
 
+  // Dirty feature drafts keep the revision they were edited against. A shared
+  // save must never silently rebase and re-enable an old draft.
+  await page.getByLabel('Requests per UTC day', { exact: true }).fill('41');
+  await page.getByLabel('AWS region', { exact: true }).selectOption('us-east-1');
+  await save('Save AI connection', '/api/settings/ai');
+  await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('41');
+  await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeDisabled();
+  const classificationSection = page
+    .locator('.integration-settings')
+    .filter({ has: page.getByRole('heading', { name: 'Optional AI classification', exact: true }) });
+  page.once('dialog', (dialog) => dialog.accept());
+  await classificationSection.getByRole('button', { name: /Reload.*saved/i }).click();
+  await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('30');
+  await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeEnabled();
+  proof('Dirty feature draft survives shared changes but cannot save until an explicit saved-state reload');
+
+  await page.getByRole('link', { name: /^Notifications/ }).click();
   await expect(page.getByText('The saved SMTP connection cannot be decrypted.', { exact: false })).toBeVisible();
   await expect(page.getByText('The saved Telegram token cannot be decrypted.', { exact: false })).toBeVisible();
-  await expect(page.getByText('Saved credentials cannot be decrypted.', { exact: false })).toBeVisible();
   await expect(page.getByLabel('SMTP connection URL', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('Telegram bot token', { exact: true })).toHaveValue('');
   const unavailableNotifications = await api('/api/settings/notifications');
@@ -513,52 +532,16 @@ try {
     'Compiled Settings shows retired-envelope warnings with empty secret fields; explicit SMTP/Telegram replacement removes warnings without external sends, while SimpleFIN retains its recovery limitation'
   );
 
-  await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant-model');
-  await page.getByLabel('Assistant OpenAI API key', { exact: true }).fill('synthetic-assistant-key');
-  await save('Save assistant settings', '/api/settings/assistant');
-  assert.equal(Object.hasOwn(lastWrite('/api/settings/assistant'), 'region'), false);
-  assert.equal((await assistantSettings.getPublic()).configured, true);
-  assert.equal(await page.getByLabel('Assistant OpenAI API key', { exact: true }).inputValue(), '');
-  proof('Fresh assistant OpenAI save succeeds independently against the real schema');
-
-  await page.getByLabel('Assistant provider', { exact: true }).selectOption('bedrock');
-  await page.getByLabel('Assistant AWS region', { exact: true }).selectOption('ap-southeast-2');
-  await page.getByLabel('Assistant AWS access key ID', { exact: true }).fill('AKIASYNTHETICASSISTANT');
-  await page.getByLabel('Assistant AWS secret access key', { exact: true }).fill('synthetic-assistant-bedrock-key');
-  await save('Save assistant settings', '/api/settings/assistant');
-  const assistantChoices = page.getByLabel('Available assistant Bedrock models', { exact: true });
-  await expect(assistantChoices).toBeEnabled();
-  assert.equal((await assistantSettings.getRuntimeConfig()).llmModel, '');
-  assert.equal((await assistantSettings.getRuntimeConfig()).llmEnabled, false);
-  assert.equal((await assistantSettings.getRuntimeConfig()).llmAccessKeyId, 'AKIASYNTHETICASSISTANT');
-  await assistantChoices.selectOption('synthetic.bedrock-model');
-  await save('Save assistant settings', '/api/settings/assistant');
-  await expect.poll(() => bedrockDiscoveryCalls).toBe(6);
-  assert.equal((await assistantSettings.getRuntimeConfig()).llmEnabled, false);
-  await page.getByLabel('Assistant provider', { exact: true }).selectOption('openai');
-  await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant-model');
-  await save('Save assistant settings', '/api/settings/assistant');
-  proof(
-    'Separate assistant credentials save without a model and automatically populate the selector without enabling inference'
-  );
-
+  await page.getByRole('link', { name: /^Data/ }).click();
+  await expect(page.getByText('Saved credentials cannot be decrypted.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Import health & history', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Export/ })).toBeVisible();
+  await expect(page.getByLabel('SMTP connection URL', { exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: /^RedBark/ }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Redbark API key', { exact: true })).toBeEnabled();
   assert.equal(await page.getByLabel('Rolling backfill days', { exact: true }).inputValue(), '45');
-  assert.equal(await page.getByLabel('OpenAI API key', { exact: true }).inputValue(), '');
-  await expect(
-    page.getByRole('checkbox', {
-      name: 'Enable AI classification',
-      exact: true
-    })
-  ).toBeChecked();
-  await expect(
-    page.getByRole('checkbox', {
-      name: 'Automatically suggest categories for unresolved imports',
-      exact: true
-    })
-  ).not.toBeChecked();
   await mkdir(screenshots, { recursive: true });
   await page.screenshot({
     path: `${screenshots}/dolphino-database-settings-desktop.png`,
@@ -632,8 +615,14 @@ try {
   await expect(memberPage.getByRole('button', { name: 'Accounts', exact: true })).toBeVisible();
   assert.equal(await memberPage.getByRole('button', { name: 'Settings', exact: true }).count(), 0);
   assert.equal(await memberPage.getByLabel('Redbark API key', { exact: true }).count(), 0);
-  assert.equal(await memberPage.getByRole('button', { name: 'Save provider settings', exact: true }).count(), 0);
-  for (const path of ['/api/settings', '/api/settings/redbark', '/api/settings/provider', '/api/settings/assistant']) {
+  assert.equal(await memberPage.getByRole('button', { name: 'Save classification settings', exact: true }).count(), 0);
+  for (const path of [
+    '/api/settings',
+    '/api/settings/redbark',
+    '/api/settings/ai',
+    '/api/settings/provider',
+    '/api/settings/assistant'
+  ]) {
     assert.equal((await fetch(base + path, { headers: { Cookie: memberCookie } })).status, 403);
     assert.equal((await fetch(base + path)).status, 401);
     if (path !== '/api/settings') {

@@ -1,4 +1,12 @@
-# Historical isolated backup and restore rehearsal — 30 September 2026
+# Restore rehearsal evidence
+
+## Shared AI connection rehearsal — 2 October 2026
+
+The current `scripts/restore-rehearsal.mjs` passed using the actual backup/restore shell scripts on disposable loopback PostgreSQL 17.11: **all 143 rows across 37 public tables** and both complete financial reports matched exactly. The fixture saves one canonical `ai.apiKey` shared by classification and assistant, with separate feature models, enablement, limits and assistant consent. Actual restored `createAiSettings` runtime/public snapshots match their source values; missing and wrong master keys fail both features closed without changing rows. The disabled assistant and its reserved per-user quota survive. No external provider is called. Source/target databases and the dump are removed afterward. See [the detailed current verification](shared-ai-settings-verification.md) for checks, exact totals and reproduction.
+
+The dated record below preserves earlier evidence. Its separate assistant credential and old table counts describe that earlier implementation, not the current shared-connection design.
+
+## Historical isolated backup and restore rehearsal — 30 September 2026
 
 This is a historical rehearsal record. Its credential-decryption results require the matching application version and APP_SECRET. The current version 3 vault rejects version 1/2 backup ciphertext even with its original key; see [upgrade and rollback guidance](upgrading.md) and [current cleanup verification](module-cleanup-verification.md).
 

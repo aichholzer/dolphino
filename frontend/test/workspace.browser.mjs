@@ -296,6 +296,7 @@ try {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await page.getByRole('button', { name: 'Save Redbark settings', exact: true }).click();
       await expect.poll(() => !!heldSettings).toBe(true);
+      page.once('dialog', (dialog) => dialog.accept());
       await page.getByRole('button', { name: 'Accounts', exact: true }).click();
       await page.getByRole('heading', { name: priorAccount.name, exact: true }).waitFor();
       await heldSettings.fulfill({ json: { message: 'Synthetic settings saved' } });

@@ -286,7 +286,8 @@ export function createAssistant({
               system: SYSTEM,
               messages: history,
               tools,
-              signal: controller.signal
+              signal: controller.signal,
+              assertConfiguration: guard
             })
           );
           await guard();

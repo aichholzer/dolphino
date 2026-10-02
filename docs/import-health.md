@@ -1,6 +1,6 @@
 # Import health and bounded backfill
 
-Settings shows import status, account freshness, the last recorded fetch coverage window, canonical transaction counts, and the latest 30 durable jobs. Coverage describes the latest successful fetch, not a claim of complete account history or balance reconciliation. A backfill's older window can become the latest coverage window; regular reconciliation returns to its configured recent window on the next poll. All accounts continue syncing.
+**Settings → Data** shows import status, account freshness, the last recorded fetch coverage window, canonical transaction counts, and the latest 30 durable jobs. Coverage describes the latest successful fetch, not a claim of complete account history or balance reconciliation. A backfill's older window can become the latest coverage window; regular reconciliation returns to its configured recent window on the next poll. All accounts continue syncing.
 
 After a successful live Redbark connection test and initial account discovery, select an imported account and explicit start/end dates for a historical import. The interval must be valid, ordered, no more than 2555 days, and cannot end in the future. The backend discovers accounts again and fetches only that account over the selected dates using the existing pagination and truncated-window splitting logic. No event-provided arbitrary URL is fetched. These are queued imports, not guaranteed instant fresh bank activity.
 

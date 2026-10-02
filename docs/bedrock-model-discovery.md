@@ -1,4 +1,6 @@
-# Bedrock model discovery verification
+# Historical Bedrock model discovery verification
+
+**Historical scope:** this record predates the shared-AI settings change. Descriptions of independent classification/assistant credentials and per-form discovery describe that earlier implementation, not current behavior. Current production uses one shared connection, separate feature controls and one model catalog; see [shared AI settings](ai-settings.md) and [its verification record](shared-ai-settings-verification.md). The original dated evidence and counts below are preserved, not claimed as new runs.
 
 Verified 2026-10-01 against the published `8bffb34b64e6e531b4cc40fa583ae320b50d6a5f` source baseline, using synthetic AWS responses, disposable PostgreSQL 17.11, and headless Chromium. No live AWS account, customer credentials, model invocation, production database or deployed application was accessed.
 

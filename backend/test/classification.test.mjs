@@ -160,7 +160,7 @@ test(
 );
 
 test(
-  'runtime settings load outside held clients and credential changes get fresh fingerprints',
+  'runtime settings reuse held clients safely and credential changes get fresh fingerprints',
   { skip: !database },
   async () => {
     const admin = new pg.Pool(database);
@@ -185,8 +185,8 @@ test(
       pool,
       store,
       config: { mode: 'demo' },
-      getProviderConfig: async () => {
-        await pool.query('SELECT 1');
+      getProviderConfig: async (client = pool) => {
+        await client.query('SELECT 1');
         return { ...current };
       },
       fetchImpl: async () => {

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { Store } from '../src/lib/store.mjs';
-import { createSettingsStore } from '../src/lib/settings.mjs';
+import { sharedAiSettings } from './helpers/shared-ai.mjs';
 import { createApp } from '../src/app.mjs';
 import { createHouseholdAuth } from '../src/lib/household-auth.mjs';
 
@@ -37,12 +37,13 @@ test(
     };
     const store = new Store(pool, { mode: 'live' });
     await store.migrate();
-    const settings = createSettingsStore({
+    const { settings, aiSettings } = sharedAiSettings({
       pool,
       appSecret: randomBytes(32).toString('base64'),
       envConfig: config
     });
     await settings.init();
+    await aiSettings.init();
     let modelCalls = 0,
       listCalls = 0;
     const auth = createHouseholdAuth({ pool, config });
@@ -61,6 +62,7 @@ test(
       store,
       config,
       settings,
+      aiSettings,
       integration: { status: async () => ({ configured: false }) },
       registration: { status: async () => ({ state: 'not_registered' }) },
       providerDependencies: {
@@ -114,19 +116,25 @@ test(
     assert.equal(fresh.enabled, false);
     assert.equal(fresh.autoClassify, false);
     assert.equal(fresh.configured, false);
+    const secret = 'synthetic-secret-never-return';
+    const shared = await (await req('/api/settings/ai')).json();
+    const credentials = { provider: 'openai', apiKey: secret, revision: shared.discoveryRevision };
+    assert.equal((await req('/api/settings/ai', 'PUT', credentials, 'https://wrong.test')).status, 403);
+    const providerSave = await req('/api/settings/ai', 'PUT', credentials);
+    assert.equal(providerSave.status, 200);
+    const providerState = await providerSave.json();
     const value = {
-      provider: 'openai',
-      region: '',
+      aiRevision: providerState.discoveryRevision,
       autoClassify: false,
       model: 'synthetic-model',
-      apiKey: 'synthetic-secret-never-return',
       enabled: false
     };
+    assert.equal((await req('/api/settings/provider', 'PUT', { ...value, apiKey: secret })).status, 400);
     assert.equal((await req('/api/settings/provider', 'PUT', value, 'https://wrong.test')).status, 403);
     const saved = await req('/api/settings/provider', 'PUT', value);
     assert.equal(saved.status, 200);
     const savedState = await saved.json();
-    assert(!JSON.stringify(savedState).includes(value.apiKey));
+    assert(!JSON.stringify(savedState).includes(secret));
     assert.equal(Object.hasOwn(savedState, 'region'), false);
     assert.equal(savedState.autoClassify, false);
     assert.equal((await req('/api/settings/provider/test-connection', 'POST', {})).status, 200);
@@ -144,6 +152,6 @@ test(
     }
 
     assert.equal((await req('/api/settings/provider/test-connection', 'POST', {})).status, 429);
-    assert(!JSON.stringify(await (await req('/api/settings/provider')).json()).includes(value.apiKey));
+    assert(!JSON.stringify(await (await req('/api/settings/provider')).json()).includes(secret));
   }
 );

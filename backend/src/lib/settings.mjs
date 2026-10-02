@@ -313,8 +313,8 @@ export function createSettingsStore({
     return publicState;
   }
 
-  async function getProviderConfig() {
-    return (await getProviderSnapshot()).config;
+  async function getProviderConfig(client = pool) {
+    return (await getProviderSnapshot(client)).config;
   }
 
   async function rotateSecrets(newSecret) {

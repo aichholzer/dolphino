@@ -1784,6 +1784,7 @@ label select {
   min-width: 0;
 }
 .integration-settings input[type='checkbox'] {
+  flex-shrink: 0;
   width: 15px;
   height: 15px;
 }
@@ -3018,4 +3019,92 @@ label {
 }
 .simplefin-account form {
   width: 100%;
+}
+
+/* Settings mounts one section at a time; navigation stays visible on wide screens. */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: sticky;
+  top: 24px;
+}
+.settings-nav a {
+  padding: 12px 14px;
+  border-radius: 9px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.settings-nav a span {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+}
+.settings-nav a small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.settings-nav a:hover,
+.settings-nav a[aria-current='page'] {
+  background: var(--ocean-soft);
+  border-color: var(--ocean-mid);
+  color: var(--ocean);
+}
+.settings-nav a:focus-visible {
+  outline: 2px solid var(--ocean);
+  outline-offset: 2px;
+}
+.settings-content {
+  min-width: 0;
+}
+.settings-section-heading {
+  margin-bottom: 20px;
+}
+.settings-section-heading h2 {
+  margin: 0 0 5px;
+  font-size: 20px;
+}
+.settings-section-heading h2:focus {
+  outline: none;
+}
+.settings-section-heading p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+.integration-settings fieldset {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.integration-settings fieldset:disabled {
+  opacity: 0.75;
+}
+@media (max-width: 1050px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .settings-nav {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+  .settings-nav a {
+    padding: 10px 12px;
+  }
+  .settings-nav a small {
+    display: none;
+  }
 }

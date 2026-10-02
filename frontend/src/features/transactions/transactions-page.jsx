@@ -33,8 +33,10 @@ export function TransactionsPage({
     <section className="card transactions-card">
       <p className="footnote" style={{ padding: '16px 20px 0' }}>
         History includes records already imported into dolphino. For older provider records, use{' '}
-        <button type="button" onClick={() => navigate('Settings')}>
-          {isAdmin ? 'Settings → Import health & history → backfill' : 'Ask your administrator to import more history'}
+        <button type="button" onClick={() => navigate('Settings', 'data')}>
+          {isAdmin
+            ? 'Settings → Data → Import health & history → backfill'
+            : 'Ask your administrator to import more history'}
         </button>
         .
       </p>

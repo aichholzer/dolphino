@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useBedrockModels } from '../hooks/use-bedrock-models.mjs';
 import { Button } from './ui/button';
 
 const kinds = {
@@ -8,8 +7,6 @@ const kinds = {
   'application-profile': 'Application inference profile'
 };
 export function BedrockModelPicker({
-  api,
-  endpoint,
   saved,
   provider,
   region,
@@ -21,7 +18,8 @@ export function BedrockModelPicker({
   purpose,
   busy,
   disabled = false,
-  demo
+  demo,
+  discovery
 }) {
   const [search, setSearch] = useState('');
   const dirty = credentialsDirty || clearsDirty || saved?.provider !== provider || saved?.region !== region;
@@ -34,12 +32,7 @@ export function BedrockModelPicker({
     /^[a-f0-9]{64}$/i.test(saved?.discoveryRevision || '');
   const unavailable = dirty || !credentialsReady || !region || provider !== 'bedrock';
   const blocked = unavailable || busy || disabled || demo;
-  const { key, catalog, loading, error, retry } = useBedrockModels({
-    api,
-    endpoint,
-    saved,
-    eligible: !unavailable && !disabled && !demo
-  });
+  const { key, catalog, loading, error, retry } = discovery;
   useEffect(() => setSearch(''), [key]);
   const query = search.trim().toLowerCase();
   const matches = (catalog?.models || []).filter((item) =>
@@ -53,9 +46,9 @@ export function BedrockModelPicker({
   return (
     <div className="bedrock-model-picker">
       <p className="footnote">
-        Enter your AWS keys and region, then save settings to automatically load models. Saved credentials also load
-        models when you reopen Settings. You can save without a model; the provider stays disabled until you choose one
-        and explicitly enable it. Loading does not invoke a model or incur inference charges.
+        Save the shared AWS credentials and region above to automatically load models for both features. Saved
+        credentials also load models when you reopen AI features. Choose a model and explicitly enable each feature.
+        Loading does not invoke a model or incur inference charges.
       </p>
       {loading && (
         <p role="status" className="footnote">
@@ -66,7 +59,7 @@ export function BedrockModelPicker({
         <p className="footnote">Model discovery is unavailable in the fictional demo.</p>
       ) : unavailable ? (
         <p className="footnote">
-          Save your AWS access and secret keys and region below. Choices load automatically after saving usable
+          Save the shared AWS access and secret keys and region above. Choices load automatically after saving usable
           credentials.
         </p>
       ) : null}

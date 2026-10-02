@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { createHouseholdAuth, hashHouseholdPassword } from '../backend/src/lib/household-auth.mjs';
 import { createUserManagement } from '../backend/src/lib/users.mjs';
 import { ensureAccessSchema } from '../backend/src/lib/access.mjs';
-import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createAiSettings } from '../backend/src/lib/ai-settings.mjs';
 import { createAssistantUsage } from '../backend/src/lib/assistant-usage.mjs';
 import { createSettingsStore } from '../backend/src/lib/settings.mjs';
 import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
@@ -129,19 +129,51 @@ try {
     }
   );
   const authRequest = { headers: { cookie: bootstrap.cookie.split(';')[0] } };
-  const assistantSettings = createAssistantSettings({
-    pool: srcPool,
-    appSecret: syntheticMasterKey
-  });
-  await assistantSettings.init();
-  await assistantSettings.save({
+  const ai = createAiSettings({ pool: srcPool, settings, appSecret: syntheticMasterKey });
+  await ai.init();
+  await ai.save({
+    revision: (await ai.getPublic()).discoveryRevision,
     provider: 'openai',
+    apiKey: 'synthetic-shared-ai-rehearsal-key'
+  });
+  const aiRevision = (await ai.getPublic()).discoveryRevision;
+  await ai.classification.saveProvider({
+    aiRevision,
+    model: 'synthetic-classification-model',
+    enabled: true,
+    autoClassify: false,
+    autoApply: false,
+    dailyRequestLimit: 7,
+    batchSize: 3
+  });
+  await ai.assistant.save({
+    aiRevision,
     model: 'synthetic-assistant-model',
     enabled: false,
     dataSharingAcknowledged: false,
-    apiKey: 'synthetic-assistant-rehearsal-key',
-    dailyRequestsPerUser: 3
+    dailyRequestsPerUser: 3,
+    maxToolCalls: 2,
+    maxRounds: 2,
+    maxOutputTokens: 512
   });
+  const beforeAiPublic = await ai.getPublic();
+  const beforeClassification = await ai.classification.getProviderSnapshot();
+  const beforeAssistant = await ai.assistant.getProviderSnapshot();
+  const aiCredentialRows = (
+    await srcPool.query("SELECT setting,provider FROM encrypted_credentials WHERE setting LIKE 'ai.%' ORDER BY setting")
+  ).rows;
+  assert.deepEqual(aiCredentialRows, [{ setting: 'ai.apiKey', provider: 'openai' }]);
+  assert.equal(
+    (
+      await srcPool.query(
+        "SELECT count(*)::int count FROM encrypted_credentials WHERE setting LIKE 'llm.%' OR setting LIKE 'assistant.llm.%'"
+      )
+    ).rows[0].count,
+    0,
+    'Only the canonical shared credential is active'
+  );
+  assert.equal(await settings.getValue('llm'), null);
+  assert.equal(await settings.getValue('assistant.llm'), null);
   const assistantUsage = createAssistantUsage({ pool: srcPool });
   await assistantUsage.init();
   await assistantUsage.reserveRequest({ userId: bootstrap.user.id, limit: 3 });
@@ -168,16 +200,6 @@ try {
     grantedBudget.id
   ]);
 
-  await settings.saveProvider({
-    provider: 'openai',
-    model: 'synthetic-rehearsal',
-    enabled: true,
-    autoClassify: false,
-    autoApply: false,
-    dailyRequestLimit: 7,
-    batchSize: 3,
-    apiKey: 'synthetic-backup-key'
-  });
   const redbarkSettings = createRedbarkSettings({
     pool: srcPool,
     settings,
@@ -341,13 +363,52 @@ try {
   const dstPool = connect(target);
   const restored = new Store(dstPool, { mode: 'demo' });
 
-  const restoredAssistantSettings = createAssistantSettings({
-    pool: dstPool,
-    appSecret: syntheticMasterKey
-  });
-  assert.equal((await restoredAssistantSettings.getRuntimeConfig()).llmApiKey, 'synthetic-assistant-rehearsal-key');
-  assert.equal((await restoredAssistantSettings.getRuntimeConfig()).assistantEnabled, false);
-  assert.equal((await createAssistantSettings({ pool: dstPool }).getRuntimeConfig()).llmApiKey, '');
+  const restoredSettings = createSettingsStore({ pool: dstPool, appSecret: syntheticMasterKey });
+  const restoredAi = createAiSettings({ pool: dstPool, settings: restoredSettings, appSecret: syntheticMasterKey });
+  await restoredAi.init();
+  const restoredClassification = await restoredAi.classification.getProviderSnapshot();
+  const restoredAssistant = await restoredAi.assistant.getProviderSnapshot();
+  assert.deepEqual(await restoredAi.getPublic(), beforeAiPublic, 'Shared connection metadata and revision survive');
+  assert.deepEqual(restoredClassification.publicState, beforeClassification.publicState);
+  assert.deepEqual(restoredAssistant.publicState, beforeAssistant.publicState);
+  assert.deepEqual(restoredClassification.config, beforeClassification.config);
+  assert.deepEqual(restoredAssistant.config, beforeAssistant.config);
+  assert.equal(restoredClassification.config.llmApiKey, 'synthetic-shared-ai-rehearsal-key');
+  assert.equal(restoredAssistant.config.llmApiKey, restoredClassification.config.llmApiKey);
+  assert.equal(restoredClassification.config.llmModel, 'synthetic-classification-model');
+  assert.equal(restoredClassification.config.llmEnabled, true);
+  assert.equal(restoredClassification.config.llmAutoClassify, false);
+  assert.equal(restoredClassification.config.llmAutoApply, false);
+  assert.equal(restoredClassification.config.llmDailyRequestLimit, 7);
+  assert.equal(restoredClassification.config.llmBatchSize, 3);
+  assert.equal(restoredAssistant.config.llmModel, 'synthetic-assistant-model');
+  assert.equal(restoredAssistant.config.assistantEnabled, false);
+  assert.equal(restoredAssistant.config.assistantDataSharingAcknowledged, false);
+  assert.equal(restoredAssistant.config.assistantDailyRequestLimit, 3);
+  assert.equal(restoredAssistant.config.assistantMaxToolCalls, 2);
+  assert.equal(restoredAssistant.config.assistantMaxRounds, 2);
+  assert.equal(restoredAssistant.config.assistantMaxOutputTokens, 512);
+  assert.ok(
+    !JSON.stringify([restoredClassification.publicState, restoredAssistant.publicState]).includes('synthetic-shared-ai')
+  );
+  for (const appSecret of [undefined, randomBytes(32).toString('base64')]) {
+    const unavailableAi = createAiSettings({
+      pool: dstPool,
+      settings: createSettingsStore({ pool: dstPool, appSecret }),
+      appSecret
+    });
+    await unavailableAi.init();
+    for (const feature of [unavailableAi.classification, unavailableAi.assistant]) {
+      const unavailable = await feature.getProviderSnapshot();
+      assert.equal(unavailable.config.llmApiKey, '');
+      assert.equal(unavailable.config.llmEnabled, false);
+      assert.equal(unavailable.config.llmCredentialsUnavailable, true);
+      assert.equal(unavailable.publicState.credentials.apiKey.configured, true);
+      assert.equal(unavailable.publicState.credentials.apiKey.unreadable, true);
+      assert.equal(unavailable.publicState.credentialsAvailable, false);
+    }
+  }
+
   assert.equal(
     (await dstPool.query('SELECT requests FROM assistant_usage WHERE user_id=$1', [bootstrap.user.id])).rows[0]
       .requests,
@@ -376,17 +437,6 @@ try {
     'edit'
   );
 
-  const restoredSettings = createSettingsStore({
-    pool: dstPool,
-    appSecret: syntheticMasterKey
-  });
-  assert.equal((await restoredSettings.getProviderConfig()).llmApiKey, 'synthetic-backup-key');
-  const restoredClassification = await restoredSettings.getProviderConfig();
-  assert.equal(restoredClassification.llmEnabled, true);
-  assert.equal(restoredClassification.llmAutoClassify, false);
-  assert.equal(restoredClassification.llmAutoApply, false);
-  assert.equal(restoredClassification.llmDailyRequestLimit, 7);
-  assert.equal(restoredClassification.llmBatchSize, 3);
   const restoredSimplefin = createSimplefinIntegration({
     pool: dstPool,
     store,
@@ -436,7 +486,6 @@ try {
   );
   assert.equal((await restored.listAccounts()).find((a) => a.id === firstAccount.id).name, 'Fictional local label');
   const noKeySettings = createSettingsStore({ pool: dstPool });
-  assert.equal((await noKeySettings.getProviderConfig()).llmCredentialsUnavailable, true);
   const noKeyRedbark = await createRedbarkSettings({
     pool: dstPool,
     settings: noKeySettings
@@ -476,7 +525,7 @@ try {
         })),
         checks: [
           'SimpleFIN encrypted Access URL, source ownership, claim replay hashes, queued retry windows and immutable raw evidence survive without network calls',
-          'Independent encrypted assistant credentials and durable per-user quota restore without any provider request',
+          'One shared encrypted AI credential restores into both runtime snapshots with distinct feature models, limits, enablement and assistant consent; durable per-user quota survives',
           'Database-backed Redbark API/signing keys, account binding, version and backfill settings restore without network calls',
           'Classification enablement and independent automatic-classification switch, apply consent, daily limit and batch size survive',
           'Household users, hashed sessions, hashed invitations, closed bootstrap and independent resource grants survive',
@@ -489,7 +538,7 @@ try {
           'Backfill job parameters/retry state and account local labels survive',
           'Synthetic SMTP and Telegram encrypted credentials restore without sending',
           'Encrypted provider and signing credentials restore with separately retained master key',
-          'Missing master key fails credential access closed after restore'
+          'Missing and wrong master keys fail shared AI credential access closed while exact restored rows and financial reports remain unchanged'
         ]
       },
       null,

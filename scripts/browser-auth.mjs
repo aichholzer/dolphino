@@ -103,6 +103,14 @@ await page.route('**/api/**', async (route) => {
       ],
       invitations: []
     };
+  } else if (path === '/api/settings/redbark') {
+    data = {
+      version: '2026-10-01.wattle',
+      backfillDays: 90,
+      encryptionAvailable: true,
+      credentialsAvailable: true,
+      credentials: {}
+    };
   } else if (path === '/api/settings/notifications') {
     data = { smtp: {}, telegram: {} };
   } else if (path === '/api/notifications/deliveries') {
@@ -135,6 +143,7 @@ try {
   assert(calls.some((c) => c.path === '/api/auth/bootstrap' && c.body.bootstrapToken === 'synthetic-bootstrap-only'));
   await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: /^Members/ }).click();
   await page.getByLabel('Invitation email address', { exact: true }).fill('member@example.com');
   await page.getByLabel('Invitation account account-one access', { exact: true }).selectOption('view');
   await page.getByRole('button', { name: 'Send invitation email', exact: true }).click();
@@ -209,7 +218,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Edit Synthetic purchase', exact: true }).count(), 0);
   session.permissions.accounts[0].access = 'edit';
   await page.reload();
-  await page.getByText('Total income', { exact: true }).waitFor();
+  await page.getByText('Synthetic purchase', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   await page.getByRole('button', { name: 'Transactions', exact: true }).click();
   const beforeCorrection = calls.length;

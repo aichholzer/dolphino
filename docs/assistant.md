@@ -1,6 +1,6 @@
 # Read-only household assistant
 
-Open the Assistant button to use the right-hand panel. An administrator must first configure its separate provider/model and encrypted credentials in Settings, acknowledge financial-data sharing, and enable it. Classification settings are independent. Each user must acknowledge the disclosure before sending a question. Unconfigured service shows a setup message, never simulated answers.
+Open the Assistant button to use the right-hand panel. An administrator must first save the shared OpenAI or Bedrock connection in **Settings → AI features**, select the assistant model, acknowledge financial-data sharing, and explicitly enable it. Classification uses that same connection while retaining its own model, enablement and limits; it cannot implicitly enable the assistant. Each user must acknowledge the disclosure before sending a question. Unconfigured service shows a setup message, never simulated answers.
 
 The assistant receives no database connection, credentials, SQL executor, arbitrary URL fetcher, or mutation tools. Server-owned read services apply the signed-in user's current grants before retrieving or calculating anything. Administrators have full financial access; members have only explicit account grants and separately granted budget totals. Budget access does not expose underlying transactions. The assistant cannot change finances, settings, membership, send notifications, or browse the web.
 
@@ -20,7 +20,7 @@ Amounts and comparisons are computed by backend integer arithmetic, not by askin
 
 ## Privacy, limits and operations
 
-Chats are private to their owner, including against other administrators through the app. They are held only in this server process for 30 minutes and disappear on restart; ten turns per chat and ten chats per user. Permission revisions invalidate old context even when the same grants are later restored. Provider configuration changes require a new conversation. Do not run multiple app replicas without sticky sessions; conversation persistence is deliberately outside this MVP.
+Chats are private to their owner, including against other administrators through the app. They are held only in this server process for 30 minutes and disappear on restart; ten turns per chat and ten chats per user. Permission revisions invalidate old context even when the same grants are later restored. Shared connection or assistant configuration changes invalidate older context and require a new conversation. Do not run multiple app replicas without sticky sessions; conversation persistence is deliberately outside this MVP.
 
 Retrieved authorized financial data and the user's question are sent to the chosen provider. OpenAI uses Responses with `store:false`, which is not a zero-retention guarantee. Bedrock retention depends on the model/region and AWS logging configuration. No silent provider fallback is used. See [provider contracts and privacy](providers.md).
 

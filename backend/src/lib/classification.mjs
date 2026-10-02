@@ -21,11 +21,11 @@ export function createClassificationIntegration({
     }
   }
 
-  async function runtimeConfig() {
+  async function runtimeConfig(client) {
     // Resolve encrypted settings before taking a dedicated pool connection.
     return {
       ...disabledProviderConfig,
-      ...(await getProviderConfig()),
+      ...(await getProviderConfig(client)),
       mode: baseConfig.mode
     };
   }
@@ -52,6 +52,7 @@ export function createClassificationIntegration({
           region: config.llmRegion,
           endpoint: config.llmBaseUrl,
           model: config.llmModel,
+          configurationRevision: config.llmRevision,
           credentialFingerprint: createHash('sha256')
             .update(
               JSON.stringify([config.llmApiKey || '', config.llmAccessKeyId || '', config.llmSecretAccessKey || ''])
@@ -139,25 +140,63 @@ export function createClassificationIntegration({
         [id]
       );
       let retryAfterSeconds = 0;
+      let transaction = false;
+      const configurationFingerprint = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+      const originalConfiguration = configurationFingerprint(config);
+      const configurationCurrent = async () =>
+        originalConfiguration === configurationFingerprint(await runtimeConfig(c));
+      const discardChanged = () =>
+        c.query(
+          "UPDATE classification_jobs SET status='failed',error_code='configuration_changed',result=NULL,updated_at=now() WHERE id=$1",
+          [id]
+        );
       try {
-        const result = await suggestCategory(current.tx, current.categories, config, async (...args) => {
-          const response = await fetchImpl(...args);
-          const header = response.headers?.get('retry-after');
-          if (header && !response.ok) {
-            const seconds = /^\d+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header) - Date.now()) / 1000);
-            if (Number.isFinite(seconds) && seconds > 0) {
-              retryAfterSeconds = Math.min(seconds, 604800);
-            }
-          }
+        if (!(await configurationCurrent())) {
+          await discardChanged();
+          return;
+        }
 
-          return response;
+        const result = await suggestCategory(current.tx, current.categories, config, {
+          assertConfiguration: async () => {
+            if (!(await configurationCurrent())) {
+              throw error('AI settings changed before provider dispatch', 409);
+            }
+          },
+          fetchImpl: async (...args) => {
+            const response = await fetchImpl(...args);
+            const header = response.headers?.get('retry-after');
+            if (header && !response.ok) {
+              const seconds = /^\d+$/.test(header)
+                ? Number(header)
+                : Math.ceil((Date.parse(header) - Date.now()) / 1000);
+              if (Number.isFinite(seconds) && seconds > 0) {
+                retryAfterSeconds = Math.min(seconds, 604800);
+              }
+            }
+
+            return response;
+          }
         });
+        // Serialize the final revision check and result application with every
+        // shared credential/feature save. A changed connection cannot apply an
+        // answer or expose a cached result produced using its previous identity.
+        await c.query('BEGIN');
+        transaction = true;
+        await c.query('SELECT pg_advisory_xact_lock(17092381)');
+        if (!(await configurationCurrent())) {
+          await discardChanged();
+          await c.query('COMMIT');
+          transaction = false;
+          return;
+        }
+
         if (job.origin === 'automatic' && config.llmAutoApply && result.category !== 'Uncategorized') {
           const { applied } = await store.acceptAutomaticClassification(
             job.transaction_id,
             result.category,
             current.tx,
-            c
+            c,
+            { inTransaction: true }
           );
           result.requiresReview = !applied;
         }
@@ -166,7 +205,13 @@ export function createClassificationIntegration({
           "UPDATE classification_jobs SET status='succeeded',result=$2,error_code=NULL,updated_at=now() WHERE id=$1",
           [id, result]
         );
+        await c.query('COMMIT');
+        transaction = false;
       } catch {
+        if (transaction) {
+          await c.query('ROLLBACK');
+        }
+
         const attempts = job.attempts + 1;
         await c.query(
           "UPDATE classification_jobs SET status=$2,error_code='provider_unavailable_or_invalid',next_attempt_at=now()+($3 * interval '1 second'),updated_at=now() WHERE id=$1",
@@ -269,6 +314,12 @@ export function createClassificationIntegration({
       await processJob(rows[0].id);
       const job = (await pool.query('SELECT status,result FROM classification_jobs WHERE id=$1', [rows[0].id])).rows[0];
       if (job.status === 'succeeded') {
+        const latest = await runtimeConfig();
+        enabled(latest);
+        if ((await input(id, undefined, latest)).fingerprint !== fingerprint) {
+          throw error('AI settings changed; request a new suggestion', 409);
+        }
+
         return job.result;
       }
 

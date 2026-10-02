@@ -6,20 +6,17 @@ import { BedrockClient, ListFoundationModelsCommand, ListInferenceProfilesComman
 import { Store } from '../src/lib/store.mjs';
 import { createApp } from '../src/app.mjs';
 import { createHouseholdAuth } from '../src/lib/household-auth.mjs';
-import { createSettingsStore } from '../src/lib/settings.mjs';
-import { createAssistantSettings } from '../src/lib/assistant-settings.mjs';
+import { sharedAiSettings } from './helpers/shared-ai.mjs';
 import { readTestPostgresConfig } from './helpers/postgres.mjs';
 
 const database = readTestPostgresConfig();
 const provider = {
   provider: 'bedrock',
-  model: '',
   region: 'ap-southeast-2',
-  enabled: false,
   accessKeyId: 'AKIASYNTHETICCLASSIFIER',
   secretAccessKey: 'synthetic-classifier-secret'
 };
-const assistant = { ...provider, accessKeyId: 'AKIASYNTHETICASSISTANT', secretAccessKey: 'synthetic-assistant-secret' };
+const assistant = provider;
 const fakeResponse = (command) => {
   if (command instanceof ListFoundationModelsCommand) {
     return {
@@ -57,9 +54,10 @@ async function fixture(t) {
   };
   const store = new Store(pool, { mode: 'live' });
   await store.migrate();
-  const settings = createSettingsStore({ pool, appSecret: config.appSecret });
-  const assistantSettings = createAssistantSettings({ pool, appSecret: config.appSecret });
+  const shared = sharedAiSettings({ pool, appSecret: config.appSecret });
+  const { settings, assistantSettings, aiSettings } = shared;
   await settings.init();
+  await aiSettings.init();
   const auth = createHouseholdAuth({ pool, config });
   await auth.init();
   const cookies = {};
@@ -91,7 +89,16 @@ async function fixture(t) {
   });
   const servers = [];
   async function serve(overrides = {}) {
-    const app = createApp({ config, store, settings, assistantSettings, auth, simplefin: null, ...overrides });
+    const app = createApp({
+      config,
+      store,
+      settings,
+      assistantSettings,
+      aiSettings,
+      auth,
+      simplefin: null,
+      ...overrides
+    });
     const server = await new Promise((resolve) => {
       const value = app.start(() => resolve(value));
     });
@@ -129,6 +136,7 @@ async function fixture(t) {
     await adminPool.end();
   });
   return {
+    ...shared,
     pool,
     config,
     settings,
@@ -149,7 +157,7 @@ test(
   options,
   async (t) => {
     const f = await fixture(t);
-    for (const path of ['/api/settings/provider/models', '/api/settings/assistant/models']) {
+    for (const path of ['/api/settings/ai/models', '/api/settings/provider/models', '/api/settings/assistant/models']) {
       assert.equal((await f.request(path, { who: 'anonymous' })).status, 401);
       assert.equal((await f.request(path, { who: 'member' })).status, 403);
       assert.equal((await f.request(path, { origin: null })).status, 403);
@@ -172,35 +180,37 @@ test(
 );
 
 test(
-  'real PostgreSQL/HTTP saves encrypted credentials without model and discovers each separate namespace',
+  'real PostgreSQL/HTTP saves credentials once without a model and both feature aliases discover the same provider',
   options,
   async (t) => {
     const f = await fixture(t);
-    for (const [namespace, input] of [
-      ['provider', provider],
-      ['assistant', assistant]
-    ]) {
-      const saved = await f.request(`/api/settings/${namespace}`, { method: 'PUT', value: input });
-      assert.equal(saved.status, 200);
-      assert.equal(saved.json.configured, false);
-      assert.equal(saved.json.enabled, false);
-      assert.match(saved.json.discoveryRevision, /^[a-f0-9]{64}$/);
-      assert.equal(saved.json.credentials.accessKeyId.configured, true);
+    const current = await f.aiSettings.getPublic();
+    const saved = await f.request('/api/settings/ai', {
+      method: 'PUT',
+      value: { ...provider, revision: current.discoveryRevision }
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json.configured, true);
+    assert.match(saved.json.discoveryRevision, /^[a-f0-9]{64}$/);
+    assert.equal(saved.json.credentials.accessKeyId.configured, true);
+    for (const namespace of ['ai', 'provider', 'assistant']) {
       const found = await f.request(`/api/settings/${namespace}/models`, {
         value: { revision: saved.json.discoveryRevision }
       });
       assert.equal(found.status, 200);
       assert.equal(found.json.revision, saved.json.discoveryRevision);
-      assert.equal(found.json.region, input.region);
+      assert.equal(found.json.region, provider.region);
       assert.equal(found.json.models[0].id, 'provider.synthetic');
       assert.equal(found.json.models[0].compatibility, 'unverified');
-      assert.equal(f.calls.at(-1).credentials.accessKeyId, input.accessKeyId);
-      assert.equal(f.calls.at(-1).credentials.secretAccessKey, input.secretAccessKey);
-      assert.equal(f.calls.at(-1).region, input.region);
+      assert.equal(f.calls.at(-1).credentials.accessKeyId, provider.accessKeyId);
+      assert.equal(f.calls.at(-1).credentials.secretAccessKey, provider.secretAccessKey);
+    }
+
+    for (const namespace of ['provider', 'assistant']) {
       const enabled = await f.request(`/api/settings/${namespace}`, {
         method: 'PUT',
         value: {
-          ...input,
+          aiRevision: saved.json.discoveryRevision,
           model: 'provider.synthetic',
           enabled: true,
           ...(namespace === 'assistant' ? { dataSharingAcknowledged: true } : {})
@@ -211,11 +221,12 @@ test(
       assert.equal(enabled.json.enabled, true);
     }
 
-    const encrypted = JSON.stringify((await f.pool.query('SELECT * FROM encrypted_credentials')).rows);
-    assert(!encrypted.includes(provider.secretAccessKey));
-    assert(!encrypted.includes(assistant.secretAccessKey));
+    assert.equal((await f.aiSettings.getPublic()).discoveryRevision, saved.json.discoveryRevision);
+    const rows = (await f.pool.query('SELECT * FROM encrypted_credentials')).rows;
+    assert.equal(rows.length, 2, 'one shared AWS pair is stored');
+    assert(!JSON.stringify(rows).includes(provider.secretAccessKey));
     assert.equal((await f.settings.getProviderConfig()).llmAccessKeyId, provider.accessKeyId);
-    assert.equal((await f.assistantSettings.getRuntimeConfig()).llmAccessKeyId, assistant.accessKeyId);
+    assert.equal((await f.assistantSettings.getRuntimeConfig()).llmAccessKeyId, provider.accessKeyId);
   }
 );
 
@@ -226,16 +237,16 @@ test('real PostgreSQL/HTTP missing, cleared or undecryptable credentials cannot 
     (await f.request('/api/settings/provider/models', { value: { revision: missing.discoveryRevision } })).status,
     409
   );
-  await f.settings.saveProvider(provider);
-  const wrong = createSettingsStore({ pool: f.pool, appSecret: randomBytes(32).toString('base64') });
-  const wrongRequest = await f.serve({ settings: wrong });
-  const saved = await wrong.getPublicProvider();
+  await f.saveAi(provider);
+  const wrong = sharedAiSettings({ pool: f.pool, appSecret: randomBytes(32).toString('base64') });
+  const wrongRequest = await f.serve(wrong);
+  const saved = await wrong.aiSettings.getPublic();
   assert.equal(saved.credentialsAvailable, false);
   assert.equal(
     (await wrongRequest('/api/settings/provider/models', { value: { revision: saved.discoveryRevision } })).status,
     409
   );
-  const cleared = await f.settings.saveProvider({ ...provider, secretAccessKey: null });
+  const cleared = await f.saveAi({ ...provider, secretAccessKey: null });
   assert.equal(
     (await f.request('/api/settings/provider/models', { value: { revision: cleared.discoveryRevision } })).status,
     409
@@ -244,24 +255,24 @@ test('real PostgreSQL/HTTP missing, cleared or undecryptable credentials cannot 
 });
 
 test(
-  'real PostgreSQL/HTTP rejects stale regions, rotation and same-value saves during successful or failed discovery',
+  'real PostgreSQL/HTTP rejects stale regions and rotation while feature-only saves preserve discovery during successful or failed discovery',
   options,
   async (t) => {
     const f = await fixture(t);
-    const saved = await f.settings.saveProvider(provider);
-    await f.settings.saveProvider({ ...provider, region: 'us-east-1' });
+    const saved = await f.saveAi(provider);
+    await f.saveAi({ ...provider, region: 'us-east-1' });
     assert.equal(
       (await f.request('/api/settings/provider/models', { value: { revision: saved.discoveryRevision } })).status,
       409
     );
     assert.equal(f.calls.length, 0);
     for (const fail of [false, true]) {
-      const current = await f.settings.saveProvider(provider);
+      const current = await f.saveAi(provider);
       let changed = false;
       f.setHook(async (command) => {
         if (!changed) {
           changed = true;
-          await f.settings.saveProvider({ ...provider, secretAccessKey: 'synthetic-rotated-secret' });
+          await f.saveAi({ ...provider, secretAccessKey: 'synthetic-rotated-secret' });
         }
 
         if (fail) {
@@ -277,9 +288,11 @@ test(
       assert.match(found.json.error, /changed while/);
     }
 
-    const first = await f.settings.saveProvider({ ...provider, accessKeyId: undefined, secretAccessKey: undefined });
-    const second = await f.settings.saveProvider({ ...provider, accessKeyId: undefined, secretAccessKey: undefined });
-    assert.notEqual(first.discoveryRevision, second.discoveryRevision);
+    const first = await f.aiSettings.getPublic();
+    await f.saveClassification({ model: 'provider.synthetic', enabled: false });
+    await f.saveAssistant({ model: 'provider.synthetic', enabled: false });
+    const second = await f.aiSettings.getPublic();
+    assert.equal(first.discoveryRevision, second.discoveryRevision);
   }
 );
 
@@ -288,8 +301,7 @@ test(
   options,
   async (t) => {
     const f = await fixture(t);
-    const saved = await f.settings.saveProvider(provider);
-    await f.assistantSettings.save(assistant);
+    const saved = await f.saveAi(provider);
     const other = await f.assistantSettings.getPublic();
     for (let index = 0; index < 5; index++) {
       const namespace = index % 2 ? 'assistant' : 'provider';

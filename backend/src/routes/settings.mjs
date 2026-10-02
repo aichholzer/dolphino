@@ -10,12 +10,60 @@ export function registerSettingsRoutes({
   config,
   integration,
   settings,
+  aiSettings,
   redbarkSettings,
   assistantSettings,
   providerDependencies,
   sensitive
 }) {
-  for (const namespace of ['provider', 'assistant']) {
+  function shared() {
+    if (!aiSettings) {
+      throw Object.assign(Error('Shared AI settings service is unavailable'), { status: 503 });
+    }
+
+    return aiSettings;
+  }
+
+  async function fencedTest(source, action) {
+    const before = await source.getProviderSnapshot();
+    const assertConfiguration = async () => {
+      const after = await source.getProviderSnapshot();
+      if (
+        before.config.llmRevision !== after.config.llmRevision ||
+        before.publicState.discoveryRevision !== after.publicState.discoveryRevision
+      ) {
+        throw Object.assign(Error('AI settings changed during the test. Review your saved settings and try again.'), {
+          status: 409
+        });
+      }
+    };
+
+    let result, error;
+    try {
+      result = await action(before.config, { ...providerDependencies, assertConfiguration });
+    } catch (caught) {
+      error = caught;
+    }
+
+    await assertConfiguration();
+    if (error) {
+      throw error;
+    }
+
+    return result;
+  }
+
+  route('get', '/api/settings/ai', () => shared().getPublic());
+  route('put', '/api/settings/ai', async (req) => {
+    sensitive('save-ai');
+    return shared().save(await body(req));
+  });
+  route('post', '/api/settings/ai/test-connection', async () => {
+    sensitive('provider-test');
+    return fencedTest(shared(), testProviderConnection);
+  });
+
+  for (const namespace of ['ai', 'provider', 'assistant']) {
     route('post', `/api/settings/${namespace}/models`, async (req, res) => {
       sensitive('bedrock-model-discovery');
       const { revision } = z
@@ -32,7 +80,9 @@ export function registerSettingsRoutes({
       req.once('aborted', disconnected);
       res.once('close', disconnected);
       try {
-        const source = namespace === 'provider' ? settings : assistantSettings;
+        const source =
+          aiSettings ??
+          (namespace === 'provider' ? settings : namespace === 'assistant' ? assistantSettings : shared());
         return await discoverSavedBedrockModels(() => source.getProviderSnapshot(), revision, {
           ...providerDependencies,
           signal: cancel.signal
@@ -52,12 +102,12 @@ export function registerSettingsRoutes({
 
   route('put', '/api/settings/assistant', async (req) => {
     sensitive('assistant-settings');
-    return assistantSettings.save(await body(req));
+    return shared().assistant.save(await body(req));
   });
 
   route('post', '/api/settings/assistant/test-connection', async () => {
     sensitive('assistant-connection-test');
-    return testProviderConnection(await assistantSettings.getRuntimeConfig(), providerDependencies);
+    return fencedTest(assistantSettings, testProviderConnection);
   });
 
   route('post', '/api/settings/assistant/test-model', async (req) => {
@@ -65,7 +115,7 @@ export function registerSettingsRoutes({
     z.object({ acknowledgeCost: z.literal(true) })
       .strict()
       .parse(await body(req));
-    return testAssistantModel(await assistantSettings.getRuntimeConfig(), providerDependencies);
+    return fencedTest(assistantSettings, testAssistantModel);
   });
 
   route('get', '/api/settings', async () => ({
@@ -97,12 +147,12 @@ export function registerSettingsRoutes({
 
   route('put', '/api/settings/provider', async (req) => {
     sensitive('save-provider');
-    return settings.saveProvider(await body(req));
+    return shared().classification.saveProvider(await body(req));
   });
 
   route('post', '/api/settings/provider/test-connection', async () => {
     sensitive('provider-test');
-    return testProviderConnection(await settings.getProviderConfig(), providerDependencies);
+    return fencedTest(settings, testProviderConnection);
   });
 
   route('post', '/api/settings/provider/test-model', async (req) => {
@@ -110,6 +160,6 @@ export function registerSettingsRoutes({
     z.object({ acknowledgeCost: z.literal(true) })
       .strict()
       .parse(await body(req));
-    return testProviderModel(await settings.getProviderConfig(), providerDependencies);
+    return fencedTest(settings, testProviderModel);
   });
 }

@@ -246,7 +246,7 @@ test(
 );
 
 test(
-  'classification and assistant recovery fail closed, preserve blank saves and rollback enabling or partial rotation',
+  'legacy classification and assistant profile recovery fail closed with atomic blank saves and rotation',
   { skip: !database },
   async (t) => {
     const f = await fixture(t);

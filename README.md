@@ -23,14 +23,16 @@ Open <http://localhost:3001>. Demo mode is prominently labelled and makes no liv
 - PostgreSQL provider observations, canonical identities, independent manual overrides and audit history.
 - Durable webhook receipts and jobs, four-hour Redbark account discovery/reconciliation, bounded backfill and a connection test.
 - Optional configured AI classifies unresolved posted imports through durable, cost-limited jobs after manual/rule/provider classification. Suggestions require review unless automatic application is explicitly enabled; on-demand retry remains available.
-- Optional read-only AI assistant with private temporary chats, scoped finance tools, exact reports and separate provider settings.
+- Optional read-only AI assistant with private temporary chats, scoped finance tools, exact reports and feature-specific models/limits using the same AI connection as classification.
 - Named household accounts, administrator-managed invitations and revocable database sessions for live data, JSON export, and backup/restore scripts.
 
 Amounts travel as integer minor-unit strings; calculations use integer arithmetic. Posted transactions drive actual spending, pending items are separate, refunds reduce spending on their posted date, and transfers/card repayments do not count as expenses. Budget allocations do not create bank transactions. Account balances remain provider snapshots; unsupported reconciliation is explicitly marked rather than repaired with invented entries.
 
 ## Integration settings and upgrades
 
-An administrator configures Redbark credentials, API version and rolling backfill window, classification provider/model/credentials and automation limits, the read-only assistant, and notifications in **Settings**. Integration values are stored only in PostgreSQL; credentials are write-only and encrypted with the deployment's `APP_SECRET`. Saved changes apply without restarting the app. OpenAI and Bedrock use fixed secure provider endpoints; custom base URLs are unsupported.
+Administrator **Settings** has five sections: **RedBark**, **Members**, **Notifications**, **Data** (SimpleFIN, import health/history and export), and **AI features**. In AI features, enter one OpenAI or Amazon Bedrock connection for both classification and the read-only assistant. Their models, enable switches, limits, classification automation and assistant sharing acknowledgement stay separate. Integration values are stored only in PostgreSQL; credentials are write-only and encrypted with the deployment's `APP_SECRET`. Saved changes apply without restarting the app. OpenAI and Bedrock use fixed secure provider endpoints; custom base URLs are unsupported.
+
+**Existing AI profiles:** compatible, readable version 3 classification/assistant profiles consolidate automatically. Conflicting providers, regions or keys require an administrator to choose a readable existing profile or enter shared credentials; unresolved rows stay untouched and both features remain paused. A successful resolution replaces only the old AI settings transactionally. See [shared AI settings](docs/ai-settings.md).
 
 **Existing installations:** read the [mandatory upgrade and credential recovery guide](docs/upgrading.md) first. This release accepts only version 3 encrypted credentials, current branded environment names and `dolphino_session`. Saved version 1/2 ciphertext stays in the database but needs explicit replacement or clearing; the original APP_SECRET alone cannot recover it. Stop all prior app/worker processes before upgrading, keep the same database/volume and current APP_SECRET, and review pending deliveries. SimpleFIN historical mapped accounts cannot be automatically relinked after a new connection.
 
@@ -79,6 +81,6 @@ Upgrading an existing installation? Read [upgrade boundaries, credential recover
 
 ### Optional SimpleFIN
 
-An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from Settings. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).
+An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from **Settings → Data**. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).
 
-Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 substantive SQL migrations are retained. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for the current check results.
+Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 substantive SQL migrations are retained. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for that historical milestone and [shared-settings verification](docs/shared-ai-settings-verification.md) for the current change.
