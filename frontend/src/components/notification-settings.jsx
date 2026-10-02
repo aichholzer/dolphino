@@ -28,7 +28,7 @@ export function NotificationSettings({ api, demo }) {
         JSON.stringify(smtp) !== JSON.stringify(data.smtp || {}) ||
         JSON.stringify(telegram) !== JSON.stringify(data.telegram || {})));
   useSettingsDirty(dirty || busy);
-  async function load({ preserveDraft = false } = {}) {
+  async function load({ preserveDraft = false, refreshTelegram = false } = {}) {
     const [d, history, activePairing] = await Promise.all([
       api('/settings/notifications'),
       api('/notifications/deliveries'),
@@ -40,6 +40,10 @@ export function NotificationSettings({ api, demo }) {
     }
 
     setData(d);
+    setTelegram((current) => ({
+      ...d.telegram,
+      enabled: preserveDraft && !refreshTelegram && d.telegram?.paired ? current.enabled : !!d.telegram?.enabled
+    }));
     if (preserveDraft) {
       return;
     }
@@ -47,13 +51,12 @@ export function NotificationSettings({ api, demo }) {
     setAudienceConfirmed(!!d.audienceConfirmed);
     setSummaryFields(d.summaryFields || ['category', 'period', 'amount', 'remaining']);
     setSmtp(d.smtp || {});
-    setTelegram(d.telegram || {});
   }
 
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
-  async function action(fn, { saveForm = false } = {}) {
+  async function action(fn, { saveForm = false, refreshTelegram = false } = {}) {
     if (busy) {
       return null;
     }
@@ -64,7 +67,7 @@ export function NotificationSettings({ api, demo }) {
     try {
       const r = await fn();
       setNotice(r.message || 'Notification settings updated.');
-      await load({ preserveDraft: dirty && !saveForm });
+      await load({ preserveDraft: dirty && !saveForm, refreshTelegram });
       return r;
     } catch (e) {
       setError(e.message);
@@ -86,7 +89,7 @@ export function NotificationSettings({ api, demo }) {
         ...(clearSmtp ? { smtpUrl: null } : smtpUrl ? { smtpUrl } : {})
       },
       telegram: {
-        enabled: !!telegram.enabled,
+        enabled: token || clearToken ? false : !!telegram.enabled,
         ...(clearToken ? { token: null } : token ? { token } : {})
       }
     };
@@ -274,7 +277,14 @@ export function NotificationSettings({ api, demo }) {
       <div className="settings-actions">
         <Button
           variant="outline"
-          disabled={busy || demo}
+          disabled={
+            busy ||
+            demo ||
+            !data?.telegram?.credentialConfigured ||
+            data?.telegram?.credentialsAvailable === false ||
+            !!token ||
+            clearToken
+          }
           onClick={async () => {
             const r = await action(() =>
               api('/settings/telegram/pair', {
@@ -342,14 +352,16 @@ export function NotificationSettings({ api, demo }) {
                 <Button
                   disabled={busy}
                   onClick={async () => {
-                    const r = await action(() =>
-                      api('/settings/telegram/confirm', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                          pairingId: pairing.pairingId,
-                          chatId: pairing.candidate.chatId
-                        })
-                      })
+                    const r = await action(
+                      () =>
+                        api('/settings/telegram/confirm', {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            pairingId: pairing.pairingId,
+                            chatId: pairing.candidate.chatId
+                          })
+                        }),
+                      { refreshTelegram: true }
                     );
                     if (r) {
                       setPairing(null);

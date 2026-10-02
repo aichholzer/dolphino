@@ -23,9 +23,18 @@ export function createTelegramClient({ token, fetchImpl = fetch }) {
         redirect: 'error',
         signal: AbortSignal.timeout(12000)
       });
-      result = await response.json();
     } catch {
       throw fail('telegram_unreachable', 502);
+    }
+
+    try {
+      result = await response.json();
+    } catch {
+      throw fail('telegram_response_invalid', 502);
+    }
+
+    if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') {
+      throw fail('telegram_response_invalid', 502);
     }
 
     if (!response.ok && result.parameters?.migrate_to_chat_id !== undefined) {
@@ -33,12 +42,17 @@ export function createTelegramClient({ token, fetchImpl = fetch }) {
     }
 
     if (!response.ok || result.ok !== true) {
+      const status = Number.isInteger(result.error_code) ? result.error_code : response.status;
       throw fail(
-        response.status === 409
-          ? 'telegram_polling_conflict'
-          : response.status === 429
-            ? 'telegram_rate_limited'
-            : 'telegram_request_failed',
+        status === 401 || (status === 404 && method === 'getMe')
+          ? 'telegram_token_rejected'
+          : status === 403
+            ? 'telegram_access_denied'
+            : status === 409
+              ? 'telegram_polling_conflict'
+              : status === 429
+                ? 'telegram_rate_limited'
+                : 'telegram_request_failed',
         502,
         Math.min(86400, Math.max(1, Number(result.parameters?.retry_after) || 60))
       );

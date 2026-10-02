@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { householdSessionToken } from '../lib/household-auth.mjs';
 import { body } from '../http/body.mjs';
+import { telegramHttpAction } from '../lib/telegram-errors.mjs';
 
 export function registerNotificationRoutes({ route, notifications, telegram, sensitive }) {
   const pairingSession = (req) =>
@@ -21,7 +22,9 @@ export function registerNotificationRoutes({ route, notifications, telegram, sen
       .object({ channel: z.enum(['smtp', 'telegram']) })
       .strict()
       .parse(await body(req));
-    return notifications.testChannel(channel);
+    return channel === 'telegram'
+      ? telegramHttpAction(() => notifications.testChannel(channel))
+      : notifications.testChannel(channel);
   });
 
   route('get', '/api/notifications/deliveries', () => notifications.deliveries());
@@ -31,21 +34,23 @@ export function registerNotificationRoutes({ route, notifications, telegram, sen
     return notifications.retry(req.params.id);
   });
 
-  route('get', '/api/settings/telegram/pair', (req) => telegram.status({ sessionId: pairingSession(req) }));
+  route('get', '/api/settings/telegram/pair', (req) =>
+    telegramHttpAction(() => telegram.status({ sessionId: pairingSession(req) }))
+  );
 
   route('post', '/api/settings/telegram/pair', (req) => {
     sensitive('telegram-pair');
-    return telegram.start({ sessionId: pairingSession(req) });
+    return telegramHttpAction(() => telegram.start({ sessionId: pairingSession(req) }));
   });
 
   route('post', '/api/settings/telegram/poll', (req) => {
     sensitive('telegram-poll');
-    return telegram.poll({ sessionId: pairingSession(req) });
+    return telegramHttpAction(() => telegram.poll({ sessionId: pairingSession(req) }));
   });
 
   route('post', '/api/settings/telegram/confirm', async (req) => {
     sensitive('telegram-confirm');
-    return telegram.confirm({
+    const input = {
       ...z
         .object({
           pairingId: z.string().regex(/^[a-f0-9]{32}$/),
@@ -54,6 +59,7 @@ export function registerNotificationRoutes({ route, notifications, telegram, sen
         .strict()
         .parse(await body(req)),
       sessionId: pairingSession(req)
-    });
+    };
+    return telegramHttpAction(() => telegram.confirm(input));
   });
 }

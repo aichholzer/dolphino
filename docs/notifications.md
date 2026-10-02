@@ -24,6 +24,10 @@ Create a dedicated bot yourself and add it to the intended private family group.
 
 A bot with an existing Telegram webhook is refused without changing/deleting the webhook. Another application polling the same bot can conflict with pairing; use a dedicated bot. Group migrations are not silently followed; failures remain visible and require new confirmation. No Telegram messages were sent during development; mocked tests exercise these contracts.
 
+Pairing is available only after a readable bot token is saved; an unsaved replacement or pending token clear disables the pairing button. Telegram failures now show fixed, actionable messages for rejected tokens, unreachable servers, rate limits and unexpected responses, without revealing provider descriptions or credentials. The prior generic configuration/database message did not identify which of those conditions occurred. A rejected-token message calls for checking and re-saving the current BotFather token; an unreachable message calls for checking the server's outbound HTTPS access to `api.telegram.org`.
+
+The delivery toggle remains unavailable until an intended private group is explicitly confirmed. Confirmation refreshes the displayed pairing and enablement state even when other notification fields have unsaved edits, while retaining those unrelated drafts.
+
 ## Delivery reliability
 
 Alert transitions are inserted atomically with the financial write, so closed dashboards do not suppress notifications. A fifteen-second worker scans durable events and creates one outbox identity per event/channel/recipient. Only events after channel enablement are eligible; enabling does not replay old alerts. Disabling a channel cancels queued delivery when the worker next sees it. Re-enabling requires a new alert transition. Unchanged settings saves preserve queued eligibility. Removed recipients are not sent pending notifications.
