@@ -25,7 +25,23 @@ for (const scenario of [
     expected: /Telegram is limiting requests/
   },
   { name: 'invalid JSON', response: () => new Response(syntheticTelegramToken), expected: /unexpected response/ },
-  { name: 'null JSON', response: () => Response.json(null), expected: /unexpected response/ }
+  { name: 'null JSON', response: () => Response.json(null), expected: /unexpected response/ },
+  ...[
+    ['DNS failure', 'ENOTFOUND', /could not resolve/],
+    ['TLS certificate failure', 'ERR_TLS_CERT_ALTNAME_INVALID', /verified TLS/],
+    ['connection deadline', 'UND_ERR_CONNECT_TIMEOUT', /timed out/],
+    ['refused socket', 'ECONNREFUSED', /connection was refused/],
+    ['unreachable route', 'ENETUNREACH', /unreachable network or host/],
+    ['reset socket', 'ECONNRESET', /connection closed/]
+  ].map(([name, code, expected]) => ({
+    name,
+    expected,
+    response: () => {
+      throw new TypeError(syntheticTelegramToken, {
+        cause: new AggregateError([Object.assign(new Error(syntheticTelegramToken), { code })])
+      });
+    }
+  }))
 ]) {
   test(`Telegram pairing HTTP safely explains ${scenario.name} and leaves delivery disabled`, async () => {
     const f = await telegramFixture();

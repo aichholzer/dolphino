@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { telegramTransportCode } from './telegram-errors.mjs';
+import { telegramDispatcher } from './telegram-transport.mjs';
 const TOKEN_SETTING = 'notifications.telegram.botToken';
 const PAIRING = 'telegram.pairing';
 const DESTINATION = 'notifications.telegram';
@@ -21,16 +23,17 @@ export function createTelegramClient({ token, fetchImpl = fetch }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         redirect: 'error',
+        dispatcher: telegramDispatcher(),
         signal: AbortSignal.timeout(12000)
       });
-    } catch {
-      throw fail('telegram_unreachable', 502);
+    } catch (error) {
+      throw fail(telegramTransportCode(error), 502);
     }
 
     try {
       result = await response.json();
-    } catch {
-      throw fail('telegram_response_invalid', 502);
+    } catch (error) {
+      throw fail(telegramTransportCode(error, 'telegram_response_invalid'), 502);
     }
 
     if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') {

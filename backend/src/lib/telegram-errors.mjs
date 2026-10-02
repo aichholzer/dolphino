@@ -10,6 +10,18 @@ const messages = Object.freeze({
     'Telegram refused this bot operation. Check that the bot can access the private group and has not been removed or blocked.',
   telegram_unreachable:
     'Dolphino could not reach Telegram. Check the server’s outbound HTTPS access to api.telegram.org and try again.',
+  telegram_dns_failed:
+    'Dolphino could not resolve the Telegram connection hostname. Check DNS from inside the app container; the failure may also be at a configured proxy.',
+  telegram_tls_failed:
+    'Dolphino could not establish verified TLS with Telegram. Check the app container’s clock and Node certificate/proxy configuration. TLS verification remains required.',
+  telegram_timeout:
+    'The Telegram request timed out. Check connectivity from Node inside the app container, including IPv4/IPv6 routing and any configured proxy.',
+  telegram_connection_refused:
+    'The Telegram connection was refused. Check the app container’s HTTPS route and any configured proxy.',
+  telegram_network_unreachable:
+    'Node reported an unreachable network or host while connecting to Telegram. Check IPv4/IPv6 routing from inside the app container.',
+  telegram_connection_closed:
+    'The Telegram connection closed before the response completed. Check the app container’s network or proxy, then try pairing again.',
   telegram_response_invalid:
     'Telegram returned an unexpected response. Try again shortly; if this continues, check the server’s network or proxy configuration.',
   telegram_request_failed:
@@ -36,6 +48,80 @@ const messages = Object.freeze({
   telegram_group_migrated_repair_required:
     'The Telegram group changed its identity. Pair and confirm the new group before sending alerts.'
 });
+
+// Node fetch wraps socket/TLS/DNS errors in cause and may aggregate IPv4/IPv6
+// attempts. Inspect bounded codes only: never retain or expose the raw error,
+// which can contain a bot URL, proxy credentials, addresses or provider text.
+export function telegramTransportCode(error, fallback = 'telegram_unreachable') {
+  const pending = [error],
+    seen = new Set(),
+    found = new Set();
+  for (let i = 0; pending.length && i < 16; i++) {
+    const item = pending.shift();
+    if (!item || typeof item !== 'object' || seen.has(item)) {
+      continue;
+    }
+
+    seen.add(item);
+    const code = typeof item.code === 'string' ? item.code : '';
+    if (
+      code.startsWith('ERR_TLS_') ||
+      code.startsWith('ERR_SSL_') ||
+      [
+        'CERT_HAS_EXPIRED',
+        'CERT_NOT_YET_VALID',
+        'DEPTH_ZERO_SELF_SIGNED_CERT',
+        'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        'UNABLE_TO_GET_ISSUER_CERT',
+        'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+        'CERT_SIGNATURE_FAILURE',
+        'CERT_REVOKED'
+      ].includes(code)
+    ) {
+      found.add('tls_failed');
+    }
+
+    if (['ENOTFOUND', 'EAI_AGAIN', 'EAI_FAIL', 'EAI_NODATA'].includes(code)) {
+      found.add('dns_failed');
+    }
+
+    if (
+      ['TimeoutError', 'AbortError'].includes(item.name) ||
+      ['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(code)
+    ) {
+      found.add('timeout');
+    }
+
+    if (code === 'ECONNREFUSED') {
+      found.add('connection_refused');
+    }
+
+    if (['ENETUNREACH', 'EHOSTUNREACH', 'EHOSTDOWN'].includes(code)) {
+      found.add('network_unreachable');
+    }
+
+    if (['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET'].includes(code)) {
+      found.add('connection_closed');
+    }
+
+    pending.push(item.cause);
+    if (Array.isArray(item.errors)) {
+      pending.push(...item.errors.slice(0, 8));
+    }
+  }
+
+  // Prefer a concrete TLS/DNS/deadline failure over a failed secondary address.
+  const reason = [
+    'tls_failed',
+    'dns_failed',
+    'timeout',
+    'connection_refused',
+    'network_unreachable',
+    'connection_closed'
+  ].find((code) => found.has(code));
+  return reason ? `telegram_${reason}` : fallback;
+}
 
 export async function telegramHttpAction(action) {
   try {

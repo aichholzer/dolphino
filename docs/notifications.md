@@ -26,6 +26,18 @@ A bot with an existing Telegram webhook is refused without changing/deleting the
 
 Pairing is available only after a readable bot token is saved; an unsaved replacement or pending token clear disables the pairing button. Telegram failures now show fixed, actionable messages for rejected tokens, unreachable servers, rate limits and unexpected responses, without revealing provider descriptions or credentials. The prior generic configuration/database message did not identify which of those conditions occurred. A rejected-token message calls for checking and re-saving the current BotFather token; an unreachable message calls for checking the server's outbound HTTPS access to `api.telegram.org`.
 
+Telegram uses Node's built-in `fetch` with a fixed HTTPS hostname, rejected redirects and a twelve-second total deadline. Its dedicated Undici dispatcher allows 2000 ms per TCP address attempt while keeping IPv4/IPv6 fallback and certificate verification enabled. This avoids abandoning a usable high-latency route at Node's 250 ms default. The process-wide network defaults and other integrations' fetch dispatchers are unchanged. It does not use the SimpleFIN/PocketSmith DNS-pinning callback. DNS, verified-TLS, timeout, refused/unreachable socket and interrupted-response failures receive distinct fixed messages. Nested IPv4/IPv6 failure codes are inspected without returning or retaining raw errors, bot URLs, addresses or proxy credentials. A response-body timeout is a transport failure, not malformed Telegram JSON.
+
+Ping or a successful host-shell `curl` does not establish the Node path inside the running app container. This token-free check uses the same Node fetch implementation; an HTTP response (including Telegram's normal root redirect) proves that this particular request reached HTTPS, without testing a bot key:
+
+```sh
+docker compose exec -T app node --input-type=module -e 'try { const r = await fetch("https://api.telegram.org/", {redirect:"manual", signal:AbortSignal.timeout(12000)}); console.log("HTTPS", r.status); await r.body?.cancel(); } catch (e) { console.log(e.name, e.cause?.code, (e.cause?.errors ?? []).map(x => x.code)); process.exitCode = 1; }'
+```
+
+To compare Node's default address-attempt window with 2000 ms, add `import net from "node:net"; net.setDefaultAutoSelectFamilyAttemptTimeout(2000);` before `try` in that temporary diagnostic process. This does not modify the running app. In the reported installation, the default produced `ETIMEDOUT` while 2000 ms reached HTTP 302; the Telegram-only dispatcher applies that confirmed adjustment without a global startup override.
+
+If curl and Node differ, inspect their runtime versions, network namespaces, proxy opt-in and certificate trust configuration before changing transport behavior. Node 24 enables environment-proxy routing with `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`; `HTTPS_PROXY` alone does not enable it. `NODE_EXTRA_CA_CERTS` extends Node trust only when loaded at process startup. These are possible differences, not a diagnosis of any particular installation. [Node 24 proxy and CA configuration](https://github.com/nodejs/node/blob/v24.19.0/doc/api/cli.md#node_use_env_proxy1). Local TLS/socket regressions exercise verified SNI, IPv6-to-IPv4 fallback, certificate rejection, proxy opt-in, redirects and deadlines without contacting Telegram.
+
 The delivery toggle remains unavailable until an intended private group is explicitly confirmed. Confirmation refreshes the displayed pairing and enablement state even when other notification fields have unsaved edits, while retaining those unrelated drafts.
 
 ## Delivery reliability
