@@ -10,7 +10,7 @@ import { createApp } from '../../src/app.mjs';
 
 export const syntheticTelegramToken = '123456789:synthetic_telegram_token_1234567890';
 
-export async function telegramFixture() {
+export async function telegramFixture({ notificationOptions = {} } = {}) {
   const database = readTestPostgresConfig();
   if (!database) {
     throw Error('Configure a disposable PostgreSQL database');
@@ -53,7 +53,11 @@ export async function telegramFixture() {
       mode: 'live',
       sendTelegram: async () => {
         throw Error('No real delivery allowed');
-      }
+      },
+      verifyTelegramGroup: async () => {
+        throw Error('No real Telegram verification allowed');
+      },
+      ...notificationOptions
     });
     await notifications.init();
     const fetchImpl = async (url, options) => {

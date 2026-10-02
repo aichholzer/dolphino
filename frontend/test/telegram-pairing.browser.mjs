@@ -1,9 +1,23 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { chromium, expect } from '@playwright/test';
 import { telegramFixture, syntheticTelegramToken } from '../../backend/test/helpers/telegram-fixture.mjs';
+import { verifyTelegramPrivateGroup } from '../../backend/src/lib/telegram.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
-const f = await telegramFixture();
+const f = await telegramFixture({
+  notificationOptions: {
+    verifyTelegramGroup: (input) =>
+      verifyTelegramPrivateGroup({
+        ...input,
+        fetchImpl: async () =>
+          Response.json({
+            ok: true,
+            result: { id: -987654321, type: 'supergroup', username: 'synthetic_public_group' }
+          })
+      })
+  }
+});
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   headless: true,
@@ -80,7 +94,26 @@ try {
   await expect(from).toHaveValue('unsaved@example.test');
   await expect(panel).toContainText('Paired group: Synthetic private group');
   assert.equal((await f.settings.getValue('notifications.smtp')).from, '');
+  const alertId = randomUUID();
+  await f.pool.query(
+    "INSERT INTO budget_alerts(id,mode,currency,month,category,type,amount_minor,message) VALUES($1,'live','AUD','2026-09','Dining','overspend',100,'Synthetic browser alert')",
+    [alertId]
+  );
+  await f.pool.query("INSERT INTO notification_events(alert_id,revision,mode,payload) VALUES($1,1,'live',$2)", [
+    alertId,
+    {
+      category: 'Dining',
+      month: '2026-09',
+      currency: 'AUD',
+      amountMinor: '100',
+      state: 'opened'
+    }
+  ]);
+  await f.notifications.processPending();
   await panel.getByRole('button', { name: 'Save notification settings' }).click();
+  await expect(panel).toContainText('Telegram delivery stopped: the confirmed group could not be verified as private.');
+  await expect(panel.getByRole('button', { name: /^Retry delivery/ })).toBeVisible();
+  assert.ok(!(await panel.innerText()).includes(syntheticTelegramToken));
   await expect(panel.getByRole('status')).toContainText('Notification settings updated.');
   // A refreshed page does not retain the raw nonce; restarting provides a fresh manual fallback.
   await pair.click();
@@ -115,7 +148,7 @@ try {
   assert.deepEqual(errors, []);
   assert.ok(!f.calls.includes('sendMessage'));
   console.log(
-    'Telegram production-browser regression passed: saved-token prerequisite, safe rejected-token error, startgroup payload discovery without typing, empty-result guidance, explicit group confirmation, unrelated drafts preserved, refresh/restart and manual fallback; real HTTP/PostgreSQL, no live Telegram or browser storage.'
+    'Telegram production-browser regression passed: saved-token prerequisite, safe rejected-token error, startgroup discovery, explicit confirmation, drafts, refresh/manual fallback and actionable privacy-blocked delivery status; real HTTP/PostgreSQL, no live Telegram or browser storage.'
   );
 } finally {
   await context.close();

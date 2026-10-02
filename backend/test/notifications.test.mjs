@@ -1,7 +1,7 @@
 import { readTestPostgresConfig } from './helpers/postgres.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { Store } from '../src/lib/store.mjs';
 import { createSettingsStore } from '../src/lib/settings.mjs';
@@ -212,6 +212,7 @@ test(
       await settings.setValue('notifications.telegram', {
         enabled: true,
         chatId: '-123',
+        tokenHash: createHash('sha256').update('12345:synthetic-token-not-real').digest('hex'),
         enabledAt: new Date().toISOString()
       });
       let telegramSends = 0;
@@ -220,6 +221,7 @@ test(
         pool,
         settings,
         mode: 'live',
+        verifyTelegramGroup: async () => {},
         sendTelegram: async () => {
           telegramSends++;
           if (limited) {

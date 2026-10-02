@@ -328,3 +328,23 @@ export function createTelegramPairing({ pool, settings, fetchImpl, now = Date.no
 export async function sendTelegram({ token, chatId, text, fetchImpl }) {
   return createTelegramClient({ token, fetchImpl }).send({ chatId, text });
 }
+
+export async function verifyTelegramPrivateGroup({ token, chatId, fetchImpl }) {
+  let chat;
+  try {
+    chat = await createTelegramClient({ token, fetchImpl }).request('getChat', { chat_id: chatId });
+  } catch (error) {
+    throw fail('telegram_delivery_privacy_unverified', 502, error?.retryAfter || 0);
+  }
+
+  if (
+    !Number.isSafeInteger(chat?.id) ||
+    chat.id >= 0 ||
+    String(chat.id) !== chatId ||
+    !['group', 'supergroup'].includes(chat.type) ||
+    chat.username ||
+    (chat.active_usernames !== undefined && (!Array.isArray(chat.active_usernames) || chat.active_usernames.length))
+  ) {
+    throw fail('telegram_delivery_private_group_required');
+  }
+}

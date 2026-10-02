@@ -46,8 +46,25 @@ const messages = Object.freeze({
   telegram_pairing_conflict_restart:
     'The pairing command appeared in more than one group. Start again and send it only in your intended private group.',
   telegram_group_migrated_repair_required:
-    'The Telegram group changed its identity. Pair and confirm the new group before sending alerts.'
+    'The Telegram group changed its identity. Pair and confirm the new group before sending alerts.',
+  telegram_delivery_private_group_required:
+    'Telegram delivery stopped: the confirmed group could not be verified as private. Make it private or pair another private group, then retry.',
+  telegram_delivery_privacy_unverified:
+    'Telegram privacy check failed; no financial message was sent. Check connectivity and bot access to the group before retrying.',
+  telegram_delivery_pairing_invalid:
+    'Telegram delivery stopped: the saved token does not match a confirmed group. Pair and confirm the intended private group again.'
 });
+
+export function telegramDeliveryFailure(error) {
+  const code = error?.code;
+  return [
+    'telegram_delivery_private_group_required',
+    'telegram_delivery_privacy_unverified',
+    'telegram_delivery_pairing_invalid'
+  ].includes(code)
+    ? { message: messages[code], terminal: code !== 'telegram_delivery_privacy_unverified' }
+    : null;
+}
 
 // Node fetch wraps socket/TLS/DNS errors in cause and may aggregate IPv4/IPv6
 // attempts. Inspect bounded codes only: never retain or expose the raw error,

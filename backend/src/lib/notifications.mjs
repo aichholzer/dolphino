@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
 import { minorToDecimal } from '../../../shared/money.mjs';
 import { smtpEmailSchema as email, smtpOptions, sendSmtp } from './smtp-transport.mjs';
+import { createTelegramDelivery } from './telegram-delivery.mjs';
+import { telegramDeliveryFailure } from './telegram-errors.mjs';
 
 // Preserve the existing notification-module imports for callers.
 export { smtpOptions, sendSmtp } from './smtp-transport.mjs';
@@ -49,6 +51,7 @@ export function createNotificationIntegration({
   settings,
   mode = 'live',
   sendTelegram,
+  verifyTelegramGroup,
   sendSmtpImpl = sendSmtp,
   timerIntervalMs = 15000
 }) {
@@ -58,6 +61,7 @@ export function createNotificationIntegration({
     smtp: { enabled: false, from: '', recipients: [] },
     telegram: { enabled: false }
   };
+  const deliverTelegram = createTelegramDelivery({ settings, sendTelegram, verifyTelegramGroup });
   async function config(channel, client = pool) {
     return (await settings.getValue(`notifications.${channel}`, client)) || defaults[channel];
   }
@@ -383,20 +387,48 @@ export function createNotificationIntegration({
           [job.id]
         );
         try {
-          await send(
-            job.channel,
-            job.recipient,
-            notificationText(
-              job.payload,
-              (await settings.getValue('notifications.summaryFields', lock))?.fields || defaultFields
-            ),
-            job.id,
-            lock
-          );
+          if (job.channel === 'telegram') {
+            const outcome = await deliverTelegram(lock, {
+              recipient: job.recipient,
+              eventAt: job.event_at,
+              textForFields: (fields) => notificationText(job.payload, fields)
+            });
+            if (outcome !== 'sent') {
+              await lock.query('UPDATE notification_outbox SET status=$2,error=$3,updated_at=now() WHERE id=$1', [
+                job.id,
+                outcome === 'cancelled' ? 'cancelled' : 'pending',
+                outcome === 'cancelled'
+                  ? 'Telegram settings changed; delivery to the previous destination was cancelled.'
+                  : 'Telegram settings changed or are busy; privacy will be checked again before retrying.'
+              ]);
+              continue;
+            }
+          } else {
+            await send(
+              job.channel,
+              job.recipient,
+              notificationText(
+                job.payload,
+                (await settings.getValue('notifications.summaryFields', lock))?.fields || defaultFields
+              ),
+              job.id,
+              lock
+            );
+          }
+
           await lock.query("UPDATE notification_outbox SET status='sent',error=NULL,updated_at=now() WHERE id=$1", [
             job.id
           ]);
         } catch (error) {
+          const telegramFailure = job.channel === 'telegram' && telegramDeliveryFailure(error);
+          if (telegramFailure?.terminal) {
+            await lock.query("UPDATE notification_outbox SET status='failed',error=$2,updated_at=now() WHERE id=$1", [
+              job.id,
+              telegramFailure.message
+            ]);
+            continue;
+          }
+
           if (error?.code === 'telegram_group_migrated_repair_required') {
             await lock.query(
               "UPDATE notification_outbox SET status='failed',error='Telegram group migrated; pair and confirm the new group before retry',updated_at=now() WHERE id=$1",
@@ -410,7 +442,8 @@ export function createNotificationIntegration({
             "UPDATE notification_outbox SET status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END,error=$2,next_attempt_at=now()+make_interval(secs=>greatest($3::int,least(3600,60*power(2,attempts))::int)),updated_at=now() WHERE id=$1",
             [
               job.id,
-              `${job.channel === 'smtp' ? 'SMTP' : 'Telegram'} delivery failed; verify configuration and provider availability`,
+              telegramFailure?.message ||
+                `${job.channel === 'smtp' ? 'SMTP' : 'Telegram'} delivery failed; verify configuration and provider availability`,
               Math.ceil(retryAfter)
             ]
           );
