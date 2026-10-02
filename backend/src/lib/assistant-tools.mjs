@@ -19,6 +19,7 @@ const common = {
   accountId: nullableText,
   merchant: nullableText,
   category: nullableText,
+  tag: z.string().trim().min(1).max(40).nullable().optional(),
   minAmountMinor: amount,
   maxAmountMinor: amount,
   status: z.enum(['posted', 'pending']).nullable(),
@@ -68,7 +69,7 @@ const descriptions = {
   finance_accounts:
     'Read only permitted account balances, labels, source freshness and coverage. Bank balances are independent snapshots, never a proof of ledger reconciliation.',
   finance_transactions:
-    'Search permitted transactions by bounded dates, signed minor-unit amount range, merchant substring, category, account, status or kind. Paginated details, at most 100 rows. Not an aggregate tool.',
+    'Search permitted transactions by bounded dates, signed minor-unit amount range, merchant substring, category, tag, account, status or kind. Paginated details, at most 100 rows. Not an aggregate tool.',
   finance_transaction:
     'Read one permitted transaction and its exact splits, kind/refund status and correction note. Unknown or forbidden IDs have the same not-found response.',
   finance_aggregate:
@@ -89,6 +90,7 @@ const baseJson = {
   accountId: optionalString(),
   merchant: optionalString(),
   category: optionalString(),
+  tag: optionalString({ maxLength: 40 }),
   minAmountMinor: optionalString({ pattern: '^-?\\d{1,18}$' }),
   maxAmountMinor: optionalString({ pattern: '^-?\\d{1,18}$' }),
   status: { type: ['string', 'null'], enum: ['posted', 'pending', null] },
@@ -174,9 +176,9 @@ function selection(args, today) {
     from,
     to,
     ...Object.fromEntries(
-      ['accountId', 'category', 'status', 'kind'].filter((k) => args[k] != null).map((k) => [k, args[k]])
+      ['accountId', 'category', 'tag', 'status', 'kind'].filter((k) => args[k] != null).map((k) => [k, args[k]])
     ),
-    ...(args.merchant ? { search: args.merchant } : {})
+    ...(args.merchant ? { merchant: args.merchant } : {})
   };
 }
 
@@ -193,6 +195,8 @@ const safeTransaction = (t) =>
       'status',
       'kind',
       'category',
+      'categoryDisplayLabel',
+      'tags',
       'splits',
       'reviewRequired',
       'fetchedAt'

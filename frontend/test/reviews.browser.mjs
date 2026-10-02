@@ -123,6 +123,10 @@ async function fixturePage() {
       data = { incomeMinor: '0', expensesMinor: '0', netMinor: '0' };
     } else if (request.method() === 'GET' && url.pathname === '/api/reviews') {
       data = { reviews };
+    } else if (request.method() === 'GET' && url.pathname === '/api/categories') {
+      data = { catalog: [{ category: 'Groceries', name: 'Groceries', archived: false }] };
+    } else if (request.method() === 'GET' && url.pathname === '/api/tags') {
+      data = { tags: [] };
     } else if (request.method() === 'GET' && url.pathname === '/api/settings') {
       data = { llm: { enabled: false } };
     } else if (request.method() === 'GET' && url.pathname === '/api/import-health') {
@@ -229,7 +233,7 @@ try {
         await dialog
           .getByRole('combobox', { name: 'Transaction type', exact: true })
           .selectOption(review.kind === 'income' ? 'expense' : 'income');
-        await dialog.getByRole('combobox', { name: 'Category', exact: true }).fill('Unsaved synthetic correction');
+        await dialog.getByRole('combobox', { name: 'Category', exact: true }).selectOption('Groceries');
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(page.getByRole('dialog')).toHaveCount(0);
         await expect(rowFor(page, review)).toContainText(`Current type: ${review.kind}`);

@@ -30,7 +30,7 @@ Amounts travel as integer minor-unit strings; calculations use integer arithmeti
 
 ## Integration settings and upgrades
 
-Administrator **Settings** has five sections: **RedBark**, **Members**, **Notifications**, **Data** (SimpleFIN, import health/history and export), and **AI features**. In AI features, enter one OpenAI or Amazon Bedrock connection for both classification and the read-only assistant. Their models, enable switches, limits, classification automation and assistant sharing acknowledgement stay separate. Integration values are stored only in PostgreSQL; credentials are write-only and encrypted with the deployment's `APP_SECRET`. Saved changes apply without restarting the app. OpenAI and Bedrock use fixed secure provider endpoints; custom base URLs are unsupported.
+Administrator **Settings** has six sections: **RedBark**, **Categories**, **Members**, **Notifications**, **Data** (SimpleFIN, import health/history and export), and **AI features**. In AI features, enter one OpenAI or Amazon Bedrock connection for both classification and the read-only assistant. Their models, enable switches, limits, classification automation and assistant sharing acknowledgement stay separate. Integration values are stored only in PostgreSQL; credentials are write-only and encrypted with the deployment's `APP_SECRET`. Saved changes apply without restarting the app. OpenAI and Bedrock use fixed secure provider endpoints; custom base URLs are unsupported.
 
 **Existing AI profiles:** compatible, readable version 3 classification/assistant profiles consolidate automatically. Conflicting providers, regions or keys require an administrator to choose a readable existing profile or enter shared credentials; unresolved rows stay untouched and both features remain paused. A successful resolution replaces only the old AI settings transactionally. See [shared AI settings](docs/ai-settings.md).
 
@@ -83,4 +83,14 @@ Upgrading an existing installation? Read [upgrade boundaries, credential recover
 
 An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from **Settings → Data**. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).
 
-Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 substantive SQL migrations are retained. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for that historical milestone and [shared-settings verification](docs/shared-ai-settings-verification.md) for the current change.
+Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 prior SQL migrations are retained; migration 014 adds the category catalog, transaction tags and search indexes. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for that historical milestone and [shared-settings verification](docs/shared-ai-settings-verification.md) for the current change.
+
+### Categories, tags and transaction search
+
+Choose existing categories in Review, transaction corrections, splits and new budgets.
+Administrators manage names and create, archive or restore categories in **Settings → Categories**.
+Renames preserve stable ledger keys and budget matching; deleting archives the category without changing history or money.
+Transactions can have multiple tags (for example **Travel** with **work** and **conference** tags).
+Search includes descriptions, correction notes, category names and tags across the full server-side selection;
+category/tag filters combine with the existing date, account, status and type filters and apply to exports.
+See [category behavior, upgrade requirements and verification](docs/categories-tags.md).

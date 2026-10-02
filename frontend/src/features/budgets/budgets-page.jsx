@@ -27,7 +27,7 @@ export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
           <Button
             onClick={() =>
               onEdit({
-                category: 'Groceries',
+                category: '',
                 capMinor: '50000',
                 rolloverEnabled: false
               })

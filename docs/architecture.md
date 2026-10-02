@@ -1,6 +1,6 @@
 # Code organization and maintenance
 
-Administrator Settings is organized into RedBark, Members, Notifications, Data (SimpleFIN, import health/history and export), and AI features. AI features has one shared connection and separate feature controls; [shared AI settings](ai-settings.md) documents storage, migration and the API contract.
+Administrator Settings is organized into RedBark, Categories, Members, Notifications, Data (SimpleFIN, import health/history and export), and AI features. AI features has one shared connection and separate feature controls; [shared AI settings](ai-settings.md) documents storage, migration and the API contract.
 
 Dolphino remains a plain-JavaScript Rayo API, a React frontend and a PostgreSQL-backed accounting engine. The module boundaries follow responsibilities rather than a file-size target. Module moves preserve HTTP URLs, financial calculations and the existing SQL migrations. The deliberate environment, cookie, credential-envelope and internal-namespace changes are documented separately in [upgrade and recovery guidance](upgrading.md); notification credential availability is exposed explicitly.
 

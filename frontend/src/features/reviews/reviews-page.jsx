@@ -4,7 +4,15 @@ import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
 import { money } from '../../money.mjs';
 
-export function ReviewsPage({ reviews, busy, onEdit, mutate }) {
+const identityReview = (reason) => /(replacement|identity)/i.test(reason || '');
+const actionLabel = (reason) =>
+  identityReview(reason)
+    ? 'Keep separate'
+    : /^(Category needs review|Classification review:)/i.test(reason || '')
+      ? 'Accept current classification'
+      : 'Dismiss warning';
+
+export function ReviewsPage({ reviews, busy, onEdit, mutate, canEditAccount }) {
   return (
     <section className="card">
       {reviews.length ? (
@@ -28,26 +36,44 @@ export function ReviewsPage({ reviews, busy, onEdit, mutate }) {
                 {r.kind ? ` · Current type: ${r.kind}` : ''}
               </p>
               <p>{r.reviewReason || r.reason || r.type || 'Check the original evidence before resolving this item.'}</p>
-              {r.categoryDisplayLabel && (
+              {r.categoryDisplayLabel === 'Unresolved category' && (
                 <p className="footnote">Category name unavailable; saved references need a category choice.</p>
               )}
+              <p className="footnote">
+                {identityReview(r.reviewReason)
+                  ? 'Keep separate clears this warning without linking records. Pending entries stay separate from posted actuals.'
+                  : `${actionLabel(r.reviewReason)} clears this warning without changing the category, type or amount.`}{' '}
+                New evidence or later classification checks may request review again.
+                {r.kind === 'transfer' &&
+                  ' This is currently a transfer, so it is excluded from income and spending totals. Use Review details to correct the type if needed.'}
+              </p>
               <small>Transaction: {r.id}</small>
             </div>
             <div className="review-actions">
-              <Button variant="outline" disabled={busy} onClick={() => onEdit(r)}>
+              <Button
+                variant="outline"
+                disabled={busy || !(r.canEdit || canEditAccount?.(r.accountId))}
+                onClick={() => onEdit(r)}
+              >
                 Review details
               </Button>
-              <ReviewLink
-                busy={busy}
-                onLink={(pendingId) =>
-                  mutate(`/reviews/${r.id}`, {
-                    action: 'link',
-                    pendingId
-                  })
-                }
-              />
-              <Button variant="ghost" disabled={busy} onClick={() => mutate(`/reviews/${r.id}`, { action: 'keep' })}>
-                Keep separate
+              {identityReview(r.reviewReason) && r.status === 'posted' && (
+                <ReviewLink
+                  busy={busy || !(r.canEdit || canEditAccount?.(r.accountId))}
+                  onLink={(pendingId) =>
+                    mutate(`/reviews/${r.id}`, {
+                      action: 'link',
+                      pendingId
+                    })
+                  }
+                />
+              )}
+              <Button
+                variant="ghost"
+                disabled={busy || !(r.canEdit || canEditAccount?.(r.accountId))}
+                onClick={() => mutate(`/reviews/${r.id}`, { action: 'keep' })}
+              >
+                {actionLabel(r.reviewReason)}
               </Button>
             </div>
           </div>

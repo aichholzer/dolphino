@@ -1,7 +1,7 @@
 import { decimalToMinor } from '../../money.mjs';
 
 export function transactionCorrection(
-  { category, categoryEdited = true, preserveUntouched = false, kind, splits },
+  { category, categoryEdited = true, preserveUntouched = false, kind, splits, tags },
   transaction
 ) {
   const values = splits.map((split) => ({
@@ -17,6 +17,7 @@ export function transactionCorrection(
 
   const oldSplits = (transaction.splits || []).map(({ category, amountMinor }) => ({ category, amountMinor }));
   return {
+    ...(tags !== undefined && JSON.stringify(tags) !== JSON.stringify(transaction.tags || []) ? { tags } : {}),
     ...(categoryEdited ? { category } : {}),
     ...(!preserveUntouched || kind !== transaction.kind ? { kind } : {}),
     ...(!preserveUntouched || JSON.stringify(values) !== JSON.stringify(oldSplits) ? { splits: values } : {})
@@ -27,6 +28,7 @@ export function initialTransactionFilters() {
   return {
     search: '',
     category: '',
+    tag: '',
     status: '',
     kind: '',
     ids: null,

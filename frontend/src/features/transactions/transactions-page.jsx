@@ -2,7 +2,8 @@ import { Search, Download, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
 import { money } from '../../money.mjs';
-import { CATEGORIES } from './categories.mjs';
+import { CategorySelect } from '../../components/category-select';
+import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 
 export function TransactionsPage({
   data,
@@ -16,19 +17,8 @@ export function TransactionsPage({
   onFiltersChange
 }) {
   const transactions = data.transactions || [];
-  const categoryOptions = new Map(CATEGORIES.map((name) => [name, name]));
-  for (const transaction of transactions) {
-    categoryOptions.set(transaction.category, transaction.categoryDisplayLabel || transaction.category);
-    for (const split of transaction.splits || []) {
-      categoryOptions.set(split.category, split.categoryDisplayLabel || split.category);
-    }
-  }
-
-  if (filters.category && !categoryOptions.has(filters.category)) {
-    categoryOptions.set(filters.category, 'Selected category');
-  }
-
-  const { accountId, accountName, allHistory, from, to, search, category, status, kind, ids, txPage } = filters;
+  const options = useCategoryOptions();
+  const { accountId, accountName, allHistory, from, to, search, category, tag, status, kind, ids, txPage } = filters;
   return (
     <section className="card transactions-card">
       <p className="footnote" style={{ padding: '16px 20px 0' }}>
@@ -91,23 +81,34 @@ export function TransactionsPage({
           <Search size={17} />
           <input
             aria-label="Search transactions"
-            placeholder="Search transactions…"
+            placeholder="Search descriptions, categories or tags…"
+            maxLength={200}
             value={search}
             onChange={(e) => onFiltersChange({ search: e.target.value })}
           />
         </div>
-        <select
+        <CategorySelect
           aria-label="Filter category"
+          catalog={options.catalog}
+          includeArchived
           value={category}
+          placeholder="All categories"
           onChange={(e) => onFiltersChange({ category: e.target.value })}
-        >
-          <option value="">All categories</option>
-          {[...categoryOptions].map(([value, label]) => (
+        />
+        <select aria-label="Filter tag" value={tag || ''} onChange={(e) => onFiltersChange({ tag: e.target.value })}>
+          <option value="">All tags</option>
+          {tag && !options.tags.includes(tag) && <option value={tag}>{tag}</option>}
+          {options.tags.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {value}
             </option>
           ))}
         </select>
+        {options.error && (
+          <p role="alert" className="negative">
+            Filter options could not be loaded: {options.error}
+          </p>
+        )}
         <select aria-label="Filter status" value={status} onChange={(e) => onFiltersChange({ status: e.target.value })}>
           <option value="">All statuses</option>
           <option value="posted">Posted</option>
@@ -152,6 +153,13 @@ export function TransactionsPage({
                         {t.status === 'pending' ? 'Pending · excluded from actuals' : t.kind || 'expense'}
                         {t.reviewReason ? ' · Needs review' : ''}
                       </small>
+                      <div className="tag-list">
+                        {(t.tags || []).map((tag) => (
+                          <span className="category-tag" key={tag}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -162,7 +170,7 @@ export function TransactionsPage({
                       ? 'Split transaction'
                       : t.categoryDisplayLabel || t.category || 'Uncategorized'}
                   </span>
-                  {t.categoryDisplayLabel && (
+                  {t.categoryDisplayLabel === 'Unresolved category' && (
                     <small>Category name unavailable; saved references need a category choice.</small>
                   )}
                 </td>
@@ -187,7 +195,7 @@ export function TransactionsPage({
           Showing transactions contributing to the selected total.{' '}
           <button
             onClick={() => {
-              onFiltersChange({ ids: null, category: '', kind: '', status: '' });
+              onFiltersChange({ ids: null, category: '', tag: '', kind: '', status: '' });
             }}
           >
             Clear drilldown

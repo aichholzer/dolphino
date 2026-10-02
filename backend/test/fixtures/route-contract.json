@@ -81,5 +81,10 @@
   ["get", "/api/settings/ai", "admin"],
   ["put", "/api/settings/ai", "admin"],
   ["post", "/api/settings/ai/models", "admin"],
-  ["post", "/api/settings/ai/test-connection", "admin"]
+  ["post", "/api/settings/ai/test-connection", "admin"],
+  ["get", "/api/tags", "financial"],
+  ["get", "/api/settings/categories", "admin"],
+  ["post", "/api/settings/categories", "admin"],
+  ["patch", "/api/settings/categories", "admin"],
+  ["delete", "/api/settings/categories", "admin"]
 ]

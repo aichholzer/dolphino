@@ -12,7 +12,7 @@ export function reportingMonth(session, now = new Date()) {
 }
 
 export function reportQuery({ page, month, currency, period, filters }) {
-  const { txPage, accountId, allHistory, from, to, search, category, status, kind, ids } = filters;
+  const { txPage, accountId, allHistory, from, to, search, category, tag, status, kind, ids } = filters;
   return new URLSearchParams({
     // An explicit ID set includes []: an empty drilldown must never become a whole month.
     ...(page === 'Transactions' && (allHistory || from || to || ids !== null) ? {} : { month }),
@@ -30,6 +30,7 @@ export function reportQuery({ page, month, currency, period, filters }) {
       : {}),
     ...(search ? { search } : {}),
     ...(category ? { category } : {}),
+    ...(tag ? { tag } : {}),
     ...(status ? { status } : {}),
     ...(kind ? { kind } : {}),
     ...(ids !== null ? { ids: ids.join(',') } : {})

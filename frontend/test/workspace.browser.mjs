@@ -117,7 +117,9 @@ async function fixturePage(nextSession = memberSession) {
     } else if (path === '/api/settings/simplefin') {
       data = { backfillDays: 30, enabled: false, accounts: [] };
     } else if (path === '/api/reviews') {
-      data = { reviews: [{ id: 'review-one', description: 'Synthetic review' }] };
+      data = {
+        reviews: [{ id: 'review-one', accountId: 'prior-account', canEdit: true, description: 'Synthetic review' }]
+      };
     }
 
     await route.fulfill({ json: data });
@@ -141,7 +143,10 @@ try {
     const page = await browser.newPage();
     try {
       const assertNoStorageAccess = await installBrowserStorageGuard(page);
-      await page.goto('data:text/html,<title>Storage guard self-test</title>');
+      await page.route('**/storage-guard-probe', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<title>Storage guard self-test</title>' })
+      );
+      await page.goto(`${base}/storage-guard-probe`);
       const failures = await page.evaluate(() => {
         const caught = [];
         for (const attempt of [
@@ -263,7 +268,7 @@ try {
 
       await page.goto(base);
       await page.getByRole('button', { name: 'Review', exact: true }).click();
-      await page.getByRole('button', { name: 'Keep separate', exact: true }).click();
+      await page.getByRole('button', { name: 'Dismiss warning', exact: true }).click();
       await expect.poll(() => !!heldMutation).toBe(true);
       await page.getByRole('button', { name: 'Accounts', exact: true }).click();
       await page.getByRole('heading', { name: priorAccount.name, exact: true }).waitFor();

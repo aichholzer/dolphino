@@ -13,6 +13,7 @@ import { registerSettingsRoutes } from './routes/settings.mjs';
 import { registerIntegrationRoutes } from './routes/integrations.mjs';
 import { registerNotificationRoutes } from './routes/notifications.mjs';
 import { registerAccountRoutes } from './routes/accounts.mjs';
+import { registerCategoryRoutes } from './routes/categories.mjs';
 import { registerTransactionRoutes } from './routes/transactions.mjs';
 import { registerBudgetRoutes } from './routes/budgets.mjs';
 import { registerReviewRoutes } from './routes/reviews.mjs';
@@ -75,6 +76,7 @@ export function createApp({
   registerNotificationRoutes({ route, notifications, telegram, sensitive });
   registerAccountRoutes({ route, ledger });
   registerTransactionRoutes({ route, store, classification, ledger, filters });
+  registerCategoryRoutes({ route, store, ledger });
   registerBudgetRoutes({ route, ledger, report });
   registerReviewRoutes({ route, ledger });
   registerRuleRoutes({ route, store });

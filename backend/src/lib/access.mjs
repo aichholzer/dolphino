@@ -130,7 +130,8 @@ const sanitize = (t) =>
         providerCategory: null,
         category: 'Transfers',
         categoryDisplayLabel: undefined,
-        splits: []
+        splits: [],
+        tags: []
       }
     : t;
 const budgetScope =
@@ -302,6 +303,10 @@ export async function createAccessStore(store, user) {
         throw domainError('Only an administrator can change confirmed transfer semantics');
       }
 
+      if ((prior.kind === 'transfer' || prior.internalTransfer) && patch.tags !== undefined) {
+        throw domainError('Only an administrator can edit private transfer labels');
+      }
+
       return decorate(await store.correctTransaction(id, patch));
     },
     listReviews: async () => Promise.all((await store.listTransactions(await scoped({ review: true }))).map(decorate)),
@@ -322,16 +327,27 @@ export async function createAccessStore(store, user) {
             created_at: row.created_at
           }));
     },
-    listCategories: async () =>
-      [
-        ...new Set([
-          'Uncategorized',
-          ...(await store.listTransactions(await scoped()))
-            .map(sanitize)
-            .flatMap((t) => [t.category, ...t.splits.map((s) => s.category)]),
-          ...(await allowedBudgets()).map((b) => b.category)
-        ])
-      ].sort(),
+    listCategoryCatalog: async () => {
+      const g = await grants();
+      return store.listCategoryCatalog(store.pool, {
+        accountIds: g.accounts.map((a) => a.accountId),
+        budgetIds: g.budgets.map((b) => b.budgetId),
+        admin: false
+      });
+    },
+    listCategories: async () => {
+      const g = await grants();
+      return (
+        await store.listCategoryCatalog(store.pool, {
+          accountIds: g.accounts.map((a) => a.accountId),
+          budgetIds: g.budgets.map((b) => b.budgetId),
+          admin: false
+        })
+      )
+        .filter((entry) => !entry.archived)
+        .map((entry) => entry.category);
+    },
+    listTags: async () => store.listTags(await scoped()),
     listBudgets: allowedBudgets,
     saveBudget: async (b) => {
       const g = await grants();

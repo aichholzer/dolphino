@@ -1,12 +1,14 @@
 import { z } from 'zod';
 import { createAccessStore } from '../lib/access.mjs';
 import { body } from '../http/body.mjs';
+import { tagsSchema } from '../lib/category-catalog.mjs';
 import { category, kind, minor } from './finance-schemas.mjs';
 
 const correction = z
   .object({
     category: category.optional(),
     kind: kind.optional(),
+    tags: tagsSchema.optional(),
     note: z.string().max(1000).optional(),
     splits: z
       .array(z.object({ category, amountMinor: minor }))
@@ -24,15 +26,6 @@ export function registerTransactionRoutes({ route, store, classification, ledger
     'patch',
     '/api/transactions/:id',
     async (req) => ledger(req).correctTransaction(req.params.id, correction.parse(await body(req))),
-    { access: 'financial' }
-  );
-
-  route(
-    'get',
-    '/api/categories',
-    async (req) => ({
-      categories: await ledger(req).listCategories()
-    }),
     { access: 'financial' }
   );
 

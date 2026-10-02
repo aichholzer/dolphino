@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { minorToDecimal } from '../../money.mjs';
+import { CategorySelect } from '../../components/category-select';
+import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { budgetValues } from './budget-model.mjs';
 
 export function BudgetDialog({ budget, close, busy, save, serverError, currency, canChangeCategory }) {
+  const options = useCategoryOptions(!!budget);
   const [category, setCategory] = useState(''),
-    [categoryEdited, setCategoryEdited] = useState(false),
     [cap, setCap] = useState(''),
     [allocation, setAllocation] = useState('0.00'),
     [rollover, setRollover] = useState(false),
@@ -14,7 +16,6 @@ export function BudgetDialog({ budget, close, busy, save, serverError, currency,
   useEffect(() => {
     if (budget) {
       setCategory(budget.category);
-      setCategoryEdited(false);
       setCap(minorToDecimal(budget.capMinor, currency));
       setAllocation(minorToDecimal(budget.allocationMinor, currency));
       setRollover(!!budget.rolloverEnabled);
@@ -40,16 +41,25 @@ export function BudgetDialog({ budget, close, busy, save, serverError, currency,
       >
         <label>
           Category
-          <input
+          <CategorySelect
+            catalog={options.catalog}
             required
-            disabled={!canChangeCategory}
-            value={!categoryEdited && budget?.categoryDisplayLabel ? budget.categoryDisplayLabel : category}
+            disabled={!canChangeCategory || !!budget?.id}
+            label={budget?.categoryDisplayLabel}
+            value={category}
             onChange={(e) => {
               setCategory(e.target.value);
-              setCategoryEdited(true);
             }}
           />
         </label>
+        {budget?.id && canChangeCategory && (
+          <p className="footnote">Rename this category for all transactions and budgets in Settings → Categories.</p>
+        )}
+        {options.error && (
+          <p role="alert" className="negative">
+            Categories could not be loaded: {options.error}
+          </p>
+        )}
         <label>
           Monthly cap
           <input required inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value)} />

@@ -10,6 +10,13 @@ import {
   KINDS,
   domainError
 } from './engine.mjs';
+import {
+  categoryCatalog,
+  assertCategoryAvailable,
+  tagsSchema,
+  effectiveCategorySql,
+  transferSql
+} from './category-catalog.mjs';
 import { demoData } from '../utils/demo.mjs';
 import {
   isRedbarkCategoryReference,
@@ -50,6 +57,7 @@ const txRow = (r) => {
     description: r.description,
     providerCategory: r.provider_category,
     category,
+    ...(r.category_name && r.category_name !== category ? { categoryDisplayLabel: r.category_name } : {}),
     ...categoryDisplayMetadata(category, r.category_references),
     kind: r.override_kind || r.kind,
     internalTransfer: r.kind === 'transfer' || r.override_kind === 'transfer',
@@ -58,6 +66,7 @@ const txRow = (r) => {
       ...categoryDisplayMetadata(split.category, r.category_references)
     })),
     note: r.note || '',
+    tags: r.tags || [],
     reviewReason: r.review_reason,
     reviewRequired: !!r.review_reason,
     fetchedAt: r.fetched_at,
@@ -65,10 +74,11 @@ const txRow = (r) => {
   };
 };
 
-const txSelect = `SELECT t.*,${transactionCategoryReferencesSql} category_references,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,o.splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id`;
+const txSelect = `SELECT c.name category_name,ARRAY(SELECT tag FROM transaction_tags WHERE transaction_id=t.id ORDER BY tag) tags,t.*,${transactionCategoryReferencesSql} category_references,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,(SELECT jsonb_agg(split || CASE WHEN sc.name IS NOT NULL AND sc.name<>split->>'category' THEN jsonb_build_object('categoryDisplayLabel',sc.name) ELSE '{}'::jsonb END) FROM jsonb_array_elements(o.splits) split LEFT JOIN category_catalog sc ON sc.mode=t.mode AND sc.category=split->>'category') splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id LEFT JOIN category_catalog c ON c.mode=t.mode AND c.category=${effectiveCategorySql}`;
 const budgetRow = (r) => ({
   id: r.id,
   category: r.category,
+  ...(r.category_name && r.category_name !== r.category ? { categoryDisplayLabel: r.category_name } : {}),
   ...categoryDisplayMetadata(r.category, r.category_references),
   currency: r.currency,
   month: r.month,
@@ -82,6 +92,7 @@ const ruleRow = (r) => ({
   contains: r.contains,
   match: r.contains,
   category: r.category,
+  ...(r.category_name && r.category_name !== r.category ? { categoryDisplayLabel: r.category_name } : {}),
   ...categoryDisplayMetadata(r.category, r.category_references),
   kind: r.kind,
   priority: r.priority
@@ -102,7 +113,8 @@ export class Store {
       '006_alert_notifications.sql',
       '010_grants.sql',
       '012_simplefin.sql',
-      '013_redbark_category_evidence.sql'
+      '013_redbark_category_evidence.sql',
+      '014_categories_tags.sql'
     ]) {
       await this.pool.query(await readFile(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
     }
@@ -468,12 +480,38 @@ export class Store {
       );
     }
 
-    if (filters.q || filters.search) {
+    for (const field of ['q', 'search', 'merchant', 'category', 'tag']) {
+      if (
+        filters[field] !== undefined &&
+        (typeof filters[field] !== 'string' || filters[field].length > (field === 'tag' ? 40 : 200))
+      ) {
+        throw domainError('Invalid search filter');
+      }
+    }
+
+    if (filters.tag) {
       add(
+        `EXISTS(SELECT 1 FROM transaction_tags tag WHERE tag.transaction_id=t.id AND tag.tag=?)${filters.redactTransfers ? ` AND NOT ${transferSql}` : ''}`,
+        filters.tag.trim().toLowerCase()
+      );
+    }
+
+    const search = filters.q || filters.search || filters.merchant;
+    if (search) {
+      values.push(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      const param = `$${values.length}`;
+      const description = `t.description ILIKE ${param}`;
+      const condition = filters.merchant
+        ? description
+        : `(${description}
+        OR o.note ILIKE ${param}
+        OR COALESCE((SELECT name FROM category_catalog WHERE mode=t.mode AND category=${effectiveCategorySql}),${effectiveCategorySql}) ILIKE ${param}
+        OR EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(o.splits,'[]'::jsonb)) split LEFT JOIN category_catalog sc ON sc.mode=t.mode AND sc.category=split->>'category' WHERE COALESCE(sc.name,split->>'category') ILIKE ${param})
+        OR EXISTS(SELECT 1 FROM transaction_tags tag WHERE tag.transaction_id=t.id AND tag.tag ILIKE ${param}))`;
+      clauses.push(
         filters.redactTransfers
-          ? "(CASE WHEN (o.kind='transfer' OR t.kind='transfer') THEN 'Internal transfer' ELSE t.description END) ILIKE ?"
-          : 't.description ILIKE ?',
-        `%${filters.q || filters.search}%`
+          ? `((${transferSql} AND 'Internal transfer' ILIKE ${param}) OR (NOT ${transferSql} AND ${condition}))`
+          : condition
       );
     }
 
@@ -641,7 +679,7 @@ export class Store {
         throw domainError('Transaction not found');
       }
 
-      if (!['category', 'kind', 'splits', 'note'].some((field) => patch[field] !== undefined)) {
+      if (!['category', 'kind', 'splits', 'note', 'tags'].some((field) => patch[field] !== undefined)) {
         return;
       }
 
@@ -660,7 +698,25 @@ export class Store {
         throw domainError('Note is too long');
       }
 
+      const oldCategory = txRow(current).category;
+      await assertCategoryAvailable(this, patch.category, [oldCategory], c);
+      for (const split of patch.splits || []) {
+        await assertCategoryAvailable(
+          this,
+          split.category,
+          (current.splits || []).map((s) => s.category),
+          c
+        );
+      }
+
       const before = (await c.query('SELECT * FROM transaction_overrides WHERE transaction_id=$1', [id])).rows[0] || {};
+      const oldTags = current.tags || [];
+      const tags = patch.tags === undefined ? oldTags : tagsSchema.parse(patch.tags);
+      if (patch.tags !== undefined) {
+        await c.query('DELETE FROM transaction_tags WHERE transaction_id=$1', [id]);
+        await c.query('INSERT INTO transaction_tags(transaction_id,tag) SELECT $1,unnest($2::text[])', [id, tags]);
+      }
+
       const after = {
         category: patch.category === undefined ? before.category : patch.category,
         kind: patch.kind === undefined ? before.kind : patch.kind,
@@ -668,19 +724,22 @@ export class Store {
         note: patch.note === undefined ? before.note : patch.note
       };
       validateSplits(after.splits, String(current.amount_minor));
-      await c.query(
-        `INSERT INTO transaction_overrides(transaction_id,category,kind,splits,note) VALUES($1,$2,$3,$4,$5) ON CONFLICT(transaction_id) DO UPDATE SET category=excluded.category,kind=excluded.kind,splits=excluded.splits,note=excluded.note,updated_at=now()`,
-        [
-          id,
-          after.category || null,
-          after.kind || null,
-          after.splits ? JSON.stringify(after.splits) : null,
-          after.note || null
-        ]
-      );
+      if (['category', 'kind', 'splits', 'note'].some((field) => patch[field] !== undefined)) {
+        await c.query(
+          `INSERT INTO transaction_overrides(transaction_id,category,kind,splits,note) VALUES($1,$2,$3,$4,$5) ON CONFLICT(transaction_id) DO UPDATE SET category=excluded.category,kind=excluded.kind,splits=excluded.splits,note=excluded.note,updated_at=now()`,
+          [
+            id,
+            after.category || null,
+            after.kind || null,
+            after.splits ? JSON.stringify(after.splits) : null,
+            after.note || null
+          ]
+        );
+      }
+
       await c.query(
         `INSERT INTO audit_history(mode,transaction_id,action,before_value,after_value) VALUES($1,$2,'correction',$3,$4)`,
-        [this.mode, id, before, after]
+        [this.mode, id, { ...before, tags: oldTags }, { ...after, tags }]
       );
       if (patch.category || patch.splits || patch.kind) {
         await c.query(
@@ -913,7 +972,7 @@ export class Store {
   async listBudgets(c = this.pool) {
     return (
       await c.query(
-        `SELECT b.*,ARRAY(SELECT DISTINCT p.payload->'raw'->>'category' FROM provider_observations p WHERE p.mode=b.mode AND p.provider='redbark' AND p.payload->'raw'->>'category'=b.category) category_references FROM budgets b WHERE b.mode=$1 ORDER BY b.month,b.category`,
+        `SELECT c.name category_name,b.*,ARRAY(SELECT DISTINCT p.payload->'raw'->>'category' FROM provider_observations p WHERE p.mode=b.mode AND p.provider='redbark' AND p.payload->'raw'->>'category'=b.category) category_references FROM budgets b LEFT JOIN category_catalog c ON c.mode=b.mode AND c.category=b.category WHERE b.mode=$1 ORDER BY b.month,b.category`,
         [this.mode]
       )
     ).rows.map(budgetRow);
@@ -933,6 +992,15 @@ export class Store {
     }
 
     return this.atomic(async (c) => {
+      const existing = (
+        await c.query('SELECT 1 FROM budgets WHERE mode=$1 AND category=$2 AND currency=$3 AND month=$4', [
+          this.mode,
+          b.category,
+          b.currency || 'AUD',
+          b.month
+        ])
+      ).rowCount;
+      await assertCategoryAvailable(this, b.category, existing ? [b.category] : [], c);
       const r = await c.query(
         `INSERT INTO budgets(id,mode,category,currency,month,cap_minor,allocation_minor,rollover) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(mode,category,currency,month) DO UPDATE SET cap_minor=excluded.cap_minor,allocation_minor=excluded.allocation_minor,rollover=excluded.rollover RETURNING *`,
         [
@@ -958,7 +1026,7 @@ export class Store {
   async listRules() {
     return (
       await this.pool.query(
-        `SELECT r.*,ARRAY(SELECT DISTINCT p.payload->'raw'->>'category' FROM provider_observations p WHERE p.mode=r.mode AND p.provider='redbark' AND p.payload->'raw'->>'category'=r.category) category_references FROM rules r WHERE r.mode=$1 ORDER BY r.priority DESC,r.id`,
+        `SELECT c.name category_name,r.*,ARRAY(SELECT DISTINCT p.payload->'raw'->>'category' FROM provider_observations p WHERE p.mode=r.mode AND p.provider='redbark' AND p.payload->'raw'->>'category'=r.category) category_references FROM rules r LEFT JOIN category_catalog c ON c.mode=r.mode AND c.category=r.category WHERE r.mode=$1 ORDER BY r.priority DESC,r.id`,
         [this.mode]
       )
     ).rows.map(ruleRow);
@@ -1021,29 +1089,22 @@ export class Store {
       );
     }
   }
+  async listCategoryCatalog(c = this.pool, scope) {
+    return categoryCatalog(this, c, scope);
+  }
   async listCategories(c = this.pool) {
-    const rows = await this.listTransactions({}, c);
-    const configured = (
-      await c.query('SELECT category FROM budgets WHERE mode=$1 UNION SELECT category FROM rules WHERE mode=$1', [
-        this.mode
-      ])
-    ).rows;
-    return [
-      ...new Set([
-        'Uncategorized',
-        'Groceries',
-        'Dining',
-        'Transport',
-        'Housing',
-        'Utilities',
-        'Shopping',
-        'Entertainment',
-        'Health',
-        'Income',
-        ...rows.map((t) => t.category),
-        ...configured.map((r) => r.category)
-      ])
-    ].sort();
+    return (await this.listCategoryCatalog(c)).filter((entry) => !entry.archived).map((entry) => entry.category);
+  }
+  async listTags({ accountIds, redactTransfers = false } = {}) {
+    return (
+      await this.pool.query(
+        `SELECT DISTINCT tag.tag FROM transaction_tags tag
+      JOIN transactions t ON t.id=tag.transaction_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
+      WHERE t.mode=$1 AND t.superseded_by IS NULL AND ($2::text[] IS NULL OR t.account_id=ANY($2))
+        AND (NOT $3::boolean OR NOT ${transferSql}) ORDER BY tag.tag LIMIT 1000`,
+        [this.mode, accountIds ?? null, redactTransfers]
+      )
+    ).rows.map((r) => r.tag);
   }
   async isAutomaticClassificationEligible(tx, c = this.pool) {
     if (
@@ -1191,6 +1252,17 @@ export class Store {
         throw domainError('Only a compatible pending and posted pair can be linked');
       }
 
+      const combinedTags = Number(
+        (
+          await c.query('SELECT count(DISTINCT tag) total FROM transaction_tags WHERE transaction_id=ANY($1::uuid[])', [
+            [postedId, pendingId]
+          ])
+        ).rows[0].total
+      );
+      if (combinedTags > 20) {
+        throw domainError('The linked transaction would exceed 20 tags. Remove unused tags before linking.');
+      }
+
       // Retain immutable evidence and the retired canonical row; reports exclude the superseded row.
       await c.query('UPDATE source_aliases SET transaction_id=$1 WHERE transaction_id=$2', [postedId, pendingId]);
       const over = (
@@ -1207,6 +1279,10 @@ export class Store {
         ]);
       }
 
+      await c.query(
+        'INSERT INTO transaction_tags(transaction_id,tag) SELECT $1,tag FROM transaction_tags WHERE transaction_id=$2 ON CONFLICT DO NOTHING',
+        [postedId, pendingId]
+      );
       await c.query('UPDATE transactions SET review_reason=NULL WHERE id=$1', [postedId]);
       await c.query('UPDATE transactions SET review_reason=NULL,superseded_by=$2 WHERE id=$1', [pendingId, postedId]);
       await c.query(

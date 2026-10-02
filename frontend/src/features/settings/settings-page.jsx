@@ -3,6 +3,7 @@ import { ShieldCheck, RefreshCw, Download } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { IntegrationSettings } from '../../components/integration-settings';
 import { SimplefinSettings } from '../../components/simplefin-settings';
+import { CategoriesSettings } from './categories-settings';
 import { AiSettings } from './ai-settings';
 import { SettingsDrafts } from './settings-dirty';
 import { settingsSections } from './settings-navigation.mjs';
@@ -130,6 +131,7 @@ export function SettingsPage({
                 <IntegrationSettings api={api} demo={session?.demo} onUpdated={onUpdated} />
               </>
             )}
+            {section === 'categories' && <CategoriesSettings />}
             {section === 'members' && <UsersSettings api={api} session={session} onSession={onSession} />}
             {section === 'notifications' && <NotificationSettings api={api} demo={session?.demo} />}
             {section === 'ai' && <AiSettings api={api} demo={session?.demo} onUpdated={onUpdated} />}

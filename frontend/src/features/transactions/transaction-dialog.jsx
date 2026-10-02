@@ -3,11 +3,15 @@ import { Sparkles, Plus, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { api } from '../../lib/api.mjs';
-import { CATEGORIES } from './categories.mjs';
+import { CategorySelect } from '../../components/category-select';
+import { TransactionTags } from '../../components/transaction-tags';
+import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { money, minorToDecimal } from '../../money.mjs';
 import { transactionCorrection } from './transaction-model.mjs';
 
 export function EditTransaction({ canSuggest, transaction, open, close, busy, save, serverError }) {
+  const options = useCategoryOptions(transaction?.id);
+  const [tags, setTags] = useState([]);
   const [llmEnabled, setLlmEnabled] = useState(false),
     [suggesting, setSuggesting] = useState(false),
     [suggestion, setSuggestion] = useState(null);
@@ -32,6 +36,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
     [error, setError] = useState('');
   useEffect(() => {
     if (transaction) {
+      setTags(transaction.tags || []);
       setCategory(transaction.category || 'Uncategorized');
       setCategoryEdited(false);
       setKind(transaction.kind || 'expense');
@@ -61,7 +66,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
           e.preventDefault();
           try {
             const values = transactionCorrection(
-              { category, categoryEdited, preserveUntouched: true, kind, splits },
+              { category, categoryEdited, preserveUntouched: true, kind, splits, tags },
               transaction
             );
             setError('');
@@ -73,9 +78,10 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
       >
         <label>
           Category
-          <input
-            list="category-options"
-            value={!categoryEdited && transaction?.categoryDisplayLabel ? transaction.categoryDisplayLabel : category}
+          <CategorySelect
+            catalog={options.catalog}
+            value={category}
+            label={transaction?.categoryDisplayLabel}
             onChange={(e) => {
               setCategory(e.target.value);
               setCategoryEdited(true);
@@ -83,16 +89,19 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
             required
           />
         </label>
-        {!categoryEdited && transaction?.categoryDisplayLabel && (
+        {options.error && (
+          <p role="alert" className="negative">
+            Categories could not be loaded: {options.error}
+          </p>
+        )}
+        {!categoryEdited && transaction?.categoryDisplayLabel === 'Unresolved category' && (
           <p className="footnote">
             Choose a category to resolve this reference. Leaving it unchanged preserves its saved category.
           </p>
         )}
-        <datalist id="category-options">
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
+        {(canSuggest || !transaction?.internalTransfer) && (
+          <TransactionTags key={transaction?.id} tags={tags} onChange={setTags} suggestions={options.tags} />
+        )}
         <label>
           Transaction type
           <select
@@ -157,7 +166,9 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
               setSplits([
                 ...splits,
                 {
-                  category: 'Other',
+                  category:
+                    options.catalog.find((entry) => !entry.archived && entry.category === 'Other')?.category ||
+                    'Uncategorized',
                   amount: splits.length
                     ? minorToDecimal('0', transaction.currency)
                     : minorToDecimal(transaction.amountMinor, transaction.currency)
@@ -171,10 +182,12 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
         </div>
         {splits.map((s, i) => (
           <div className="split-row" key={i}>
-            <input
+            <CategorySelect
               aria-label={`Split ${i + 1} category`}
-              list="category-options"
-              value={!s.categoryEdited && s.categoryDisplayLabel ? s.categoryDisplayLabel : s.category}
+              catalog={options.catalog}
+              required
+              label={s.categoryDisplayLabel}
+              value={s.category}
               onChange={(e) =>
                 setSplits(
                   splits.map((x, j) => (j === i ? { ...x, category: e.target.value, categoryEdited: true } : x))

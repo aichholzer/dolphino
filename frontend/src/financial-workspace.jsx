@@ -290,7 +290,13 @@ export function FinancialWorkspace({ session, onSession }) {
               />
             )}
             {page === 'Review' && (
-              <ReviewsPage reviews={data.reviews || []} busy={busy} onEdit={setEdit} mutate={mutate} />
+              <ReviewsPage
+                canEditAccount={canEditAccount}
+                reviews={data.reviews || []}
+                busy={busy}
+                onEdit={setEdit}
+                mutate={mutate}
+              />
             )}
             {page === 'Rules' && <RulesPage rules={data.rules || []} onEdit={setRule} />}
             {page === 'Settings' && isAdmin && (

@@ -10,7 +10,7 @@ import {
 test('settings sections retain every requested destination in order', () => {
   assert.deepEqual(
     settingsSections.map((section) => section.label),
-    ['RedBark', 'Members', 'Notifications', 'Data', 'AI features']
+    ['RedBark', 'Categories', 'Members', 'Notifications', 'Data', 'AI features']
   );
 });
 

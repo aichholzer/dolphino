@@ -1,5 +1,6 @@
 export const settingsSections = [
   { id: 'redbark', label: 'RedBark', description: 'Connection, credentials and signed events' },
+  { id: 'categories', label: 'Categories', description: 'Names, new categories and archived history' },
   { id: 'members', label: 'Members', description: 'People, invitations and access' },
   { id: 'notifications', label: 'Notifications', description: 'Email and Telegram alerts' },
   { id: 'data', label: 'Data', description: 'Imports, health, history and exports' },
