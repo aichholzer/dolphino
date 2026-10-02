@@ -1,3 +1,4 @@
+import { useDraftGuard } from '../../hooks/use-draft-guard.mjs';
 import { useState, useEffect } from 'react';
 import { Sparkles, Plus, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -9,8 +10,9 @@ import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { money, minorToDecimal } from '../../money.mjs';
 import { transactionCorrection } from './transaction-model.mjs';
 
-export function EditTransaction({ canSuggest, transaction, open, close, busy, save, serverError }) {
+export function EditTransaction({ canSuggest, transaction, open, close, busy, save, serverError, onDirtyChange }) {
   const options = useCategoryOptions(transaction?.id);
+  const [tagDraft, setTagDraft] = useState('');
   const [tags, setTags] = useState([]);
   const [llmEnabled, setLlmEnabled] = useState(false),
     [suggesting, setSuggesting] = useState(false),
@@ -50,6 +52,23 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
       setError('');
     }
   }, [transaction]);
+  const initialSplits = (transaction?.splits || []).map((s) => ({
+    ...s,
+    categoryEdited: false,
+    amount: minorToDecimal(s.amountMinor, transaction.currency)
+  }));
+  useDraftGuard(
+    onDirtyChange,
+    'transaction',
+    !!transaction &&
+      (busy ||
+        suggesting ||
+        !!tagDraft ||
+        categoryEdited ||
+        kind !== (transaction.kind || 'expense') ||
+        JSON.stringify(tags) !== JSON.stringify(transaction.tags || []) ||
+        JSON.stringify(splits) !== JSON.stringify(initialSplits))
+  );
   return (
     <Dialog
       open={open}
@@ -100,7 +119,13 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
           </p>
         )}
         {(canSuggest || !transaction?.internalTransfer) && (
-          <TransactionTags key={transaction?.id} tags={tags} onChange={setTags} suggestions={options.tags} />
+          <TransactionTags
+            key={transaction?.id}
+            tags={tags}
+            onChange={setTags}
+            suggestions={options.tags}
+            onDraftChange={setTagDraft}
+          />
         )}
         <label>
           Transaction type

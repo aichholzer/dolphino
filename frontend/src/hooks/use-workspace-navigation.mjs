@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { settingsSection, workspaceHash, workspaceRoute } from '../features/settings/settings-navigation.mjs';
 
-const discardMessage = 'You have unsaved settings or a save in progress. Leave and discard unsaved changes?';
+const discardMessage =
+  'You have unsaved changes or a save in progress. Leave and discard the draft? A save already sent may still finish.';
 
 export function useWorkspaceNavigation() {
   const [route, setRoute] = useState(() => workspaceRoute(location.hash));
-  const dirty = useRef(false);
+  const dirty = useRef(new Set());
   const current = useRef({ route, position: history.state?.dolphinoPosition ?? 0 });
   const reverting = useRef(false);
-  const onDirtyChange = useCallback((value) => {
-    dirty.current = value;
+  const onDirtyChange = useCallback((value, source = 'settings') => {
+    if (value) {
+      dirty.current.add(source);
+    } else {
+      dirty.current.delete(source);
+    }
   }, []);
-  const confirmLeave = useCallback(() => !dirty.current || window.confirm(discardMessage), []);
+  const confirmLeave = useCallback(() => !dirty.current.size || window.confirm(discardMessage), []);
 
   useEffect(() => {
     history.replaceState({ ...history.state, dolphinoPosition: current.current.position }, '', location.href);
@@ -45,14 +50,14 @@ export function useWorkspaceNavigation() {
         return;
       }
 
-      dirty.current = false;
+      dirty.current.clear();
       current.current = { route: next, position: position ?? current.current.position + 1 };
       history.replaceState({ ...history.state, dolphinoPosition: current.current.position }, '', location.href);
       setRoute(next);
     }
 
     function beforeUnload(event) {
-      if (dirty.current) {
+      if (dirty.current.size) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -69,12 +74,17 @@ export function useWorkspaceNavigation() {
   }, [confirmLeave]);
 
   const changeRoute = useCallback(
-    (page, section = current.current.route.section, { replace = false, force = false } = {}) => {
+    (page, section = current.current.route.section, { replace = false, force = false, transactionQuery } = {}) => {
       if (!force && !confirmLeave()) {
         return false;
       }
 
-      const next = { page, section: settingsSection(section) };
+      const next = {
+        page,
+        section: settingsSection(section),
+        ...(page === 'Transactions' && transactionQuery ? { transactionQuery } : {})
+      };
+      replace = replace || workspaceHash(next) === workspaceHash(current.current.route);
       const position = current.current.position + (replace ? 0 : 1);
       history[replace ? 'replaceState' : 'pushState'](
         { ...history.state, dolphinoPosition: position },
@@ -82,7 +92,7 @@ export function useWorkspaceNavigation() {
         workspaceHash(next)
       );
       current.current = { route: next, position };
-      dirty.current = false;
+      dirty.current.clear();
       setRoute(next);
       return true;
     },

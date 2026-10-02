@@ -49,10 +49,14 @@ export function validateSplits(splits, amountMinor) {
   }
 }
 
-export function classify(transaction, rules = []) {
-  const rule = [...rules]
+export function matchingRule(description, rules = []) {
+  return [...rules]
     .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
-    .find((r) => transaction.description.toLowerCase().includes(r.contains.toLowerCase()));
+    .find((r) => description.toLowerCase().includes(r.contains.toLowerCase()));
+}
+
+export function classify(transaction, rules = []) {
+  const rule = matchingRule(transaction.description, rules);
   return {
     category: rule?.category || transaction.category || 'Uncategorized',
     kind: rule?.kind || transaction.kind || (minor(transaction.amountMinor) < 0n ? 'expense' : 'income')

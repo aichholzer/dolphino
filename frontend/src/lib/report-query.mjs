@@ -28,12 +28,16 @@ export function reportQuery({ page, month, currency, period, filters }) {
           ...(to ? { to } : {})
         }
       : {}),
-    ...(search ? { search } : {}),
-    ...(category ? { category } : {}),
-    ...(tag ? { tag } : {}),
-    ...(status ? { status } : {}),
-    ...(kind ? { kind } : {}),
-    ...(ids !== null ? { ids: ids.join(',') } : {})
+    ...(page === 'Transactions'
+      ? {
+          ...(search ? { search } : {}),
+          ...(category ? { category } : {}),
+          ...(tag ? { tag } : {}),
+          ...(status ? { status } : {}),
+          ...(kind ? { kind } : {}),
+          ...(ids !== null ? { ids: ids.join(',') } : {})
+        }
+      : {})
   }).toString();
 }
 

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
-import { createServer } from 'vite';
+import { createCompiledServer as createServer } from './compiled-server.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
-// This test owns its Vite server and uses synthetic API fixtures only. It never
+// This test owns its compiled server and uses synthetic API fixtures only. It never
 // reaches a database, a bank/provider, or an existing application session.
 const root = fileURLToPath(new URL('..', import.meta.url));
 const server = await createServer({

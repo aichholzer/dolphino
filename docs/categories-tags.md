@@ -2,7 +2,7 @@
 
 ## Category lifecycle
 
-Review details, transaction editing (including splits) and budget creation use a server-loaded category dropdown. The catalog combines the default vocabulary, administrator-created categories, meaningful imported labels, existing corrections, split categories, budgets and rules. Opaque `cat_` provider references are excluded from the vocabulary. A saved unresolved reference remains a safe, readable option in its existing editor until someone explicitly chooses a category; saving unrelated fields preserves the original key.
+Review details, transaction editing (including splits), rule editing and budget creation use a server-loaded category dropdown. The catalog combines the default vocabulary, administrator-created categories, meaningful imported labels, existing corrections, split categories, budgets and rules. Opaque `cat_` provider references are excluded from the vocabulary. A saved unresolved reference remains a safe, readable option in its existing editor until someone explicitly chooses a category; saving unrelated fields preserves the original key.
 
 Administrators manage categories in **Settings → Categories**:
 
@@ -17,7 +17,7 @@ An existing budget's category is fixed in the editor. Rename it through Settings
 
 ## Tags and search
 
-Transaction edits support up to 20 distinct tags of 1–40 characters. Tags are trimmed, lowercased, sorted and deduplicated. Add a tag with **Add tag** or Enter, remove individual tags with their labelled buttons, then save the correction. A tag-only edit does not create a financial override or dismiss a review. Tags survive provider updates and appear in transaction results, exports and authorized assistant transaction details. Pending-to-posted linking unions tags without discarding either set; an oversized union fails atomically until labels are reduced.
+Transaction edits support up to 20 distinct tags of 1–40 characters. Tags are trimmed, lowercased, sorted and deduplicated. Add a tag with **Add tag** or Enter, remove individual tags with their labelled buttons, then save the correction. A tag-only edit does not create a financial override or dismiss a review. Tags survive provider updates and appear in transaction results, exports and authorized assistant transaction details. Pending-to-posted linking combines effective tags and applies the latest explicit manual choice for each tag across the two records. Explicit removals stay removed; a later manual re-add wins. A combined set over 20 tags fails atomically until labels are reduced.
 
 Members need account edit permission to change tags. Transfer labels remain administrator-only and are redacted from member results, search matches, suggestions, counts, exports and assistant output. Tag suggestions come from visible, non-superseded transactions (up to 1,000 distinct suggestions). No application data is stored in browser persistent storage.
 
@@ -31,6 +31,16 @@ The former blanket **Keep separate** action sends `action: "keep"`. The backend 
 
 The UI now shows **Keep separate** for source-identity/replacement warnings, **Accept current classification** for classification warnings and **Dismiss warning** for other warnings. Compatible posted identity reviews retain **Link pending**. Help text explains the effect and transfer exclusion. Accounting semantics are unchanged.
 
+## Rules and global search
+
+Administrators can create or edit rules on **Rules**, or choose **Create rule** on a Transactions or Review row. Both row actions open the same editor with the literal description, saved category key (displaying its current name), transaction type and tags. Nothing is created by opening or cancelling it. Descriptions over 200 characters require an explicit match rather than silently becoming a broader prefix. Existing archived or unresolved rule assignments and an unspecified imported type can be retained; new rules require an active catalog choice.
+
+**Preview matches** is read-only. It counts all matching non-superseded imported descriptions and shows up to 20 examples, including higher-priority rules, manual corrections, tags to add, previously removed tags and tag-capacity limits. Editing after preview disables save until the current values have a matching preview. Saving applies to imported history and future imports. A preview is a current snapshot, not a reservation: new imports or another administrator's edits may change the scope before save. Rules still match literal substrings ignoring letter case, with priority descending then stable rule ID as the existing tie-breaker.
+
+Only the first matching rule contributes tags. Tags are additive: changing or deleting a rule leaves tags already applied. Manual tag removals are recorded separately and suppress re-addition by any rule or repeated import; explicitly re-adding a tag restores it. At the 20-tag limit, extra automatic labels are skipped, keeping imports and existing manual labels intact. Repeated application inserts no duplicate tags or tag-addition audits. Tags never change money, source observations, split amounts, notes or financial overrides. Existing category/type rule behavior remains separate: a user-approved rule can reclassify non-manual transactions and resolve classification reviews as before.
+
+The permanent header search is available on every workspace page with account access. Submitting or clearing it opens **Transactions**, searches all imported history in the displayed default currency, and clears prior account, month/date, category, tag, status, type, exact-ID and page scopes. Budget-only users cannot use transaction search. Transaction criteria live in the URL fragment (never results or permissions), so refresh and back/forward restore the selection; local filter edits replace the current history entry. Logout clears the current route. Every request rechecks server-side grants. Unsaved Settings, rule, transaction, account and budget drafts guard navigation and browser history. No browser storage API is used.
+
 ## API and migration
 
 - `GET /api/categories`: scoped `catalog` entries `{category, name, archived}` plus the legacy active `categories` key array.
@@ -40,11 +50,15 @@ The UI now shows **Keep separate** for source-identity/replacement warnings, **A
 - `PATCH /api/settings/categories`: `{category, name? , archived?}`.
 - `DELETE /api/settings/categories`: `{category}` archives it.
 - `PATCH /api/transactions/:id`: optional `tags` array, alongside existing correction fields.
+- `POST /api/rules/preview`: administrator-only read-only scope preview, using the same strict body as saving.
+- `POST /api/rules`: `{id?, match, category, kind?, priority?, tags?}`; existing omitted tags are preserved. Tags use the same normalization/limits as transaction tags. Rule updates and tag additions are audited.
 - Transaction/export queries: optional exact `tag` and existing `category`, `search`/`q` filters.
 
 All category management endpoints use the default administrator policy and exact-Origin mutation check. Payload schemas reject unknown fields. Member reads use the request-scoped access facade. Category changes and tag corrections are audited.
 
 Migration `014_categories_tags.sql` is additive and idempotent. It creates category metadata and transaction tag tables plus account/date, tag lookup and trigram search indexes. It does not update provider observations, original transactions, overrides or existing budgets. The PostgreSQL installation must provide **pg_trgm**: the migration role needs database `CREATE` permission to install this trusted extension, or a database administrator can install it first. An existing installation in another schema is supported. Normal indexes may take time and block writes on large ledgers; run migrations during the usual stopped-worker upgrade window with a backup. No deployment was performed for this change.
+
+Migration `015_rule_tags.sql` adds rule tag arrays and explicit transaction tag preferences. Its one-time data marker records pre-existing tags as manual choices; subsequent startup migrations must not promote generated tags into manual choices. It changes no money, historical category keys, budgets, overrides or import evidence. The normal `npm start` / Compose startup applies both migrations through `Store.migrate()`; `npm run migrate` also applies them. For migration 014, a DBA can preinstall `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;` in the existing application database if the application role lacks database CREATE permission. Do not reset the database.
 
 ## Verification
 
@@ -54,8 +68,9 @@ The disposable PostgreSQL 17 fixture uses synthetic data, real database sessions
 # Configure TEST_DATABASE_URL or PG* for a disposable database, never a live household database.
 npm run check
 npm run test:browser:categories
+npm run test:browser:rules-search
 npm run test:browser:workspace
-node frontend/test/reviews.browser.mjs
+npm run test:browser:reviews
 npm run check:theme
 ```
 
@@ -72,3 +87,7 @@ Verified on 2026-10-02, based on `main` at `9b2380baca52532502753bca18720b06fb97
 - `npm run test:browser:workspace`, `node frontend/test/reviews.browser.mjs` and `npm run check:theme`: passed.
 
 Synthetic screenshots: [Categories on mobile](../artifacts/categories-settings-mobile.png) and [filtered transactions on desktop](../artifacts/categories-transactions-desktop.png).
+
+The rule/search follow-up adds real PostgreSQL/HTTP tests in `backend/test/rule-tags-http.test.mjs` for role/Origin/schema boundaries, read-only preview snapshots, first-match precedence, literal wildcard characters, concurrency, repeated imports/migrations, explicit removal/re-add, capacity, mode isolation and pending-link decisions. `frontend/test/rules-search.browser.mjs` exercises real authorized sessions against compiled assets, both row entry points, shared dropdowns, preview gating, cancellation/history guards, additive tags, global search from every page, stale-scope clearing, refresh/back/forward, mobile layout and revoked grants. The workspace and Review runners now also serve production bundles and compile their isolated test harnesses; they reject development-source requests.
+
+Follow-up UI evidence: [rule preview](../artifacts/rule-preview-desktop.png) and [permanent search on mobile](../artifacts/rules-global-search-mobile.png).

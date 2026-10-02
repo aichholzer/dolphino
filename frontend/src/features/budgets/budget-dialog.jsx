@@ -1,3 +1,4 @@
+import { useDraftGuard } from '../../hooks/use-draft-guard.mjs';
 import { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
@@ -6,7 +7,7 @@ import { CategorySelect } from '../../components/category-select';
 import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { budgetValues } from './budget-model.mjs';
 
-export function BudgetDialog({ budget, close, busy, save, serverError, currency, canChangeCategory }) {
+export function BudgetDialog({ budget, close, busy, save, serverError, currency, canChangeCategory, onDirtyChange }) {
   const options = useCategoryOptions(!!budget);
   const [category, setCategory] = useState(''),
     [cap, setCap] = useState(''),
@@ -22,6 +23,16 @@ export function BudgetDialog({ budget, close, busy, save, serverError, currency,
       setError('');
     }
   }, [budget, currency]);
+  useDraftGuard(
+    onDirtyChange,
+    'budget',
+    !!budget &&
+      (busy ||
+        category !== budget.category ||
+        cap !== minorToDecimal(budget.capMinor, currency) ||
+        allocation !== minorToDecimal(budget.allocationMinor, currency) ||
+        rollover !== !!budget.rolloverEnabled)
+  );
   return (
     <Dialog
       open={!!budget}

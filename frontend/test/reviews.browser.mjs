@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
-import { createServer } from 'vite';
+import { createCompiledServer as createServer } from './compiled-server.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
-// Own the loopback Vite server and intercept every API request. These synthetic
+// Own the loopback compiled server and intercept every API request. These synthetic
 // fixtures never use a database, provider, credentials, or an existing session.
 const root = fileURLToPath(new URL('..', import.meta.url));
 const artifacts = fileURLToPath(new URL('../../artifacts/', import.meta.url));

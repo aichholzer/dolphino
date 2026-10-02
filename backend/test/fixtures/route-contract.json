@@ -37,6 +37,7 @@
   ["put", "/api/budgets", "financial"],
   ["get", "/api/rules", "admin"],
   ["post", "/api/rules", "admin"],
+  ["post", "/api/rules/preview", "admin"],
   ["get", "/api/reviews", "financial"],
   ["post", "/api/reviews/:id", "financial"],
   ["get", "/api/transactions/:id/audit", "financial"],

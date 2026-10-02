@@ -13,6 +13,7 @@ export function TransactionsPage({
   navigate,
   canEditAccount,
   onEdit,
+  onCreateRule,
   filters,
   onFiltersChange
 }) {
@@ -34,7 +35,9 @@ export function TransactionsPage({
         <div className="transaction-scope">
           {accountId && (
             <strong>
-              {accountName}{' '}
+              {accountName ||
+                transactions.find((transaction) => transaction.accountId === accountId)?.accountName ||
+                'Selected account'}{' '}
               <button
                 onClick={() => {
                   onFiltersChange({ accountId: '', accountName: '' });
@@ -179,6 +182,16 @@ export function TransactionsPage({
                   {money(t.amountMinor, t.currency)}
                 </td>
                 <td>
+                  {isAdmin && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Create rule from ${t.description}`}
+                      onClick={() => onCreateRule(t)}
+                    >
+                      Create rule
+                    </Button>
+                  )}
                   {(t.canEdit || canEditAccount(t.accountId)) && (
                     <Button size="sm" variant="ghost" aria-label={`Edit ${t.description}`} onClick={() => onEdit(t)}>
                       Edit

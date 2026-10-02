@@ -12,7 +12,7 @@ const actionLabel = (reason) =>
       ? 'Accept current classification'
       : 'Dismiss warning';
 
-export function ReviewsPage({ reviews, busy, onEdit, mutate, canEditAccount }) {
+export function ReviewsPage({ reviews, busy, onEdit, mutate, canEditAccount, isAdmin, onCreateRule }) {
   return (
     <section className="card">
       {reviews.length ? (
@@ -50,6 +50,16 @@ export function ReviewsPage({ reviews, busy, onEdit, mutate, canEditAccount }) {
               <small>Transaction: {r.id}</small>
             </div>
             <div className="review-actions">
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  aria-label={`Create rule from ${r.description}`}
+                  onClick={() => onCreateRule(r)}
+                >
+                  Create rule
+                </Button>
+              )}
               <Button
                 variant="outline"
                 disabled={busy || !(r.canEdit || canEditAccount?.(r.accountId))}

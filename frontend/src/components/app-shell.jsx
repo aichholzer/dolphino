@@ -11,6 +11,7 @@ import {
   Menu,
   ChevronRight
 } from 'lucide-react';
+import { GlobalSearch } from './global-search';
 import { BrandMark } from './brand';
 import { AssistantPanel } from './assistant-panel';
 import { api } from '../lib/api.mjs';
@@ -33,6 +34,10 @@ export function AppShell({
   navigate,
   canNavigate,
   hasFinancialAccess,
+  canSearch,
+  activeSearch,
+  routeKey,
+  onSearch,
   onChangePassword,
   onSignOut,
   onViewTransaction,
@@ -122,6 +127,7 @@ export function AppShell({
             <ChevronRight size={14} />
             <span>{page}</span>
           </div>
+          <GlobalSearch canSearch={canSearch} activeSearch={activeSearch} routeKey={routeKey} onSearch={onSearch} />
           <div className="topbar-right">
             {hasFinancialAccess && <AssistantPanel api={api} session={session} onViewTransaction={onViewTransaction} />}
             {session?.demo && (

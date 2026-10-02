@@ -1,14 +1,21 @@
+import { useDraftGuard } from '../../hooks/use-draft-guard.mjs';
 import { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 
-export function AccountDialog({ account, close, busy, error, save }) {
+export function AccountDialog({ account, close, busy, error, save, onDirtyChange }) {
   const [label, setLabel] = useState(''),
     [description, setDescription] = useState('');
   useEffect(() => {
     setLabel(account?.label || account?.name || '');
     setDescription(account?.description || '');
   }, [account]);
+  useDraftGuard(
+    onDirtyChange,
+    'account',
+    !!account &&
+      (busy || label !== (account.label || account.name || '') || description !== (account.description || ''))
+  );
   return (
     <Dialog
       open={!!account}

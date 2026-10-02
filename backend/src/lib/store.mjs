@@ -17,6 +17,7 @@ import {
   effectiveCategorySql,
   transferSql
 } from './category-catalog.mjs';
+import { newRuleId, ruleTagPlan, applyRuleTags, saveManualTags, mergeTransactionTags } from './rule-tags.mjs';
 import { demoData } from '../utils/demo.mjs';
 import {
   isRedbarkCategoryReference,
@@ -95,7 +96,8 @@ const ruleRow = (r) => ({
   ...(r.category_name && r.category_name !== r.category ? { categoryDisplayLabel: r.category_name } : {}),
   ...categoryDisplayMetadata(r.category, r.category_references),
   kind: r.kind,
-  priority: r.priority
+  priority: r.priority,
+  tags: r.tags || []
 });
 export class Store {
   constructor(pool, { mode = 'demo', timezone = 'Australia/Brisbane' } = {}) {
@@ -114,7 +116,8 @@ export class Store {
       '010_grants.sql',
       '012_simplefin.sql',
       '013_redbark_category_evidence.sql',
-      '014_categories_tags.sql'
+      '014_categories_tags.sql',
+      '015_rule_tags.sql'
     ]) {
       await this.pool.query(await readFile(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
     }
@@ -414,6 +417,8 @@ export class Store {
       `INSERT INTO provider_observations(mode,provider,account_id,source_id,transaction_id,fetched_at,payload,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
       [this.mode, provider, o.accountId, o.sourceId, id, fetchedAt, payload, fingerprint]
     );
+    const canonical = (await c.query('SELECT * FROM transactions WHERE id=$1', [id])).rows[0];
+    await applyRuleTags(c, this.mode, canonical, rules);
     return txRow((await c.query(`${txSelect} WHERE t.id=$1`, [id])).rows[0]);
   }
   async listTransactions(filters = {}, c = this.pool) {
@@ -713,8 +718,7 @@ export class Store {
       const oldTags = current.tags || [];
       const tags = patch.tags === undefined ? oldTags : tagsSchema.parse(patch.tags);
       if (patch.tags !== undefined) {
-        await c.query('DELETE FROM transaction_tags WHERE transaction_id=$1', [id]);
-        await c.query('INSERT INTO transaction_tags(transaction_id,tag) SELECT $1,unnest($2::text[])', [id, tags]);
+        await saveManualTags(c, id, oldTags, tags);
       }
 
       const after = {
@@ -1031,11 +1035,11 @@ export class Store {
       )
     ).rows.map(ruleRow);
   }
-  async saveRule(r) {
-    const contains = r.contains || r.match;
+  async prepareRule(r, c) {
+    const contains = (r.contains || r.match)?.trim();
     if (
       typeof contains !== 'string' ||
-      !contains.trim() ||
+      !contains ||
       contains.length > 200 ||
       !r.category?.trim() ||
       r.category.length > 100 ||
@@ -1044,14 +1048,112 @@ export class Store {
       throw domainError('Invalid rule');
     }
 
+    const before = (
+      await c.query(
+        r.id ? 'SELECT * FROM rules WHERE mode=$1 AND id=$2' : 'SELECT * FROM rules WHERE mode=$1 AND contains=$2',
+        [this.mode, r.id || contains]
+      )
+    ).rows[0];
+    if (r.id && !before) {
+      throw Object.assign(Error('Rule not found'), { status: 404 });
+    }
+
+    await assertCategoryAvailable(this, r.category, before ? [before.category] : [], c);
+    return {
+      before,
+      rule: {
+        id: before?.id || newRuleId(this.mode, contains),
+        contains,
+        category: r.category,
+        kind: r.kind || null,
+        priority: r.priority ?? before?.priority ?? 0,
+        tags: r.tags === undefined ? before?.tags || [] : tagsSchema.parse(r.tags)
+      }
+    };
+  }
+  async previewRule(r) {
+    return this.atomic(
+      async (c) => {
+        const { rule } = await this.prepareRule(r, c);
+        const rules = (await c.query('SELECT * FROM rules WHERE mode=$1 AND id<>$2', [this.mode, rule.id])).rows.map(
+          ruleRow
+        );
+        rules.push(rule);
+        const page = await this.listTransactions({ merchant: rule.contains, paginated: true, pageSize: 20 }, c);
+        const catalog = await this.listCategoryCatalog(c);
+        const samples = [];
+        for (const transaction of page.transactions) {
+          const row = (await c.query(`${txSelect} WHERE t.id=$1 AND t.mode=$2`, [transaction.id, this.mode])).rows[0];
+          const classification = await this.ruleClassification(c, row, rules);
+          const after = txRow({
+            ...row,
+            classification_category: classification.category,
+            kind: classification.kind,
+            ai_category:
+              classification.category !== 'Uncategorized' || row.kind !== classification.kind ? null : row.ai_category,
+            category_name: null
+          });
+          const preferences = (
+            await c.query('SELECT tag,removed FROM transaction_tag_preferences WHERE transaction_id=$1', [
+              transaction.id
+            ])
+          ).rows;
+          const plan = ruleTagPlan(transaction.description, rules, transaction.tags, preferences);
+          samples.push({
+            id: transaction.id,
+            description: transaction.description,
+            beforeCategory: transaction.categoryDisplayLabel || transaction.category,
+            category:
+              catalog.find((entry) => entry.category === after.category)?.name ||
+              after.categoryDisplayLabel ||
+              after.category,
+            kind: after.kind,
+            manualCorrection: transaction.manuallyCorrected,
+            selectedRuleWins: plan.ruleId === rule.id,
+            tags: plan.tags,
+            tagsAdded: plan.added,
+            tagsSuppressed: plan.suppressed,
+            tagsAtCapacity: plan.capacitySkipped
+          });
+        }
+
+        return { matchingCount: page.total, sampleLimit: 20, samples };
+      },
+      { refresh: false }
+    );
+  }
+  async saveRule(r) {
     return this.atomic(async (c) => {
+      const { before, rule } = await this.prepareRule(r, c);
       const saved = await c.query(
-        `INSERT INTO rules(id,mode,contains,category,kind,priority) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(mode,contains) DO UPDATE SET category=excluded.category,kind=excluded.kind,priority=excluded.priority RETURNING *`,
-        [randomUUID(), this.mode, contains, r.category, r.kind || null, r.priority || 0]
+        `INSERT INTO rules(id,mode,contains,category,kind,priority,tags) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET contains=excluded.contains,category=excluded.category,kind=excluded.kind,priority=excluded.priority,tags=excluded.tags RETURNING *`,
+        [rule.id, this.mode, rule.contains, rule.category, rule.kind, rule.priority, JSON.stringify(rule.tags)]
       );
+      await c.query("INSERT INTO audit_history(mode,action,before_value,after_value) VALUES($1,'rule-saved',$2,$3)", [
+        this.mode,
+        before || null,
+        saved.rows[0]
+      ]);
       await this.reclassify(c);
       return ruleRow(saved.rows[0]);
     });
+  }
+  async ruleClassification(c, row, rules) {
+    const latest = (
+      await c.query(
+        'SELECT payload FROM provider_observations WHERE transaction_id=$1 ORDER BY fetched_at DESC,id DESC LIMIT 1',
+        [row.id]
+      )
+    ).rows[0]?.payload;
+    return classify(
+      {
+        description: row.description,
+        amountMinor: String(row.amount_minor),
+        category: row.provider_category,
+        kind: latest?.kind
+      },
+      rules
+    );
   }
   async deleteRule(id) {
     return this.atomic(async (c) => {
@@ -1063,21 +1165,7 @@ export class Store {
   async reclassify(c) {
     const rules = (await c.query('SELECT * FROM rules WHERE mode=$1', [this.mode])).rows.map(ruleRow);
     for (const row of (await c.query('SELECT * FROM transactions WHERE mode=$1', [this.mode])).rows) {
-      const latest = (
-        await c.query(
-          'SELECT payload FROM provider_observations WHERE transaction_id=$1 ORDER BY fetched_at DESC,id DESC LIMIT 1',
-          [row.id]
-        )
-      ).rows[0]?.payload;
-      const result = classify(
-        {
-          description: row.description,
-          amountMinor: String(row.amount_minor),
-          category: row.provider_category,
-          kind: latest?.kind
-        },
-        rules
-      );
+      const result = await this.ruleClassification(c, row, rules);
       await c.query(
         "UPDATE transactions SET classification_category=$2,kind=$3,ai_category=CASE WHEN $2 <> 'Uncategorized' OR kind <> $3 THEN NULL ELSE ai_category END,review_reason=CASE WHEN $4 THEN NULL ELSE review_reason END WHERE id=$1",
         [
@@ -1087,6 +1175,7 @@ export class Store {
           classificationReview(row.review_reason) && ruleResolvesReview(row.review_reason, row.description, rules)
         ]
       );
+      await applyRuleTags(c, this.mode, row, rules);
     }
   }
   async listCategoryCatalog(c = this.pool, scope) {
@@ -1252,16 +1341,7 @@ export class Store {
         throw domainError('Only a compatible pending and posted pair can be linked');
       }
 
-      const combinedTags = Number(
-        (
-          await c.query('SELECT count(DISTINCT tag) total FROM transaction_tags WHERE transaction_id=ANY($1::uuid[])', [
-            [postedId, pendingId]
-          ])
-        ).rows[0].total
-      );
-      if (combinedTags > 20) {
-        throw domainError('The linked transaction would exceed 20 tags. Remove unused tags before linking.');
-      }
+      await mergeTransactionTags(c, postedId, pendingId);
 
       // Retain immutable evidence and the retired canonical row; reports exclude the superseded row.
       await c.query('UPDATE source_aliases SET transaction_id=$1 WHERE transaction_id=$2', [postedId, pendingId]);
@@ -1279,10 +1359,6 @@ export class Store {
         ]);
       }
 
-      await c.query(
-        'INSERT INTO transaction_tags(transaction_id,tag) SELECT $1,tag FROM transaction_tags WHERE transaction_id=$2 ON CONFLICT DO NOTHING',
-        [postedId, pendingId]
-      );
       await c.query('UPDATE transactions SET review_reason=NULL WHERE id=$1', [postedId]);
       await c.query('UPDATE transactions SET review_reason=NULL,superseded_by=$2 WHERE id=$1', [pendingId, postedId]);
       await c.query(

@@ -1,10 +1,13 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 
-export function TransactionTags({ tags, onChange, suggestions }) {
+export function TransactionTags({ tags, onChange, suggestions, onDraftChange }) {
   const [draft, setDraft] = useState('');
   const id = useId();
+  useEffect(() => {
+    onDraftChange?.(draft);
+  }, [draft, onDraftChange]);
   function add() {
     const tag = draft.trim().toLowerCase();
     if (tag && tag.length <= 40 && tags.length < 20) {

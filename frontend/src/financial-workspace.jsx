@@ -6,7 +6,11 @@ import { workspaceAccess } from './lib/workspace-access.mjs';
 import { useWorkspaceData } from './hooks/use-workspace-data.mjs';
 import { useTransactionFilters } from './hooks/use-transaction-filters.mjs';
 import { useWorkspaceNavigation } from './hooks/use-workspace-navigation.mjs';
-import { accountTransactionFilters, drilldownFilters } from './features/transactions/transaction-model.mjs';
+import {
+  accountTransactionFilters,
+  drilldownFilters,
+  initialTransactionFilters
+} from './features/transactions/transaction-model.mjs';
 import { AppShell } from './components/app-shell';
 import { PageHeading } from './components/page-heading';
 import { Empty } from './components/empty-state';
@@ -21,13 +25,15 @@ import { AccountDialog } from './features/accounts/account-dialog';
 import { BudgetsPage } from './features/budgets/budgets-page';
 import { BudgetDialog } from './features/budgets/budget-dialog';
 import { ReviewsPage } from './features/reviews/reviews-page';
+import { writeTransactionRoute } from './lib/transaction-route.mjs';
 import { RulesPage, RuleDialog } from './features/rules/rules-page';
+import { ruleFromTransaction } from './features/rules/rule-model.mjs';
 import { SettingsPage } from './features/settings/settings-page';
 
 export function FinancialWorkspace({ session, onSession }) {
-  const { page, section, changeRoute, confirmLeave, onDirtyChange } = useWorkspaceNavigation();
-  const [month, setMonth] = useState(() => reportingMonth(session));
-  const [currency, setCurrency] = useState(session?.currency || 'AUD');
+  const { page, section, transactionQuery, changeRoute, confirmLeave, onDirtyChange } = useWorkspaceNavigation();
+  const [selectedMonth, setMonth] = useState(() => reportingMonth(session));
+  const [selectedCurrency, setCurrency] = useState(session?.currency || 'AUD');
   const [period, setPeriod] = useState(1);
   const [menu, setMenu] = useState(false);
   const [edit, setEdit] = useState(null);
@@ -37,7 +43,19 @@ export function FinancialWorkspace({ session, onSession }) {
   const [rule, setRule] = useState(null);
   const { isAdmin, hasAccountAccess, hasBudgetAccess, hasFinancialAccess, canEditAccount, canNavigate } =
     workspaceAccess(session);
-  const { filters, updateFilters } = useTransactionFilters(month, currency);
+  const {
+    filters,
+    updateFilters,
+    routeMonth: month,
+    routeCurrency: currency
+  } = useTransactionFilters(selectedMonth, selectedCurrency, { page, transactionQuery, changeRoute });
+  const routeKey = `${page}/${section}/${transactionQuery || ''}`;
+  useEffect(() => {
+    setEdit(null);
+    setAccountEdit(null);
+    setBudget(null);
+    setRule(null);
+  }, [routeKey]);
   const query = reportQuery({ page, month, currency, period, filters });
   const { data, loading, error, notice, setNotice, busy, load, mutate, resetPage, refreshCurrent } = useWorkspaceData({
     session,
@@ -68,7 +86,13 @@ export function FinancialWorkspace({ session, onSession }) {
       return;
     }
 
-    if (!changeRoute(next, nextSection)) {
+    if (
+      !changeRoute(
+        next,
+        nextSection,
+        next === 'Transactions' ? { transactionQuery: writeTransactionRoute(filters, { month, currency }) } : {}
+      )
+    ) {
       return;
     }
 
@@ -79,19 +103,56 @@ export function FinancialWorkspace({ session, onSession }) {
     setMenu(false);
   }
 
-  function drill(selection = {}) {
-    updateFilters(drilldownFilters(selection, { page, startDate: data.startDate, endDate: data.endDate }));
-    if (selection.month) {
-      setMonth(selection.month);
+  function openTransactions(nextFilters, controls = { month, currency }) {
+    const query = writeTransactionRoute(nextFilters, controls);
+    if (page === 'Transactions' && transactionQuery === query) {
+      if (!confirmLeave()) {
+        return false;
+      }
+
+      setEdit(null);
+      setAccountEdit(null);
+      setBudget(null);
+      setRule(null);
+      load();
+      return true;
     }
 
-    navigate('Transactions');
+    if (!changeRoute('Transactions', undefined, { transactionQuery: query })) {
+      return false;
+    }
+
+    resetPage();
+    setMenu(false);
+    return true;
+  }
+
+  function globalSearch(search) {
+    if (!hasAccountAccess) {
+      return false;
+    }
+
+    return openTransactions(
+      { ...initialTransactionFilters(), search, allHistory: true },
+      { month: selectedMonth, currency: session?.currency || 'AUD' }
+    );
+  }
+
+  function drill(selection = {}) {
+    openTransactions(drilldownFilters(selection, { page, startDate: data.startDate, endDate: data.endDate }), {
+      month: selection.month || month,
+      currency
+    });
   }
 
   function viewAccountTransactions(account) {
-    updateFilters(accountTransactionFilters(account));
-    setCurrency(account.currency);
-    navigate('Transactions');
+    openTransactions(accountTransactionFilters(account), { month, currency: account.currency });
+  }
+
+  function createRuleFromTransaction(transaction) {
+    if (isAdmin) {
+      setRule(ruleFromTransaction(transaction));
+    }
   }
 
   return (
@@ -103,6 +164,10 @@ export function FinancialWorkspace({ session, onSession }) {
       navigate={navigate}
       canNavigate={canNavigate}
       hasFinancialAccess={hasFinancialAccess}
+      canSearch={hasAccountAccess}
+      activeSearch={page === 'Transactions' ? filters.search : ''}
+      routeKey={routeKey}
+      onSearch={globalSearch}
       onChangePassword={() => setChangePassword(true)}
       onSignOut={async () => {
         if (!confirmLeave()) {
@@ -110,16 +175,16 @@ export function FinancialWorkspace({ session, onSession }) {
         }
 
         await api('/logout', { method: 'POST' });
+        history.replaceState(history.state, '', '#overview');
         onSession({ authenticated: false });
       }}
       onViewTransaction={
         hasAccountAccess
           ? (id, sourceCurrency) => {
-              if (/^[A-Z]{3}$/.test(sourceCurrency || '')) {
-                setCurrency(sourceCurrency);
-              }
-
-              drill({ ids: [id], status: '' });
+              openTransactions(drilldownFilters({ ids: [id], status: '' }, { page }), {
+                month,
+                currency: /^[A-Z]{3}$/.test(sourceCurrency || '') ? sourceCurrency : currency
+              });
             }
           : undefined
       }
@@ -140,6 +205,7 @@ export function FinancialWorkspace({ session, onSession }) {
             />
           </Dialog>
           <AccountDialog
+            onDirtyChange={onDirtyChange}
             account={accountEdit}
             close={() => setAccountEdit(null)}
             busy={busy}
@@ -151,6 +217,7 @@ export function FinancialWorkspace({ session, onSession }) {
             }}
           />
           <EditTransaction
+            onDirtyChange={onDirtyChange}
             canSuggest={isAdmin}
             transaction={edit}
             open={!!edit}
@@ -164,6 +231,7 @@ export function FinancialWorkspace({ session, onSession }) {
             }}
           />
           <BudgetDialog
+            onDirtyChange={onDirtyChange}
             canChangeCategory={isAdmin}
             currency={currency}
             budget={budget}
@@ -177,6 +245,7 @@ export function FinancialWorkspace({ session, onSession }) {
             }}
           />
           <RuleDialog
+            onDirtyChange={onDirtyChange}
             rule={rule}
             close={() => setRule(null)}
             busy={busy}
@@ -200,11 +269,11 @@ export function FinancialWorkspace({ session, onSession }) {
           setPeriod={setPeriod}
           onMonthChange={(value) => {
             setMonth(value);
-            updateFilters({ ids: null, allHistory: false, from: '', to: '' });
+            updateFilters({ ids: null, allHistory: false, from: '', to: '' }, { month: value });
           }}
           onCurrencyChange={(value) => {
             setCurrency(value);
-            updateFilters({ ids: null });
+            updateFilters({ ids: null }, { currency: value });
           }}
         />
         {session?.demo && (
@@ -267,6 +336,7 @@ export function FinancialWorkspace({ session, onSession }) {
                 navigate={navigate}
                 canEditAccount={canEditAccount}
                 onEdit={setEdit}
+                onCreateRule={createRuleFromTransaction}
                 filters={filters}
                 onFiltersChange={updateFilters}
               />
@@ -291,6 +361,8 @@ export function FinancialWorkspace({ session, onSession }) {
             )}
             {page === 'Review' && (
               <ReviewsPage
+                isAdmin={isAdmin}
+                onCreateRule={createRuleFromTransaction}
                 canEditAccount={canEditAccount}
                 reviews={data.reviews || []}
                 busy={busy}
@@ -298,7 +370,14 @@ export function FinancialWorkspace({ session, onSession }) {
                 mutate={mutate}
               />
             )}
-            {page === 'Rules' && <RulesPage rules={data.rules || []} onEdit={setRule} />}
+            {page === 'Rules' && (
+              <RulesPage
+                rules={data.rules || []}
+                onEdit={setRule}
+                busy={busy}
+                onDelete={(id) => mutate(`/rules/${id}`, undefined, 'DELETE')}
+              />
+            )}
             {page === 'Settings' && isAdmin && (
               <SettingsPage
                 section={section}

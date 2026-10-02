@@ -30,7 +30,9 @@
     "test:browser:settings-mocked": "node frontend/test/integration-settings.browser.mjs",
     "test:browser:workspace": "node frontend/test/workspace.browser.mjs",
     "test:browser:bedrock-models": "node scripts/browser-bedrock-models.mjs",
-    "test:browser:categories": "node frontend/test/categories-tags.browser.mjs"
+    "test:browser:categories": "node frontend/test/categories-tags.browser.mjs",
+    "test:browser:rules-search": "node frontend/test/rules-search.browser.mjs",
+    "test:browser:reviews": "node frontend/test/reviews.browser.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",

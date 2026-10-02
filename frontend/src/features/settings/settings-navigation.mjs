@@ -14,11 +14,18 @@ export function settingsSection(value) {
 }
 
 export function workspaceRoute(hash = '') {
-  const [name, section] = hash.replace(/^#\/?/, '').split('/');
+  const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
+  const [name, section] = path.split('/');
   const page = pages.find((entry) => entry.toLowerCase() === name?.toLowerCase()) || 'Overview';
-  return { page, section: settingsSection(section) };
+  return {
+    page,
+    section: settingsSection(section),
+    ...(page === 'Transactions' && query ? { transactionQuery: query.slice(0, 64000) } : {})
+  };
 }
 
-export function workspaceHash({ page, section }) {
-  return page === 'Settings' ? `#settings/${settingsSection(section)}` : `#${page.toLowerCase()}`;
+export function workspaceHash({ page, section, transactionQuery }) {
+  return page === 'Settings'
+    ? `#settings/${settingsSection(section)}`
+    : `#${page.toLowerCase()}${page === 'Transactions' && transactionQuery ? `?${transactionQuery}` : ''}`;
 }

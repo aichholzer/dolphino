@@ -153,6 +153,15 @@ export async function categoryFixture() {
       config,
       auth,
       integration: { status: async () => ({ configured: false }) },
+      registration: { status: async () => ({ configured: false, publicBaseUrl: '' }) },
+      redbarkSettings: {
+        getPublic: async () => ({
+          configured: false,
+          encryptionAvailable: true,
+          version: '2026-10-01.wattle',
+          backfillDays: 90
+        })
+      },
       classification: {
         suggest: async () => {
           throw Error('No external classification allowed');

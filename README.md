@@ -83,14 +83,16 @@ Upgrading an existing installation? Read [upgrade boundaries, credential recover
 
 An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from **Settings → Data**. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).
 
-Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 prior SQL migrations are retained; migration 014 adds the category catalog, transaction tags and search indexes. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for that historical milestone and [shared-settings verification](docs/shared-ai-settings-verification.md) for the current change.
+Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 prior SQL migrations are retained; migration 014 adds the category catalog, transaction tags and search indexes; migration 015 adds additive rule tags and explicit tag preferences. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for that historical milestone and [shared-settings verification](docs/shared-ai-settings-verification.md) for the current change.
 
 ### Categories, tags and transaction search
 
-Choose existing categories in Review, transaction corrections, splits and new budgets.
+Choose existing categories in Review, transaction corrections, splits, rules and new budgets.
 Administrators manage names and create, archive or restore categories in **Settings → Categories**.
 Renames preserve stable ledger keys and budget matching; deleting archives the category without changing history or money.
 Transactions can have multiple tags (for example **Travel** with **work** and **conference** tags).
+Administrators can create rules from Transactions or Review, preview their scope, and add tags automatically while preserving explicit manual removals.
+The permanent header search opens Transactions across all accessible imported history; URL criteria survive refresh and back/forward.
 Search includes descriptions, correction notes, category names and tags across the full server-side selection;
 category/tag filters combine with the existing date, account, status and type filters and apply to exports.
 See [category behavior, upgrade requirements and verification](docs/categories-tags.md).
