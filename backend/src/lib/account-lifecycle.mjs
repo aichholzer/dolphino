@@ -189,6 +189,12 @@ export function createAccountLifecycle(store, principal) {
         )
       ).rows[0].count
     );
+    counts.pocketsmith_fetches =
+      mode === 'live'
+        ? Number(
+            (await c.query('SELECT count(*) FROM pocketsmith_fetches WHERE account_id=ANY($1)', [ids])).rows[0].count
+          )
+        : 0;
     const data = {
       accounts,
       counts,
@@ -309,6 +315,9 @@ export function createAccountLifecycle(store, principal) {
               [mode, ids, p.entryIds]
             );
             if (mode === 'live') {
+              await c.query('DELETE FROM pocketsmith_fetches WHERE account_id=ANY($1)', [ids]);
+              await c.query('DELETE FROM pocketsmith_versions WHERE account_id=ANY($1)', [ids]);
+              await c.query('DELETE FROM pocketsmith_accounts WHERE local_id=ANY($1)', [ids]);
               await c.query(
                 'DELETE FROM simplefin_fetches f USING simplefin_accounts a WHERE f.source_id=a.source_id AND f.remote_key=a.remote_key AND a.local_id=ANY($1)',
                 [ids]

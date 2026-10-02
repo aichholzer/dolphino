@@ -129,7 +129,8 @@ export class Store {
       '013_redbark_category_evidence.sql',
       '014_categories_tags.sql',
       '015_rule_tags.sql',
-      '016_manual_accounts.sql'
+      '016_manual_accounts.sql',
+      '017_pocketsmith.sql'
     ]) {
       await this.pool.query(await readFile(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
     }
@@ -198,6 +199,10 @@ export class Store {
   }
   async ingestBatch({ account, transactions = [], fetchedAt = new Date().toISOString(), coverage = null }) {
     return this.atomic(async (c) => {
+      if (account.id?.startsWith('ps_')) {
+        throw domainError('PocketSmith accounts require their dedicated import path');
+      }
+
       if (this.mode === 'live') {
         const owner = (await c.query('SELECT source_id FROM simplefin_accounts WHERE local_id=$1', [account.id]))
           .rows[0];
@@ -233,6 +238,14 @@ export class Store {
   async _ingest(c, o) {
     if (!(await assertFeedAccount(c, this.mode, o.accountId))) {
       return null;
+    }
+
+    if (o.accountId?.startsWith('ps_')) {
+      const owner = (await c.query('SELECT user_id FROM pocketsmith_accounts WHERE local_id=$1', [o.accountId]))
+        .rows[0];
+      if (!owner || o.provider !== `pocketsmith:${owner.user_id}`) {
+        throw domainError('PocketSmith account origin does not match observation');
+      }
     }
 
     if (o.mode && o.mode !== this.mode) {

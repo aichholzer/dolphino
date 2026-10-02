@@ -4,6 +4,7 @@ import { ShieldCheck, RefreshCw, Download } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { IntegrationSettings } from '../../components/integration-settings';
 import { SimplefinSettings } from '../../components/simplefin-settings';
+import { PocketSmithSettings } from './pocketsmith-settings';
 import { CategoriesSettings } from './categories-settings';
 import { AiSettings } from './ai-settings';
 import { SettingsDrafts } from './settings-dirty';
@@ -140,6 +141,7 @@ export function SettingsPage({
               <>
                 <AccountDataSettings onUpdated={onUpdated} />
                 <SimplefinSettings api={api} demo={session?.demo} onUpdated={onUpdated} />
+                <PocketSmithSettings api={api} demo={session?.demo} onUpdated={onUpdated} />
                 <ImportHealth api={api} demo={session?.demo} />
                 <section className="card settings-card">
                   <h2>Your data, always yours</h2>

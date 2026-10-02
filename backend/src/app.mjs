@@ -1,6 +1,8 @@
 import { registerManualAccountRoutes } from './routes/manual-accounts.mjs';
 import rayo from 'rayo';
 import { createSimplefinIntegration } from './lib/simplefin.mjs';
+import { createPocketSmithIntegration } from './lib/pocketsmith.mjs';
+import { registerPocketSmithRoutes } from './routes/pocketsmith.mjs';
 import { createHouseholdAuth } from './lib/household-auth.mjs';
 import { createSecurityHeaders, createSensitiveActionGuard } from './http/security.mjs';
 import { createStaticHandler } from './http/static.mjs';
@@ -32,6 +34,7 @@ export function createApp({
   settings,
   redbarkSettings,
   simplefin = settings ? createSimplefinIntegration({ pool: store.pool, store, settings, config }) : null,
+  pocketsmith = settings ? createPocketSmithIntegration({ pool: store.pool, store, settings, config }) : null,
   registration,
   providerDependencies,
   notifications,
@@ -74,6 +77,7 @@ export function createApp({
     sensitive
   });
   registerIntegrationRoutes({ route, integration, registration, simplefin, importHealth, sensitive });
+  registerPocketSmithRoutes({ route, pocketsmith, sensitive });
   registerNotificationRoutes({ route, notifications, telegram, sensitive });
   registerAccountRoutes({ route, ledger });
   registerManualAccountRoutes({ route, store });

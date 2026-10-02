@@ -78,7 +78,11 @@ export function AccountsPage({ accounts, canEditAccount, onEdit, onViewTransacti
             <div className="account-meta">
               <span>
                 {a.balanceType || 'Reported'} balance ·{' '}
-                {a.balanceAt ? new Date(a.balanceAt).toLocaleString() : 'No balance timestamp'}
+                {a.coverage?.source === 'pocketsmith' && a.coverage.balanceDate
+                  ? `Provider balance date ${a.coverage.balanceDate}`
+                  : a.balanceAt
+                    ? new Date(a.balanceAt).toLocaleString()
+                    : 'No balance timestamp'}
               </span>
               <span>
                 <Clock size={14} />

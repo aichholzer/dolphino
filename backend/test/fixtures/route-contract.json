@@ -96,5 +96,10 @@
   ["post", "/api/accounts/:id/lifecycle", "financial"],
   ["get", "/api/settings/deleted-accounts", "admin"],
   ["post", "/api/settings/deleted-accounts/preview", "admin"],
-  ["post", "/api/settings/deleted-accounts/purge", "admin"]
+  ["post", "/api/settings/deleted-accounts/purge", "admin"],
+  ["get", "/api/settings/pocketsmith", "admin"],
+  ["put", "/api/settings/pocketsmith", "admin"],
+  ["post", "/api/settings/pocketsmith/test", "admin"],
+  ["post", "/api/settings/pocketsmith/account", "admin"],
+  ["post", "/api/settings/pocketsmith/backfill", "admin"]
 ]

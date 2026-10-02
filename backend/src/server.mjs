@@ -1,4 +1,5 @@
 import { createSimplefinIntegration } from './lib/simplefin.mjs';
+import { createPocketSmithIntegration } from './lib/pocketsmith.mjs';
 import pg from 'pg';
 import { ensureDeploymentMode } from './lib/deployment-mode.mjs';
 import { createAiSettings } from './lib/ai-settings.mjs';
@@ -59,6 +60,7 @@ const integration = createRedbarkIntegration({
 });
 await integration.init();
 const simplefin = createSimplefinIntegration({ pool, store, settings, config });
+const pocketsmith = createPocketSmithIntegration({ pool, store, settings, config });
 await simplefin.init();
 const classification = createClassificationIntegration({
   pool,
@@ -107,6 +109,7 @@ const app = createApp({
   settings,
   redbarkSettings,
   simplefin,
+  pocketsmith,
   registration,
   notifications,
   telegram,
@@ -115,6 +118,7 @@ const app = createApp({
 const server = app.start(() => console.log(`dolphino ${config.mode} listening on port ${config.port}`));
 integration.start();
 simplefin.start();
+pocketsmith.start();
 classification.start();
 if (config.mode === 'live') {
   notifications.start();
@@ -129,6 +133,7 @@ async function close() {
   closing = true;
   await integration.stop();
   await simplefin.stop();
+  await pocketsmith.stop();
   classification.stop();
   await notifications.stop();
   server.close(async () => {

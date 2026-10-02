@@ -121,6 +121,7 @@ export async function secureSimplefinRequest(
   {
     method = 'GET',
     authorization,
+    headers = {},
     maxBytes = 8 * 1024 * 1024,
     timeoutMs = 20000,
     lookupImpl = lookup,
@@ -194,6 +195,7 @@ export async function secureSimplefinRequest(
             callback(null, options?.all ? [address] : address.address, address.family);
           },
           headers: {
+            ...headers,
             Accept: 'application/json, text/plain',
             'Accept-Encoding': 'identity',
             ...(authorization ? { Authorization: authorization } : {}),

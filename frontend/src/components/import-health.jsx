@@ -54,8 +54,9 @@ export function ImportHealth({ api, demo }) {
     <section className="card settings-card integration-settings import-health">
       <h2>Import health & history</h2>
       <p className="muted">
-        Check imported coverage and direct Redbark jobs. SimpleFIN jobs and backfills are managed in its settings above.
-        A successful provider request does not guarantee fresh bank activity; account balances are separate snapshots.
+        Check imported coverage and direct Redbark jobs. SimpleFIN and PocketSmith manage imports and backfills in their
+        settings above. A successful provider request does not guarantee fresh bank activity; account balances are
+        separate snapshots.
       </p>
       {error && (
         <p role="alert" className="alert alert-error">

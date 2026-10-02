@@ -9,13 +9,16 @@ import { createApp } from '../../src/app.mjs';
 
 // Real PostgreSQL, real session authorization and real HTTP. No worker or provider
 // is started; all fixtures and credentials are synthetic and schema-isolated.
-export async function categoryFixture() {
+export async function categoryFixture({ appOptions = async () => ({}), databaseTimezone } = {}) {
   const database = readTestPostgresConfig();
   assert.ok(database, 'Configure a disposable PostgreSQL database');
   const admin = new pg.Pool(database);
   const schema = `categories_${randomUUID().replaceAll('-', '')}`;
   await admin.query(`CREATE SCHEMA ${schema}`);
-  const pool = new pg.Pool({ ...database, options: `-c search_path=${schema}` });
+  const pool = new pg.Pool({
+    ...database,
+    options: `-c search_path=${schema}${databaseTimezone ? ` -c timezone=${databaseTimezone}` : ''}`
+  });
   let server;
   const close = async () => {
     if (server) {
@@ -167,7 +170,9 @@ export async function categoryFixture() {
           throw Error('No external classification allowed');
         }
       },
-      assistantSettings: { getUserStatus: async () => ({ enabled: false }) }
+      assistantSettings: { getUserStatus: async () => ({ enabled: false }) },
+      pocketsmith: { status: async () => ({ configured: false, enabled: false, backfillDays: 90, accounts: [] }) },
+      ...(await appOptions({ pool, store, config }))
     });
     server = await new Promise((resolve) => {
       const running = app.start(() => resolve(running));
