@@ -396,6 +396,12 @@ try {
     )
   );
   await pairButton.click();
+  await expect(page.getByRole('link', { name: 'Choose group in Telegram', exact: true })).toHaveAttribute(
+    'href',
+    'https://t.me/testbot?startgroup=synthetic-nonce'
+  );
+  await expect(page.getByText('/pair@testbot synthetic-nonce', { exact: true })).toBeHidden();
+  await page.getByText('Group link not working? Use a manual command', { exact: true }).click();
   await expect(page.getByText('/pair@testbot synthetic-nonce', { exact: true })).toBeVisible();
   await expect(telegramEnabled).toBeDisabled();
   await page.getByRole('button', { name: 'Check for group', exact: true }).click();

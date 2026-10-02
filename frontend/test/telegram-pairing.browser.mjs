@@ -53,8 +53,22 @@ try {
   assert.ok(!(await panel.innerText()).includes(syntheticTelegramToken));
   f.setHook(null);
   await pair.click();
-  const command = await panel.locator('code').innerText();
-  f.setCommand(command);
+  const groupLink = panel.getByRole('link', { name: 'Choose group in Telegram', exact: true });
+  await expect(groupLink).toBeVisible();
+  const link = new URL(await groupLink.getAttribute('href'));
+  assert.equal(link.origin, 'https://t.me');
+  assert.equal(link.pathname, '/dolphinoSyntheticBot');
+  assert.match(link.searchParams.get('startgroup'), /^[A-Za-z0-9_-]{32}$/);
+  await expect(groupLink).toHaveAttribute('target', '_blank');
+  await expect(groupLink).toHaveAttribute('rel', 'noreferrer');
+  await expect(panel.locator('details code')).toBeHidden();
+  await expect(panel).toContainText('You do not need to type /start.');
+  await panel.getByRole('button', { name: 'Check for group', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('No matching group yet.');
+  await expect(enabled).toBeDisabled();
+  await expect(panel.getByRole('button', { name: 'Confirm group and enable Telegram alerts' })).toHaveCount(0);
+  // Reproduce Telegram's documented group-selection update without opening t.me or sending a real message.
+  f.setCommand(`/start@${link.pathname.slice(1)} ${link.searchParams.get('startgroup')}`);
   await panel.getByRole('button', { name: 'Check for group', exact: true }).click();
   await expect(panel.getByText('Synthetic private group', { exact: true })).toBeVisible();
   await expect(enabled).toBeDisabled();
@@ -66,6 +80,26 @@ try {
   await expect(from).toHaveValue('unsaved@example.test');
   await expect(panel).toContainText('Paired group: Synthetic private group');
   assert.equal((await f.settings.getValue('notifications.smtp')).from, '');
+  await panel.getByRole('button', { name: 'Save notification settings' }).click();
+  await expect(panel.getByRole('status')).toContainText('Notification settings updated.');
+  // A refreshed page does not retain the raw nonce; restarting provides a fresh manual fallback.
+  await pair.click();
+  const previousLink = await groupLink.getAttribute('href');
+  await page.reload();
+  await expect(panel).toContainText('The pairing link is only shown when pairing starts.');
+  await expect(groupLink).toHaveCount(0);
+  await expect(panel.locator('code')).toHaveCount(0);
+  await pair.click();
+  assert.notEqual(await groupLink.getAttribute('href'), previousLink);
+  await panel.locator('details summary').click();
+  const fallback = panel.locator('details code');
+  await expect(fallback).toBeVisible();
+  await expect(panel).toContainText('A plain /start does not identify this pairing request.');
+  f.setCommand(await fallback.innerText());
+  await panel.getByRole('button', { name: 'Check for group', exact: true }).click();
+  await expect(panel.getByText('Synthetic private group', { exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Confirm group and enable Telegram alerts' }).click();
+  await expect(enabled).toBeChecked();
   await token.fill('123456789:another_synthetic_token_1234567890');
   await expect(pair).toBeDisabled();
   await token.fill('');
@@ -81,7 +115,7 @@ try {
   assert.deepEqual(errors, []);
   assert.ok(!f.calls.includes('sendMessage'));
   console.log(
-    'Telegram production-browser regression passed: saved-token prerequisite, safe rejected-token error, nonce/group confirmation, enabled state refreshed with unrelated drafts preserved; real HTTP/PostgreSQL, no live Telegram or browser storage.'
+    'Telegram production-browser regression passed: saved-token prerequisite, safe rejected-token error, startgroup payload discovery without typing, empty-result guidance, explicit group confirmation, unrelated drafts preserved, refresh/restart and manual fallback; real HTTP/PostgreSQL, no live Telegram or browser storage.'
   );
 } finally {
   await context.close();

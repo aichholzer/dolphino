@@ -253,8 +253,9 @@ export function NotificationSettings({ api, demo }) {
             </p>
           )}
           <p className="footnote">
-            Create a dedicated private group, then add your household members and bot yourself. Keep bot privacy mode
-            on; no administrator permissions are needed. dolphino does not manage membership.
+            Create a dedicated private group and add your household members. After saving the bot token, use Pair
+            Telegram group to choose that group in Telegram. Keep bot privacy mode on; no administrator permissions are
+            needed. dolphino does not manage membership.
           </p>
           <p className="footnote">
             {telegram.paired ? `Paired group: ${telegram.chatTitle || 'confirmed household'}. ` : 'No group paired. '}
@@ -294,6 +295,7 @@ export function NotificationSettings({ api, demo }) {
             );
             if (r) {
               setPairing(r);
+              setNotice('Choose your private group using the Telegram link below.');
             }
           }}
         >
@@ -311,18 +313,33 @@ export function NotificationSettings({ api, demo }) {
             )}
             {pairing.deepLink && (
               <p>
-                <a href={pairing.deepLink} target="_blank" rel="noreferrer">
-                  Add the bot to your private group
-                </a>
+                <Button asChild>
+                  <a href={pairing.deepLink} target="_blank" rel="noreferrer">
+                    Choose group in Telegram
+                  </a>
+                </Button>
               </p>
             )}
             <p className="footnote">
-              This link expires shortly. After adding the bot, send the pairing command in your group, then check for
-              your group. Setup polling only works when the bot has no existing webhook.
+              The link opens Telegram’s group chooser and sends the pairing command when you select your private group.
+              You do not need to type /start. Then return here, check for your group and confirm its name and ID.
             </p>
             {pairing.command && (
-              <p>
-                <code>{pairing.command}</code>
+              <details>
+                <summary>Group link not working? Use a manual command</summary>
+                <p className="footnote">
+                  Add the bot to your intended private group, then paste this entire command there. A plain /start does
+                  not identify this pairing request.
+                </p>
+                <p>
+                  <code>{pairing.command}</code>
+                </p>
+              </details>
+            )}
+            {!pairing.deepLink && (
+              <p className="footnote">
+                The pairing link is only shown when pairing starts. If you have not used it yet, start pairing again for
+                a new link.
               </p>
             )}
             <Button
@@ -337,6 +354,13 @@ export function NotificationSettings({ api, demo }) {
                 );
                 if (r) {
                   setPairing({ ...pairing, ...r });
+                  if (r.active) {
+                    setNotice(
+                      r.candidate
+                        ? 'Group found. Check its name and ID below before confirming.'
+                        : 'No matching group yet. Choose your group using the Telegram link, then check again. If the link did not send the command, use the manual fallback.'
+                    );
+                  }
                 }
               }}
             >
