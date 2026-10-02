@@ -4,6 +4,7 @@ import { cva } from 'class-variance-authority';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 export const cn = (...inputs) => twMerge(clsx(inputs));
+
 const variants = cva('button', {
   variants: {
     variant: {
@@ -20,4 +21,5 @@ export const Button = React.forwardRef(({ className, variant, size, asChild = fa
   const Comp = asChild ? Slot : 'button';
   return <Comp ref={ref} className={cn(variants({ variant, size }), className)} {...props} />;
 });
+
 Button.displayName = 'Button';

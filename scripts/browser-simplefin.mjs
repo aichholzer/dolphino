@@ -1,26 +1,26 @@
-import { readTestPostgresConfig } from '../backend/test/helpers/postgres.js';
+import { readTestPostgresConfig } from '../backend/test/helpers/postgres.mjs';
 import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
-import { createSimplefinIntegration } from '../backend/src/simplefin.js';
+import { createSimplefinIntegration } from '../backend/src/lib/simplefin.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
-import { Store } from '../backend/src/store.js';
-import { createApp } from '../backend/src/app.js';
-import { ensureDeploymentMode } from '../backend/src/deployment-mode.js';
-import { createHouseholdAuth } from '../backend/src/household-auth.js';
-import { ensureAccessSchema, validateAndSetGrants } from '../backend/src/access.js';
-import { createSettingsStore } from '../backend/src/settings.js';
-import { createRedbarkSettings } from '../backend/src/redbark-settings.js';
-import { createRedbarkIntegration } from '../backend/src/worker.js';
-import { createRegistration } from '../backend/src/registration.js';
-import { createClassificationIntegration } from '../backend/src/classification.js';
-import { createAssistantSettings } from '../backend/src/assistant-settings.js';
-import { createNotificationIntegration } from '../backend/src/notifications.js';
-import { createTelegramPairing } from '../backend/src/telegram.js';
-import { createImportHealth } from '../backend/src/import-health.js';
-import { createUserManagement } from '../backend/src/users.js';
+import { Store } from '../backend/src/lib/store.mjs';
+import { createApp } from '../backend/src/app.mjs';
+import { ensureDeploymentMode } from '../backend/src/lib/deployment-mode.mjs';
+import { createHouseholdAuth } from '../backend/src/lib/household-auth.mjs';
+import { ensureAccessSchema, validateAndSetGrants } from '../backend/src/lib/access.mjs';
+import { createSettingsStore } from '../backend/src/lib/settings.mjs';
+import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
+import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
+import { createRegistration } from '../backend/src/lib/registration.mjs';
+import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
+import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
+import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
+import { createImportHealth } from '../backend/src/lib/import-health.mjs';
+import { createUserManagement } from '../backend/src/lib/users.mjs';
 
 // Real compiled frontend + HTTP createApp + isolated PostgreSQL schema. Only
 // outbound provider transports are injected. No /api response is intercepted.
@@ -41,6 +41,7 @@ let server, browser, base;
 const forbiddenOutbound = async () => {
   throw Error('Unexpected outbound provider operation in isolated browser fixture');
 };
+
 const config = {
   mode: 'live',
   host: '127.0.0.1',
@@ -180,6 +181,7 @@ try {
           body: 'https://synthetic-user:synthetic-simplefin-secret@provider.example.com/simplefin'
         };
       }
+
       return {
         status: 200,
         body: JSON.stringify({
@@ -339,6 +341,7 @@ try {
   if (server) {
     await new Promise((resolve) => server.close(resolve));
   }
+
   await pool.end();
   await owner.query(`DROP SCHEMA ${schema} CASCADE`);
   await owner.end();

@@ -51,7 +51,7 @@ const session = {
 };
 const server = await createServer({
   root,
-  configFile: fileURLToPath(new URL('../vite.config.js', import.meta.url)),
+  configFile: fileURLToPath(new URL('../vite.config.mjs', import.meta.url)),
   server: { host: '127.0.0.1', port: 0, strictPort: true },
   plugins: [
     {
@@ -66,7 +66,7 @@ const server = await createServer({
             import React from 'react';
             import { createRoot } from 'react-dom/client';
             import { ImportHealth } from '/src/components/import-health.jsx';
-            import { api } from '/src/lib/api.js';
+            import { api } from '/src/lib/api.mjs';
             import '/src/style.css';
             createRoot(document.getElementById('root')).render(
               React.createElement(ImportHealth, { api, demo: false })
@@ -109,10 +109,12 @@ async function fixturePage() {
       await route.abort();
       return;
     }
+
     if (!url.pathname.startsWith('/api/')) {
       await route.continue();
       return;
     }
+
     state.calls.push({ path: url.pathname, method: request.method() });
     let data;
     if (request.method() === 'GET' && url.pathname === '/api/session') {
@@ -130,6 +132,7 @@ async function fixturePage() {
       await route.fulfill({ status: 500, json: { error: 'Unexpected synthetic test request' } });
       return;
     }
+
     await route.fulfill({ json: data });
   });
   state.assertClean = async () => {
@@ -142,6 +145,7 @@ async function fixturePage() {
       'Reviewing or cancelling must not mutate data'
     );
   };
+
   return { page, state };
 }
 
@@ -235,8 +239,10 @@ try {
         } else {
           await reopened.getByRole('button', { name: 'Close', exact: true }).click();
         }
+
         await expect(page.getByRole('dialog')).toHaveCount(0);
       }
+
       await page.getByRole('button', { name: 'Overview', exact: true }).click();
       await page.getByText('Total income', { exact: true }).waitFor();
       await page.getByRole('button', { name: 'Review', exact: true }).click();
@@ -256,10 +262,12 @@ try {
         if (width === 390) {
           await page.screenshot({ path: `${artifacts}review-browser-mobile-details.png` });
         }
+
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(page.getByRole('dialog')).toHaveCount(0);
         await assertNoOverflow(page, `Review after cancellation at ${width}px`);
       }
+
       await state.assertClean();
       console.log(
         'Passed 390px and 320px mobile layout, including details and cancellation; no browser errors or storage access'
@@ -268,6 +276,7 @@ try {
       await page.close();
     }
   }
+
   {
     const { page, state } = await fixturePage();
     try {
@@ -311,6 +320,7 @@ try {
         await assertNoOverflow(page, `Import health ${status} backoff at 390px`);
         await page.screenshot({ path: `${artifacts}review-browser-category-backoff-${status}.png`, fullPage: true });
       }
+
       state.categoryWarning = null;
       state.jobs = [];
       const initialReads = state.calls.filter((call) => call.path === '/api/import-health').length;
@@ -337,4 +347,5 @@ try {
   await browser?.close();
   await server.close();
 }
+
 console.log('Review and import-health browser regressions passed using isolated synthetic fixtures.');

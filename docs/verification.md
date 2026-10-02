@@ -1,4 +1,6 @@
-# MVP verification — 30 September 2026
+# Historical MVP verification — 30 September–1 October 2026
+
+These are dated development milestones before the subsequent module/identifier cleanup. Test counts and compatibility claims are historical, not current rerun results. Current code accepts only version 3 credential envelopes, current branded environment names and `dolphino_session`; former alias/cookie/ciphertext checks below describe behavior that has since been removed. See [current cleanup verification](module-cleanup-verification.md) and [mandatory upgrade boundaries](upgrading.md).
 
 Historical results below include earlier URL-based configuration. Current runtime and test reproduction use individual `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`/`PGPASSWORD_FILE` and explicit off-host `PGSSLMODE` settings. See [deployment and TLS migration](deployment.md); `DATABASE_URL`/`DATABASE_URL_FILE` are retired. `TEST_DATABASE_URL` remains an optional test-only override. Synthetic TLS tests require the `openssl` executable.
 
@@ -71,7 +73,7 @@ The assistant is now implemented on top of the household authorization services.
 
 The independent HTTP assessment found and fixed recoverable stale chat context after authorization failures and after revoke/regrant of identical permissions. Monotonic access revisions now invalidate old chats and source links; administrator role/disable changes advance the revision too. Hostile assistant tests use synthetic transaction descriptions, forged tools and hidden IDs, 10,000 hidden records and an oversized allowed selection, expired sessions and permission changes during downloads. They verify rejection/scoping, not the truthfulness of unrestricted language-model prose.
 
-The separately requested [local adversarial security assessment](security-assessment.md) records the threat model, endpoint/role matrix, concrete attack cases, fixes and remaining boundaries. It is an internal development assessment, not independent professional certification or a claim that the application is bulletproof.
+The separately requested [local adversarial security assessment](security-assessment.md) records the threat model, endpoint/role matrix, concrete attack cases, fixes and remaining boundaries. It is an internal development assessment, not independent certification or a claim that the application is bulletproof.
 
 Four browser suites cover the actual demo, household roles, integration/settings controls and mocked assistant interaction. The assistant suite tests disabled configuration, explicit data-sharing consent, unsafe model HTML/links rendered as plain text, authorized source downloads, cross-currency transaction drilldown, cancellation/stale responses, desktop/mobile layout, focus trapping and Escape. Clean assistant screenshots are explicitly fictional mock answers.
 
@@ -79,11 +81,11 @@ Backup/restore now covers 32 tables, separate encrypted assistant credentials an
 
 Final integrated run for this milestone: **102 tests passed, zero failures and zero skips**, including isolated PostgreSQL, actual HTTP and Chromium adversarial cases. Commands used both `DATABASE_URL` and `TEST_DATABASE_URL` pointing to the disposable local `dolphino_test` database. `npm run build`, `npm run lint`, `npm run format:check`, and all four browser scripts passed after the security fixes. The database mode guard was independently exercised through real server/migration/seed child processes. Both full and runtime-only `npm audit` returned zero known advisories. Source/archive inspection excludes credentials, `.env`, database dumps, dependencies and build outputs.
 
-## dolphino rename and logo verification
+## Historical identity and logo verification — 1 October 2026
 
 The renamed canonical repository was verified by stable repository ID before updating the remote. All **108 tests passed with zero failures/skips**, including the full prior adversarial assessment, legacy encrypted settings/cookies/environment aliases, deployment-mode protection and old/new Compose project-name storage selection. Build, lint and formatting passed; all four application browser suites plus the dedicated vector-logo render suite passed. The isolated restore rehearsal again matched all 32 tables and financial totals. SVG assets were inspected at 16–160 pixels and in desktop/mobile UI. No real credentials, network configuration, provider calls or Docker volumes were changed.
 
-See [the complete brand/reference audit](brand-and-reference-audit.md) and [mandatory existing-installation upgrade notes](rename-upgrade.md). Compose validation proves explicit storage selection, not a running-container upgrade: base-image retrieval remains blocked, so actual image runtime/volume mounting is still unverified here.
+See [the complete brand/reference audit](brand-and-reference-audit.md) and [mandatory existing-installation upgrade notes](upgrading.md). Compose validation proves explicit storage selection, not a running-container upgrade: base-image retrieval remains blocked, so actual image runtime/volume mounting is still unverified here.
 
 ## Database-only integration Settings browser verification
 
@@ -97,8 +99,8 @@ Reproduce with `npm run build`, then set `TEST_DATABASE_URL` to a disposable Pos
 
 Final integrated database-settings/ocean-theme verification on 2026-10-01: **130 tests passed, zero failures and zero skips**, with both database environment variables targeting an isolated PostgreSQL 17.6 fixture, the explicit test-owned database-outage opt-in enabled, and actual Chromium headless-shell rendering. Build, syntax lint, formatting, theme-token/contrast checks and the real-backend Settings browser suite all passed. Runtime dependency audit reported zero known advisories. Native PostgreSQL backup/restore compared every row across 32 public tables and matching financial reports, including encrypted Redbark settings and independent classification controls. The [independent adversarial review](database-settings-security-review.md) documents two reproduced findings, their fixes and successful retests; no unresolved finding remained within that review's scope.
 
-The existing APP_BIND block, Compose deployment/storage settings, and persisted cryptographic KDF/AAD domains were verified unchanged. No real provider, household database, LAN service or deployed instance was contacted; external account permissions and webhook delivery still require deliberate administrator verification after upgrade.
+At that earlier database-settings milestone, the APP_BIND block, Compose deployment/storage settings and then-current cryptographic KDF/AAD domains were verified unchanged. The later version 3 cleanup intentionally replaces those cryptographic domains and rejects older envelopes; use the current upgrade guide instead of relying on this historical result. No real provider, household database, LAN service or deployed instance was contacted; external account permissions and webhook delivery still require deliberate administrator verification after upgrade.
 
 ## Maintainability and browser-memory isolation milestone
 
-The [maintainability verification](maintainability-verification.md) records the domain-module refactor, genuine ESLint and complete Prettier configuration, 176 passing tests with zero skips, ten passing browser commands with persistent-storage guards, the 37-table restore rehearsal, and independently reproduced fixes for stale in-memory data across authentication and navigation.
+The [maintainability verification](maintainability-verification.md) records the domain-module refactor, genuine ESLint and complete Prettier configuration, 216 passing tests with zero skips, ten passing browser commands with persistent-storage guards, the 37-table restore rehearsal, and independently reproduced fixes for stale in-memory data across authentication and navigation.

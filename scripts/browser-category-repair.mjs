@@ -111,25 +111,30 @@ function gate() {
   });
   return { promise, release };
 }
+
 const repairs = (state) => state.calls.filter((call) => call.path === '/api/import-health/repair-categories');
 const patches = (state) =>
   state.calls.filter((call) => call.path.startsWith('/api/transactions/') && call.method === 'PATCH');
 async function settle(page) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
+
 async function navigate(page, name) {
   const button = page.getByRole('button', { name, exact: true });
   const menu = page.getByRole('button', { name: 'Open menu', exact: true });
   if ((await menu.isVisible()) && !(await page.locator('.sidebar-open').count())) {
     await menu.click();
   }
+
   await button.click();
 }
+
 async function noOpaqueText(page) {
   const text = await page.locator('body').innerText();
   for (const key of [opaque, splitOpaque]) {
     assert(!text.includes(key), `The raw provider key ${key} must not be visible`);
   }
+
   const values = await page
     .locator('input:not([type="hidden"]), textarea')
     .evaluateAll((inputs) => inputs.map((input) => input.value));
@@ -143,17 +148,20 @@ async function noOpaqueText(page) {
     'Visible filter options must not expose opaque keys'
   );
 }
+
 async function enterSettings(page) {
   await navigate(page, 'Settings');
   await expect(
     page.locator('.import-health').getByRole('heading', { name: 'Import health & history', exact: true })
   ).toBeVisible();
 }
+
 async function screenshot(page, name, locator = page) {
   const path = `${output}/${name}.png`;
   await locator.screenshot({ path, animations: 'disabled', ...(locator === page ? { fullPage: false } : {}) });
   return path;
 }
+
 async function scenario(name, viewport, run, session = admin) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
@@ -186,10 +194,12 @@ async function scenario(name, viewport, run, session = admin) {
       await route.abort();
       return;
     }
+
     if (!url.pathname.startsWith('/api/')) {
       await route.continue();
       return;
     }
+
     const call = { path: url.pathname, query: url.search, method: request.method(), body: request.postDataJSON() };
     state.calls.push(call);
     let data;
@@ -224,9 +234,11 @@ async function scenario(name, viewport, run, session = admin) {
           split.categoryDisplayLabel = 'Unresolved category';
         }
       }
+
       if (Object.hasOwn(call.body, 'category')) {
         delete transaction.categoryDisplayLabel;
       }
+
       data = { message: 'Synthetic correction saved' };
     } else if (call.path === '/api/accounts') {
       data = { accounts: [account] };
@@ -283,16 +295,19 @@ async function scenario(name, viewport, run, session = admin) {
       if (pending) {
         await pending.promise;
       }
+
       if (state.repairError) {
         await route.fulfill({ status: 503, json: { error: state.repairError } });
         return;
       }
+
       data = repairResult;
     } else {
       state.unknown.push(call);
       await route.fulfill({ status: 501, json: { error: 'Unexpected synthetic test API' } });
       return;
     }
+
     await route.fulfill({ json: data });
   });
   let result;
@@ -315,6 +330,7 @@ async function scenario(name, viewport, run, session = admin) {
     for (const pending of state.gates) {
       pending.release();
     }
+
     await writeFile(
       `${output}/evidence.json`,
       JSON.stringify(
@@ -596,4 +612,5 @@ try {
 } finally {
   await browser.close();
 }
+
 console.log(`Category repair compiled-UI regressions passed. Synthetic evidence: ${output}`);

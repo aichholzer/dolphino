@@ -102,8 +102,10 @@ await page.route('**/api/**', async (route) => {
       });
       return;
     }
+
     data = chat;
   }
+
   await route.fulfill({ json: data });
 });
 try {
@@ -169,6 +171,7 @@ try {
       'focus stays in assistant dialog'
     );
   }
+
   await page.keyboard.press('Escape');
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(await page.getByRole('dialog').count(), 0);

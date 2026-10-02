@@ -1,7 +1,7 @@
 import { AlertCircle, Plus, ArrowRight } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
-import { money } from '../../money.js';
+import { money } from '../../money.mjs';
 
 export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
   const budgets = data.budgets || [];

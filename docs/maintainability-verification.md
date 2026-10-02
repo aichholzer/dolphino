@@ -1,4 +1,6 @@
-# Maintainability verification — 1 October 2026
+# Historical maintainability verification — 1 October 2026
+
+This is the earlier route/frontend refactor and PostgreSQL/proxy milestone, recorded before the subsequent `.mjs`/backend-layout and version 3 credential cleanup. Its test counts and compatibility statements describe that earlier state, not a rerun of the current release. See [current cleanup verification](module-cleanup-verification.md) and [upgrade boundaries](upgrading.md).
 
 All data, credentials, provider responses and notification destinations used here were synthetic. PostgreSQL 17.6 ran in a fresh disposable local cluster. No production deployment, real financial provider connection, model call, message delivery or live household data was used.
 
@@ -69,4 +71,4 @@ A reusable guard runs before application code in every app browser suite and eve
 
 A separate review compared original and extracted route handlers/policies, probed all 76 mounted endpoints, reran ten focused PostgreSQL security tests, and independently reproduced the fixed account-cache/navigation scenarios against the production build. It found no remaining refactor blocker. A further independent review of PG/TLS and proxy changes passed 52 focused tests (including Compose parsing and HTTP boundaries), found no remaining code blocker, and prompted corrections to upgrade/proxy documentation. Existing real HTTP adversarial tests, SSRF/DNS pinning/TLS tests, grant privacy tests and provider-secret redaction tests pass in the full suite.
 
-This is a development verification record, not a security certification. A full Docker image build, real reverse-proxy/TLS deployment and real provider/notification/model calls were not run in this environment. The existing provider, deployment and backup caveats still apply. Database migrations, financial accounting rules and persistent credential formats were not changed by this refactor. Large ledger/import services retain their cohesive transaction and concurrency boundaries rather than being split only to reduce line counts.
+This is a development verification record, not a security certification. A full Docker image build, real reverse-proxy/TLS deployment and real provider/notification/model calls were not run in this environment. The existing provider, deployment and backup caveats still apply. Database migrations, financial accounting rules and persistent credential formats were not changed by that earlier refactor. The subsequent cleanup deliberately retires version 1/2 envelopes; this historical statement does not promise current credential compatibility. Large ledger/import services retain their cohesive transaction and concurrency boundaries rather than being split only to reduce line counts.

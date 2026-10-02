@@ -1,8 +1,8 @@
 import { Search, Download, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
-import { money } from '../../money.js';
-import { CATEGORIES } from './categories.js';
+import { money } from '../../money.mjs';
+import { CATEGORIES } from './categories.mjs';
 
 export function TransactionsPage({
   data,
@@ -23,9 +23,11 @@ export function TransactionsPage({
       categoryOptions.set(split.category, split.categoryDisplayLabel || split.category);
     }
   }
+
   if (filters.category && !categoryOptions.has(filters.category)) {
     categoryOptions.set(filters.category, 'Selected category');
   }
+
   const { accountId, accountName, allHistory, from, to, search, category, status, kind, ids, txPage } = filters;
   return (
     <section className="card transactions-card">

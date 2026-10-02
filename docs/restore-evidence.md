@@ -1,4 +1,6 @@
-# Isolated backup and restore rehearsal
+# Historical isolated backup and restore rehearsal — 30 September 2026
+
+This is a historical rehearsal record. Its credential-decryption results require the matching application version and APP_SECRET. The current version 3 vault rejects version 1/2 backup ciphertext even with its original key; see [upgrade and rollback guidance](upgrading.md) and [current cleanup verification](module-cleanup-verification.md).
 
 Executed 2026-09-30 against the disposable local PostgreSQL 18.4 server on `127.0.0.1:54329`. No real user database or live provider connection was used. The existing isolated test database was used only as the administrative connection; source and target were newly created databases with random names. Both rehearsal databases and the temporary dump were deleted in `finally` after verification.
 

@@ -25,12 +25,14 @@ export function NotificationSettings({ api, demo }) {
     if (activePairing.active) {
       setPairing((p) => ({ ...p, ...activePairing }));
     }
+
     setData(d);
     setAudienceConfirmed(!!d.audienceConfirmed);
     setSummaryFields(d.summaryFields || ['category', 'period', 'amount', 'remaining']);
     setSmtp(d.smtp || {});
     setTelegram(d.telegram || {});
   }
+
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
@@ -50,6 +52,7 @@ export function NotificationSettings({ api, demo }) {
       setBusy(false);
     }
   }
+
   async function save(e) {
     e.preventDefault();
     const body = {
@@ -80,6 +83,7 @@ export function NotificationSettings({ api, demo }) {
       setClearToken(false);
     }
   }
+
   return (
     <section className="card settings-card integration-settings notification-settings">
       <h2>Keep the household in the loop</h2>
@@ -161,6 +165,12 @@ export function NotificationSettings({ api, demo }) {
           Use smtp://login:password@host:587 with STARTTLS or smtps://login:password@host:465. URL-encode special
           characters in credentials. Connection details are encrypted.
         </p>
+        {data?.smtp?.credentialsAvailable === false && (
+          <p role="status" className="setup-note">
+            The saved SMTP connection cannot be decrypted. Verify APP_SECRET or replace the saved connection. Retired
+            credential formats must be replaced; financial records are unchanged.
+          </p>
+        )}
         <label className="checkbox-label">
           <input type="checkbox" checked={clearSmtp} onChange={(e) => setClearSmtp(e.target.checked)} />
           Clear SMTP connection
@@ -205,6 +215,12 @@ export function NotificationSettings({ api, demo }) {
           <input type="checkbox" checked={clearToken} onChange={(e) => setClearToken(e.target.checked)} />
           Clear Telegram bot token
         </label>
+        {data?.telegram?.credentialsAvailable === false && (
+          <p role="status" className="setup-note">
+            The saved Telegram token cannot be decrypted. Verify APP_SECRET or replace the saved token. Retired
+            credential formats must be replaced. Replacing the token requires pairing the group again.
+          </p>
+        )}
         <p className="footnote">
           Create a dedicated private group, then add your household members and bot yourself. Keep bot privacy mode on;
           no administrator permissions are needed. dolphino does not manage membership.

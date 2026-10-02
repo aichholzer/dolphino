@@ -43,5 +43,5 @@ IPv6 spelling is canonicalized, and IPv4-mapped IPv6 is normalized to IPv4 so al
 Before a live rollout, verify the actual peer and header chain in a controlled environment, then check both normal requests and requests with attacker-supplied forwarding headers. The repository tests exercise synthetic peers and HTTP requests without contacting any real proxy or changing deployment configuration:
 
 ```sh
-node --test backend/test/client-ip.test.js backend/test/http-boundary.test.js
+node --test backend/test/client-ip.test.mjs backend/test/http-boundary.test.mjs
 ```

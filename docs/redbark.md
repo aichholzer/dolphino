@@ -51,3 +51,7 @@ Contract references: [thin events and destinations](https://redbark.com/docs/api
 An event can arrive immediately after remote creation, before local secret storage completes. dolphino returns 503 until it can verify the key; Redbark retries. For reused destinations, the recovered key is saved before updating subscriptions or re-enabling delivery.
 
 For existing opaque category references, use [Repair category names](category-repair.md) in Import health. This checks taxonomy without downloading bank history. Ambiguous saved manual references are preserved for an explicit category choice; no database wipe is needed.
+
+## Credential-format upgrades
+
+Only version 3 encrypted credentials are readable. If an API key or signing secret uses a retired format, it stays stored but cannot be used, even with the original APP_SECRET. Explicitly replace the API key and test the saved connection. Replacing it invalidates the existing webhook binding: supply the matching signing secret as well, or explicitly register/recover the intended destination. Blank fields preserve old ciphertext and cannot restore delivery. Existing financial history, webhook receipts and queued jobs remain stored; jobs whose credential account cannot be proven stay paused. Follow [the complete upgrade checklist](upgrading.md) before restoring external access.

@@ -1,4 +1,4 @@
-import { readTestPostgresConfig } from '../backend/test/helpers/postgres.js';
+import { readTestPostgresConfig } from '../backend/test/helpers/postgres.mjs';
 import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -6,21 +6,21 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from '@aws-sdk/client-bedrock';
-import { Store } from '../backend/src/store.js';
-import { createApp } from '../backend/src/app.js';
-import { ensureDeploymentMode } from '../backend/src/deployment-mode.js';
-import { createHouseholdAuth } from '../backend/src/household-auth.js';
-import { ensureAccessSchema } from '../backend/src/access.js';
-import { createSettingsStore } from '../backend/src/settings.js';
-import { createRedbarkSettings } from '../backend/src/redbark-settings.js';
-import { createRedbarkIntegration } from '../backend/src/worker.js';
-import { createRegistration } from '../backend/src/registration.js';
-import { createClassificationIntegration } from '../backend/src/classification.js';
-import { createAssistantSettings } from '../backend/src/assistant-settings.js';
-import { createNotificationIntegration } from '../backend/src/notifications.js';
-import { createTelegramPairing } from '../backend/src/telegram.js';
-import { createImportHealth } from '../backend/src/import-health.js';
-import { createUserManagement } from '../backend/src/users.js';
+import { Store } from '../backend/src/lib/store.mjs';
+import { createApp } from '../backend/src/app.mjs';
+import { ensureDeploymentMode } from '../backend/src/lib/deployment-mode.mjs';
+import { createHouseholdAuth } from '../backend/src/lib/household-auth.mjs';
+import { ensureAccessSchema } from '../backend/src/lib/access.mjs';
+import { createSettingsStore } from '../backend/src/lib/settings.mjs';
+import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
+import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
+import { createRegistration } from '../backend/src/lib/registration.mjs';
+import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
+import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
+import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
+import { createImportHealth } from '../backend/src/lib/import-health.mjs';
+import { createUserManagement } from '../backend/src/lib/users.mjs';
 
 // Real compiled frontend, real authenticated HTTP application and isolated PostgreSQL.
 // Only the outbound AWS SDK clients are injected. API responses are never fulfilled
@@ -33,6 +33,7 @@ async function runScenario(name, test) {
   if (process.env.DOLPHINO_BEDROCK_SCENARIO && name !== process.env.DOLPHINO_BEDROCK_SCENARIO) {
     return;
   }
+
   const database = readTestPostgresConfig();
   assert(
     database,
@@ -58,6 +59,7 @@ async function runScenario(name, test) {
   const forbiddenOutbound = async () => {
     throw Error('Unexpected outbound provider operation in isolated browser fixture');
   };
+
   const config = {
     mode: 'live',
     host: '127.0.0.1',
@@ -166,9 +168,11 @@ async function runScenario(name, test) {
                 gates.add(gate);
                 await gate.promise;
               }
+
               if (fail) {
                 throw Object.assign(new Error('synthetic-secret-must-never-be-displayed'), { name: fail });
               }
+
               if (command instanceof ListFoundationModelsCommand) {
                 return {
                   modelSummaries: [
@@ -184,6 +188,7 @@ async function runScenario(name, test) {
                   ]
                 };
               }
+
               assert(
                 command instanceof ListInferenceProfilesCommand,
                 'Discovery must not invoke AWS or accept model agreements'
@@ -196,6 +201,7 @@ async function runScenario(name, test) {
       });
       return { app, auth };
     }
+
     let fixture = await buildApp();
     const admin = await fixture.auth.bootstrap(
       { headers: {}, socket: { remoteAddress: 'synthetic-browser-fixture' } },
@@ -213,6 +219,7 @@ async function runScenario(name, test) {
       base = `http://127.0.0.1:${server.address().port}`;
       config.origin = base; // Real browser Origin/CSRF checks use the dynamic local test origin.
     }
+
     await startApp();
     const adminCookie = admin.cookie.split(';')[0];
     const read = async (path, cookie = adminCookie) => {
@@ -228,6 +235,7 @@ async function runScenario(name, test) {
           args: ['--no-sandbox']
         });
       }
+
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       await context.addCookies([
         { name: 'dolphino_session', value: adminCookie.split('=')[1], url: base, httpOnly: true, sameSite: 'Strict' }
@@ -237,6 +245,7 @@ async function runScenario(name, test) {
           external.push(route.request().url());
           return route.abort();
         }
+
         return route.continue();
       });
       const page = await context.newPage();
@@ -247,6 +256,7 @@ async function runScenario(name, test) {
         if (!path.startsWith('/api/')) {
           return;
         }
+
         const item = { event: 'request', phase, method: request.method(), path, body: request.postData() };
         requests.push(item);
         trace.push(item);
@@ -276,11 +286,13 @@ async function runScenario(name, test) {
       await enterSettings(page);
       return page;
     }
+
     async function enterSettings(page) {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Save provider settings', exact: true })).toBeEnabled();
       await expect(page.getByRole('button', { name: 'Save assistant settings', exact: true })).toBeEnabled();
     }
+
     const label = (purpose, name) =>
       purpose === 'assistant' ? `Assistant ${name}` : name[0].toUpperCase() + name.slice(1);
     const namespace = (purpose) => (purpose === 'assistant' ? 'assistant' : 'provider');
@@ -313,6 +325,7 @@ async function runScenario(name, test) {
       await expect(button).toBeEnabled();
       return state;
     }
+
     async function configure(page, purpose, { model = '' } = {}) {
       await page.getByLabel(label(purpose, 'provider'), { exact: true }).selectOption('bedrock');
       await page.getByLabel(label(purpose, 'AWS region'), { exact: true }).selectOption('ap-southeast-2');
@@ -332,8 +345,10 @@ async function runScenario(name, test) {
           })
           .fill(model);
       }
+
       return save(page, purpose);
     }
+
     async function loaded(page, purpose, version = 'current') {
       await expect(choices(page, purpose)).toBeEnabled();
       await expect(choices(page, purpose)).toContainText(`synthetic.${version}-model`);
@@ -348,28 +363,33 @@ async function runScenario(name, test) {
       assert.equal(state.enabled, false, 'Discovery never enables inference');
       assert(!JSON.stringify(state).includes(`synthetic-${purpose}-secret`));
     }
+
     async function both(page) {
       for (const purpose of ['classification', 'assistant']) {
         await configure(page, purpose);
         await loaded(page, purpose);
       }
     }
+
     async function restartBrowser() {
       for (const guard of guards) {
         if (!guard.page.isClosed()) {
           await guard.check();
         }
       }
+
       await browser.close();
       browser = null;
       return openPage();
     }
+
     async function restartApp() {
       for (const guard of guards) {
         if (!guard.page.isClosed()) {
           await guard.check();
         }
       }
+
       await browser.close();
       browser = null;
       await new Promise((resolve) => server.close(resolve));
@@ -377,6 +397,7 @@ async function runScenario(name, test) {
       await startApp();
       return openPage();
     }
+
     const page = await openPage();
     try {
       await test({
@@ -404,6 +425,7 @@ async function runScenario(name, test) {
           await guard.check();
         }
       }
+
       assert.deepEqual(external, [], 'No off-local browser requests');
       assert.deepEqual(errors, [], 'No browser errors');
       assert(modelsRequests().length <= 5, 'Each fixture respects the unmodified five-discovery rate limit');
@@ -415,6 +437,7 @@ async function runScenario(name, test) {
           break;
         }
       }
+
       console.log(`PASS ${name}`);
     } catch (error) {
       evidence.push({ name, result: 'failed', error: error.message, trace });
@@ -428,11 +451,13 @@ async function runScenario(name, test) {
           break;
         }
       }
+
       throw error;
     } finally {
       for (const pending of gates) {
         pending.resolve();
       }
+
       sdk.gate?.resolve();
       await writeFile(
         `${output}/evidence.json`,
@@ -455,11 +480,13 @@ async function runScenario(name, test) {
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
+
     await pool.end();
     await owner.query(`DROP SCHEMA ${schema} CASCADE`);
     await owner.end();
   }
 }
+
 function gate() {
   let resolve;
   const promise = new Promise((done) => {
@@ -477,6 +504,7 @@ await runScenario('save-blank-and-busy', async ({ page, both, save, loaded, choi
     await save(page, purpose);
     await loaded(page, purpose);
   }
+
   const after = (
     await pool.query('SELECT setting,provider,ciphertext FROM encrypted_credentials ORDER BY setting,provider')
   ).rows;
@@ -517,6 +545,7 @@ for (const navigation of ['reopen', 'refresh-settings', 'reload', 'browser-resta
       } else {
         page = await restartBrowser();
       }
+
       await loaded(page, 'classification');
       await loaded(page, 'assistant');
       assert.equal(modelsRequests().length, 4, 'Each reopened saved form automatically loads once');

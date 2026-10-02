@@ -13,6 +13,7 @@ export function ImportHealth({ api, demo }) {
     const d = await api('/import-health');
     setData(d);
   }
+
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
@@ -20,6 +21,7 @@ export function ImportHealth({ api, demo }) {
     if (actionPending.current || demo) {
       return;
     }
+
     actionPending.current = true;
     setBusy(true);
     setError('');
@@ -39,6 +41,7 @@ export function ImportHealth({ api, demo }) {
       setBusy(false);
     }
   }
+
   return (
     <section className="card settings-card integration-settings import-health">
       <h2>Import health & history</h2>

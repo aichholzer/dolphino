@@ -9,8 +9,8 @@ Requirements: Node.js 24+, npm, and an explicitly configured PostgreSQL database
 ```sh
 npm ci
 npm run build
-node --env-file=.env backend/src/seed.js
-node --env-file=.env backend/src/server.js
+node --env-file=.env backend/src/utils/seed.mjs
+node --env-file=.env backend/src/server.mjs
 ```
 
 Open <http://localhost:3001>. Demo mode is prominently labelled and makes no live financial calls. For development, set `APP_ORIGIN=http://localhost:5173`, run the backend above and `npm run dev --workspace frontend` in another terminal. Use port 5173 for browser requests so mutation origin checks match.
@@ -31,6 +31,8 @@ Amounts travel as integer minor-unit strings; calculations use integer arithmeti
 ## Integration settings and upgrades
 
 An administrator configures Redbark credentials, API version and rolling backfill window, classification provider/model/credentials and automation limits, the read-only assistant, and notifications in **Settings**. Integration values are stored only in PostgreSQL; credentials are write-only and encrypted with the deployment's `APP_SECRET`. Saved changes apply without restarting the app. OpenAI and Bedrock use fixed secure provider endpoints; custom base URLs are unsupported.
+
+**Existing installations:** read the [mandatory upgrade and credential recovery guide](docs/upgrading.md) first. This release accepts only version 3 encrypted credentials, current branded environment names and `dolphino_session`. Saved version 1/2 ciphertext stays in the database but needs explicit replacement or clearing; the original APP_SECRET alone cannot recover it. Stop all prior app/worker processes before upgrading, keep the same database/volume and current APP_SECRET, and review pending deliveries. SimpleFIN historical mapped accounts cannot be automatically relinked after a new connection.
 
 **Existing environment-only installations:** manually re-enter Redbark and classification configuration in Settings after upgrading. Old integration environment variables are ignored, never silently imported or used as a fallback. Unconfigured integrations pause; imported financial data, overrides, queued jobs and notifications remain preserved. Keep the same database/volume and matching `APP_SECRET`. Deployment database selection, mode, `HOST`/`PORT`, `APP_BIND`, origin/bootstrap settings and currency/timezone defaults remain environment-based. Follow the [database integration upgrade checklist](docs/database-integration-upgrade.md).
 
@@ -55,7 +57,7 @@ npm test
 
 Run `npm run lint:fix` to apply safe ESLint fixes, then `npm run format` to format source, tests, documentation and supported configuration files. Both tools exclude dependencies, build output and generated verification artifacts; Prettier also leaves the generated lockfile untouched.
 
-`eslint.config.js` applies ESLint's recommended rules, requires braces for every conditional and loop, and rejects unused variables. Intentionally unused arguments may start with `_`, and object-rest omissions are allowed. Node and browser globals are scoped to their respective files. ESLint 10 tracks JSX component references natively, so unused-variable checking remains enabled for React code without an extra compatibility plugin.
+`eslint.config.mjs` applies ESLint's recommended rules, requires braces for every conditional and loop, and rejects unused variables. Intentionally unused arguments may start with `_`, and object-rest omissions are allowed. Node and browser globals are scoped to their respective files. ESLint 10 tracks JSX component references natively, so unused-variable checking remains enabled for React code without an extra React compatibility plugin. `@stylistic/eslint-plugin` 5.10.0 adds only `padding-line-between-statements`: a blank line after a function declaration, an export statement or a multiline block-like statement when another statement follows. Its recommended preset is not enabled; Prettier remains the formatter.
 
 `.prettierrc.json` defines 120-column lines, two-space indentation, single quotes, semicolons, no trailing commas, bracket spacing and parentheses around arrow-function parameters. Formatting checks cover the repository rather than a narrow source-only file list.
 
@@ -73,10 +75,10 @@ See [assistant setup, tool catalog and limits](docs/assistant.md).
 
 The [isolated security assessment](docs/security-assessment.md) documents tested attacks, fixed findings and remaining deployment limits. This is not a security certification.
 
-Upgrading an existing installation? Read [rename compatibility and volume preservation](docs/rename-upgrade.md) before changing directories or Compose configuration. Keep APP_SECRET and your existing database/volume.
+Upgrading an existing installation? Read [upgrade boundaries, credential recovery and volume preservation](docs/upgrading.md) before changing directories or Compose configuration. Keep APP_SECRET and your existing database/volume.
 
 ### Optional SimpleFIN
 
 An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider from Settings. It is paused by default and uses the existing encrypted database credential vault. Direct Redbark remains primary. See [setup, source ownership and limitations](docs/simplefin.md).
 
-See [code organization and maintenance](docs/architecture.md) for module boundaries, route-access contracts and the development checks.
+Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 substantive SQL migrations are retained. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for the current check results.

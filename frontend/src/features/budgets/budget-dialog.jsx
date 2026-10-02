@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
-import { minorToDecimal } from '../../money.js';
-import { budgetValues } from './budget-model.js';
+import { minorToDecimal } from '../../money.mjs';
+import { budgetValues } from './budget-model.mjs';
 
 export function BudgetDialog({ budget, close, busy, save, serverError, currency, canChangeCategory }) {
   const [category, setCategory] = useState(''),

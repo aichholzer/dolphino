@@ -19,12 +19,14 @@ export function createSensitiveActionGuard(config) {
         status: 409
       });
     }
+
     const now = Date.now();
     const prior = sensitiveCalls.get(action) || [];
     const recent = prior.filter((t) => now - t < 60000);
     if (recent.length >= 5) {
       throw Object.assign(Error('Too many settings requests; retry in one minute'), { status: 429 });
     }
+
     recent.push(now);
     sensitiveCalls.set(action, recent);
   };

@@ -7,6 +7,7 @@ export async function installBrowserStorageGuard(page) {
   if (installed.has(page)) {
     return installed.get(page);
   }
+
   const violations = [];
   await page.exposeBinding('__dolphinoReportStorageAccess', (_source, operation) => {
     violations.push(operation);
@@ -17,6 +18,7 @@ export async function installBrowserStorageGuard(page) {
       void globalThis.__dolphinoReportStorageAccess(operation);
       throw new Error(`Browser application storage is forbidden: ${operation}`);
     };
+
     for (const name of ['localStorage', 'sessionStorage', 'indexedDB', 'caches']) {
       Object.defineProperty(globalThis, name, {
         configurable: false,
@@ -26,6 +28,7 @@ export async function installBrowserStorageGuard(page) {
         }
       });
     }
+
     if (navigator.serviceWorker) {
       Object.defineProperty(navigator.serviceWorker, 'register', {
         configurable: false,
@@ -39,6 +42,7 @@ export async function installBrowserStorageGuard(page) {
     const accesses = violations.filter((operation) => operation !== null);
     assert.deepEqual(accesses, [], 'The application must not access browser app-data storage');
   };
+
   installed.set(page, assertNoStorageAccess);
   return assertNoStorageAccess;
 }

@@ -13,7 +13,7 @@ const explanations = {
     'This setup token was already attempted. Revoke that token or app connection at your provider and generate a new one.',
   simplefin_test_connection_before_enabling: 'Test the saved connection successfully before enabling imports.',
   simplefin_credentials_unavailable:
-    'Saved credentials are unavailable. Restore the matching APP_SECRET or disconnect locally and reconnect.',
+    'Saved credentials are unavailable. Verify APP_SECRET. Retired formats require a new connection; historical accounts cannot be automatically relinked. Review the upgrade guide before disconnecting.',
   simplefin_provider_partial:
     'The provider reported incomplete data. Returned records are preserved, but coverage remains incomplete and failed windows will be retried.',
   simplefin_limit_split:
@@ -39,6 +39,7 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
     setDays(value.backfillDays);
     setEnabled(value.enabled);
   };
+
   useEffect(() => {
     let active = true;
     api('/settings/simplefin')
@@ -60,6 +61,7 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
     if (busy) {
       return;
     }
+
     setBusy(true);
     setError('');
     setNotice('');
@@ -77,6 +79,7 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
       setBusy(false);
     }
   }
+
   const disabled = demo || busy || !state;
   return (
     <section className="card settings-card integration-settings" aria-labelledby="simplefin-heading">
@@ -112,8 +115,10 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
           )}
           {!state.credentialsAvailable && (
             <p className="setup-note">
-              Saved credentials cannot be decrypted. Restore the matching APP_SECRET. Existing transactions remain
-              available.
+              Saved credentials cannot be decrypted. Verify APP_SECRET; retired credential formats cannot be recovered
+              by restoring the key. Disconnecting retains financial history, but a new setup token creates a new
+              connection and automatic relinking of historical accounts is unsupported. Review the upgrade guide before
+              reconnecting.
             </p>
           )}
           {state.lastError && (

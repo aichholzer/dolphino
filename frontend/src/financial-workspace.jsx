@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, RefreshCw, Sparkles, X } from 'lucide-react';
-import { api } from './lib/api.js';
-import { reportQuery, reportingMonth } from './lib/report-query.js';
-import { workspaceAccess } from './lib/workspace-access.js';
-import { useWorkspaceData } from './hooks/use-workspace-data.js';
-import { useTransactionFilters } from './hooks/use-transaction-filters.js';
-import { accountTransactionFilters, drilldownFilters } from './features/transactions/transaction-model.js';
+import { api } from './lib/api.mjs';
+import { reportQuery, reportingMonth } from './lib/report-query.mjs';
+import { workspaceAccess } from './lib/workspace-access.mjs';
+import { useWorkspaceData } from './hooks/use-workspace-data.mjs';
+import { useTransactionFilters } from './hooks/use-transaction-filters.mjs';
+import { accountTransactionFilters, drilldownFilters } from './features/transactions/transaction-model.mjs';
 import { AppShell } from './components/app-shell';
 import { PageHeading } from './components/page-heading';
 import { Empty } from './components/empty-state';
@@ -56,11 +56,13 @@ export function FinancialWorkspace({ session, onSession }) {
     if (!canNavigate(next)) {
       next = hasAccountAccess ? 'Overview' : 'Budgets';
     }
+
     if (next === page) {
       load();
       setMenu(false);
       return;
     }
+
     resetPage();
     setPage(next);
     setMenu(false);
@@ -71,6 +73,7 @@ export function FinancialWorkspace({ session, onSession }) {
     if (selection.month) {
       setMonth(selection.month);
     }
+
     navigate('Transactions');
   }
 
@@ -100,6 +103,7 @@ export function FinancialWorkspace({ session, onSession }) {
               if (/^[A-Z]{3}$/.test(sourceCurrency || '')) {
                 setCurrency(sourceCurrency);
               }
+
               drill({ ids: [id], status: '' });
             }
           : undefined

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { BrandMark } from './brand';
 import { AssistantPanel } from './assistant-panel';
-import { api } from '../lib/api.js';
+import { api } from '../lib/api.mjs';
 
 const icons = {
   Overview: LayoutDashboard,

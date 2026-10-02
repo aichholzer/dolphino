@@ -45,6 +45,7 @@ function Message({ message, onViewTransaction }) {
     </article>
   );
 }
+
 export function AssistantPanel({ api, session, onViewTransaction }) {
   const [open, setOpen] = useState(false),
     [status, setStatus] = useState(null),
@@ -89,6 +90,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       if (rev !== generation.current) {
         return;
       }
+
       setStatus(s);
       setChats(h.chats || []);
     } catch (e) {
@@ -101,6 +103,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       }
     }
   }
+
   useEffect(() => {
     if (open) {
       refresh();
@@ -130,14 +133,17 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
         }
       }
     }
+
     if (rev === generation.current) {
       setBusy(false);
     }
   }
+
   async function send(text) {
     if (!text.trim() || busy || !ack) {
       return;
     }
+
     setBusy(true);
     setError('');
     setLastQuestion(text);
@@ -155,9 +161,11 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
         if (rev !== generation.current) {
           return;
         }
+
         chatRef.current = current;
         setChat(current);
       }
+
       setChat({
         ...current,
         messages: [...(current.messages || []), { role: 'user', content: text }]
@@ -171,6 +179,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       if (rev !== generation.current) {
         return;
       }
+
       setChat(
         r.chat || {
           ...current,
@@ -191,6 +200,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
           messages: c.messages.map((m, i) => (i === c.messages.length - 1 ? { ...m, citations: r.citations } : m))
         }));
       }
+
       const history = await api('/assistant/chats');
       if (rev === generation.current) {
         setChats(history.chats || []);
@@ -218,6 +228,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       }
     }
   }
+
   const usable = status?.enabled && status?.configured;
   return (
     <Dialog.Root
@@ -226,6 +237,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
         if (!v && busy) {
           cancel();
         }
+
         setOpen(v);
       }}
     >
@@ -267,6 +279,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                   setChat(null);
                   return;
                 }
+
                 try {
                   const selected = await api(`/assistant/chats/${encodeURIComponent(e.target.value)}`);
                   if (rev === generation.current) {

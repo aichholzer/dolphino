@@ -130,11 +130,13 @@ function savePublic(target, body, names) {
       target[key] = value;
     }
   }
+
   if (target.provider) {
     target.discoveryRevision = nextRevision();
     target.configured = !!target.model;
   }
 }
+
 await page.route('**/api/**', async (route) => {
   const request = route.request();
   const path = new URL(request.url()).pathname;
@@ -172,6 +174,7 @@ await page.route('**/api/**', async (route) => {
         redbark.signingSecretAssociated = redbark.credentials.signingSecret.configured;
       }
     }
+
     if (status === 200) {
       data = redbark;
     }
@@ -182,6 +185,7 @@ await page.route('**/api/**', async (route) => {
     if (body.revision !== target.discoveryRevision) {
       return route.fulfill({ status: 409, json: { error: 'Saved configuration changed. Refresh settings.' } });
     }
+
     data = {
       revision: target.discoveryRevision,
       region: target.region,
@@ -216,14 +220,17 @@ await page.route('**/api/**', async (route) => {
         await new Promise((resolve) => pendingSave.push(resolve));
         return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
       }
+
       if (saveMode === 'failure') {
         return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
       }
+
       savePublic(provider, body, ['apiKey', 'accessKeyId', 'secretAccessKey']);
       if (saveMode === 'deferred') {
         await new Promise((resolve) => pendingSave.push(resolve));
       }
     }
+
     data = provider;
   } else if (path === '/api/settings/assistant') {
     if (request.method() === 'PUT') {
@@ -236,14 +243,17 @@ await page.route('**/api/**', async (route) => {
         await new Promise((resolve) => pendingSave.push(resolve));
         return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
       }
+
       if (saveMode === 'failure') {
         return route.fulfill({ status: 400, json: { error: 'Synthetic settings save failed' } });
       }
+
       savePublic(assistant, body, ['apiKey', 'accessKeyId', 'secretAccessKey']);
       if (saveMode === 'deferred') {
         await new Promise((resolve) => pendingSave.push(resolve));
       }
     }
+
     data = assistant;
   } else if (path === '/api/settings/webhook') {
     data = {
@@ -264,6 +274,7 @@ await page.route('**/api/**', async (route) => {
   } else if (path === '/api/import-health') {
     data = { accounts: [], jobs: [] };
   }
+
   responses.push(JSON.stringify(data));
   await route.fulfill({ status, json: data });
 });
@@ -273,6 +284,7 @@ const saveRedbark = async () => {
   await page.getByRole('status').filter({ hasText: 'Redbark settings saved' }).waitFor();
   await expect(page.getByRole('button', { name: 'Save Redbark settings', exact: true })).toBeEnabled();
 };
+
 try {
   await page.goto(process.env.DOLPHINO_TEST_URL || 'http://127.0.0.1:5173');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -420,18 +432,21 @@ try {
       await expect(key).toHaveValue('');
       await expect(secret).toHaveValue('');
     };
+
     const loadSuccessful = async (mode = 'success') => {
       discoveryMode = mode;
       await save();
       await expect(section.getByRole('status').filter({ hasText: 'choices returned' })).toBeVisible();
       await expect(choices.locator('option')).toHaveCount(mode === 'empty' ? 1 : 5);
     };
+
     const beginDeferred = async () => {
       discoveryMode = 'deferred';
       await save();
       await expect.poll(() => pendingDiscovery.length).toBe(1);
       await expect(choices).toBeDisabled();
     };
+
     const endDeferred = async ({ stale = false, busy = false } = {}) => {
       const release = pendingDiscovery.shift();
       const count = responses.length;
@@ -447,10 +462,12 @@ try {
         }
       }
     };
+
     const assertCatalogReady = async () => {
       await expect(choices).toBeEnabled();
       await expect(choices.locator('option')).toHaveCount(5);
     };
+
     const testConnection = async () => {
       explicitConnectionTests++;
       await section.getByRole('button', { name: 'Test saved connection', exact: true }).click();
@@ -496,6 +513,7 @@ try {
     ]) {
       assert(optionText.includes(description), `discovery labels ${description}`);
     }
+
     await search.fill('Household');
     await expect(choices.locator('option')).toHaveCount(2);
     await choices.selectOption('synthetic-application-profile');
@@ -551,6 +569,7 @@ try {
         await expect(button).toBeEnabled();
         await expect(section.getByRole('alert')).toContainText('Unable to load models');
       }
+
       // Allow effects and network work to settle: failures must wait for an
       // explicit Retry or a changed discovery key, even after other rerenders.
       await page.waitForTimeout(150);
@@ -601,6 +620,7 @@ try {
       } else {
         await region.selectOption('us-east-1');
       }
+
       await expect(choices).toBeDisabled();
       await expect(choices.locator('option')).toHaveCount(1);
       assert.equal(discoveryCount(), beforeDirty, 'dirty credentials and regions cannot start discovery');
@@ -613,6 +633,7 @@ try {
       } else {
         await region.selectOption('ap-southeast-2');
       }
+
       await assertCatalogReady();
       assert.equal(discoveryCount(), beforeDirty + 1, 'returning to saved settings automatically reloads');
     }
@@ -665,6 +686,7 @@ try {
       } else {
         await providerSelect.selectOption('openai');
       }
+
       if (change === 'secret') {
         await secret.fill('');
       } else if (change === 'clear') {
@@ -674,6 +696,7 @@ try {
       } else {
         await providerSelect.selectOption('bedrock');
       }
+
       await expect.poll(() => pendingDiscovery.length).toBe(2);
       assert.equal(discoveryCount(), beforeDirty + 1, 'a clean return replaces cancelled discovery');
       await endDeferred({ stale: true });
@@ -685,6 +708,7 @@ try {
         await expect(model).toHaveValue('second-manual-model');
       }
     }
+
     await model.fill('second-manual-model');
     await beginDeferred();
     await loadSuccessful();
@@ -705,6 +729,7 @@ try {
       } else {
         await key.fill('synthetic-newer-draft');
       }
+
       pendingSave.shift()();
       await expect(button).toBeEnabled();
       await expect(page.getByRole('status').filter({ hasText: 'form changed while saving' })).toBeVisible();
@@ -719,9 +744,11 @@ try {
       } else {
         await expect(key).toHaveValue('synthetic-newer-draft');
       }
+
       saveMode = 'success';
       await loadSuccessful();
     }
+
     saveMode = 'deferred-failure';
     const beforeStaleFailure = discoveryCount();
     await button.click();
@@ -755,9 +782,11 @@ try {
           animations: 'disabled'
         });
       }
+
       await page.setViewportSize({ width: 1440, height: 1000 });
       await model.fill('saved-manual-profile');
     }
+
     if (config.purpose === 'assistant') {
       await expect(section.getByText('the assistant also requires tool use', { exact: false })).toBeVisible();
     } else {
@@ -812,6 +841,7 @@ try {
   while (pendingDiscovery.length) {
     pendingDiscovery.shift()();
   }
+
   discoveryMode = 'success';
   const allDiscoveryCount = () => calls.filter((call) => call.path.endsWith('/models')).length;
   const assertBothLoaded = async () => {
@@ -821,11 +851,13 @@ try {
       await expect(select.locator('option')).toHaveCount(5);
     }
   };
+
   for (const lifecycle of ['return', 'same-page refresh', 'browser reload']) {
     const beforeMount = allDiscoveryCount();
     if (lifecycle === 'browser reload') {
       await page.reload();
     }
+
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await assertBothLoaded();
     assert.equal(allDiscoveryCount(), beforeMount + 2, `${lifecycle} automatically discovers each saved provider`);
@@ -838,6 +870,7 @@ try {
       await expect(section.getByLabel(config.modelLabel, { exact: true })).toHaveValue('saved-manual-profile');
     }
   }
+
   await expect(page.getByRole('button', { name: 'Load models', exact: true })).toHaveCount(0);
 
   // An unmounted save does not launch discovery when its response arrives.
@@ -862,6 +895,7 @@ try {
     await page.getByRole('button', { name: label, exact: true }).click();
     await expect(page.getByRole('button', { name: label, exact: true })).toBeEnabled();
   }
+
   assert.equal(calls.filter((call) => call.path.endsWith('/models')).length, beforeUnusable);
   provider.credentialsAvailable = true;
   assistant.credentialsAvailable = true;
@@ -872,6 +906,7 @@ try {
   for (const label of ['Save provider settings', 'Save assistant settings']) {
     await expect(page.getByRole('button', { name: label, exact: true })).toBeDisabled();
   }
+
   const discoveryCalls = calls.filter((call) => call.path.endsWith('/models'));
   assert(discoveryCalls.length > 0);
   assert(discoveryCalls.every((call) => call.method === 'POST' && Object.keys(call.body).join() === 'revision'));
@@ -893,6 +928,7 @@ try {
       'credentials are absent from rendered content'
     );
   }
+
   assert.equal(
     calls.some((call) => /test-model/.test(call.path)),
     false,

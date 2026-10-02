@@ -9,7 +9,7 @@ import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const server = await createServer({
   root,
-  configFile: fileURLToPath(new URL('../vite.config.js', import.meta.url)),
+  configFile: fileURLToPath(new URL('../vite.config.mjs', import.meta.url)),
   server: { host: '127.0.0.1', port: 0, strictPort: true },
   plugins: [
     {
@@ -24,7 +24,7 @@ const server = await createServer({
           import React from 'react';
           import { createRoot } from 'react-dom/client';
           import { FinancialWorkspace } from '/src/financial-workspace.jsx';
-          import { workspaceIdentity } from '/src/lib/workspace-access.js';
+          import { workspaceIdentity } from '/src/lib/workspace-access.mjs';
           import '/src/style.css';
           function Harness() {
             const [session, setSession] = React.useState(window.initialTestSession);
@@ -86,6 +86,7 @@ async function fixturePage(nextSession = memberSession) {
     if (state.onRequest && (await state.onRequest(route, path))) {
       return;
     }
+
     let data = {};
     if (path === '/api/session') {
       data = state.session;
@@ -118,6 +119,7 @@ async function fixturePage(nextSession = memberSession) {
     } else if (path === '/api/reviews') {
       data = { reviews: [{ id: 'review-one', description: 'Synthetic review' }] };
     }
+
     await route.fulfill({ json: data });
   });
   return { page, state };
@@ -155,6 +157,7 @@ try {
             caught.push(error.message);
           }
         }
+
         return caught;
       });
       assert.equal(failures.length, 3);
@@ -171,6 +174,7 @@ try {
       await page.close();
     }
   }
+
   for (const samePrincipal of [false, true]) {
     const { page, state } = await fixturePage(
       samePrincipal ? { ...priorSession, user: { ...priorSession.user, name: 'Current principal' } } : memberSession
@@ -220,8 +224,10 @@ try {
           heldAccount = route;
           return true;
         }
+
         return false;
       };
+
       await page.getByRole('button', { name: 'Accounts', exact: true }).click();
       await expect.poll(() => !!heldAccount).toBe(true);
       await signInAgain(page);
@@ -251,8 +257,10 @@ try {
           heldMutation = route;
           return true;
         }
+
         return false;
       };
+
       await page.goto(base);
       await page.getByRole('button', { name: 'Review', exact: true }).click();
       await page.getByRole('button', { name: 'Keep separate', exact: true }).click();
@@ -280,8 +288,10 @@ try {
           heldSettings = route;
           return true;
         }
+
         return false;
       };
+
       await page.goto(base);
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await page.getByRole('button', { name: 'Save Redbark settings', exact: true }).click();
@@ -341,4 +351,5 @@ try {
   await browser.close();
   await server.close();
 }
+
 console.log('Workspace browser regressions and browser-storage guard passed using isolated synthetic fixtures.');

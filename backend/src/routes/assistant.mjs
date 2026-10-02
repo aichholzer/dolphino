@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { createAccessStore } from '../access.js';
-import { FINANCE_TOOLS, invokeFinanceTool } from '../assistant-tools.js';
+import { createAccessStore } from '../lib/access.mjs';
+import { FINANCE_TOOLS, invokeFinanceTool } from '../lib/assistant-tools.mjs';
 import { body } from '../http/body.mjs';
 
 export function registerAssistantRoutes({ route, store, auth, assistant, assistantSettings, config }) {
@@ -10,6 +10,7 @@ export function registerAssistantRoutes({ route, store, auth, assistant, assista
     if (!user) {
       throw Object.assign(Error('Sign in required'), { status: 401 });
     }
+
     const finance = await createAccessStore(store, user);
     const permissions = await finance.permissions();
     if (!permissions.financialAccess) {
@@ -17,6 +18,7 @@ export function registerAssistantRoutes({ route, store, auth, assistant, assista
         status: 403
       });
     }
+
     const fingerprint = createHash('sha256')
       .update(JSON.stringify({ id: user.id, role: user.role, permissions }))
       .digest('hex');
@@ -40,6 +42,7 @@ export function registerAssistantRoutes({ route, store, auth, assistant, assista
     );
     return { user, fingerprint, finance: readOnly };
   };
+
   route('get', '/api/assistant/status', () => assistantSettings.getUserStatus(), { access: 'member' });
 
   route(
@@ -107,6 +110,7 @@ export function registerAssistantRoutes({ route, store, auth, assistant, assista
           cancel.abort();
         }
       };
+
       req.once('aborted', disconnected);
       res.once('close', disconnected);
       try {

@@ -6,19 +6,19 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "node --watch backend/src/server.js",
-    "start": "node backend/src/server.js",
-    "test": "node --test --test-concurrency=1 backend/test/*.test.js frontend/test/*.test.js",
+    "dev": "node --watch backend/src/server.mjs",
+    "start": "node backend/src/server.mjs",
+    "test": "node --test --test-concurrency=1 backend/test/*.test.mjs frontend/test/*.test.mjs",
     "build": "npm run build --workspace frontend",
-    "seed": "node backend/src/seed.js",
+    "seed": "node backend/src/utils/seed.mjs",
     "check": "npm run lint && npm run format:check && npm test && npm run build",
-    "migrate": "node backend/src/migrate.js",
+    "migrate": "node backend/src/utils/migrate.mjs",
     "lint": "eslint . --max-warnings=0",
     "test:browser": "node scripts/browser-check.mjs",
     "format:check": "prettier --check .",
     "test:browser:enhancements": "node scripts/browser-enhancements.mjs",
     "test:browser:auth": "node scripts/browser-auth.mjs",
-    "recover-user": "node scripts/recover-user.js",
+    "recover-user": "node scripts/recover-user.mjs",
     "test:browser:assistant": "node scripts/browser-assistant.mjs",
     "test:browser:brand": "node scripts/browser-brand.mjs",
     "test:browser:integration-settings": "node scripts/browser-integration-settings.mjs",
@@ -43,6 +43,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "eslint": "^10.11.0",
     "globals": "^17.13.0",
     "prettier": "^3.6.2"

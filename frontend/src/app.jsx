@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api } from './lib/api.js';
-import { workspaceAccess, workspaceIdentity } from './lib/workspace-access.js';
+import { api } from './lib/api.mjs';
+import { workspaceAccess, workspaceIdentity } from './lib/workspace-access.mjs';
 import { AuthScreen, AccessPending } from './components/auth';
 import { FinancialWorkspace } from './financial-workspace';
 
@@ -28,6 +28,7 @@ export function App() {
       />
     );
   }
+
   if (session?.authenticated && !session.demo && !workspaceAccess(session).hasFinancialAccess) {
     return <AccessPending api={api} session={session} onSession={setSession} />;
   }

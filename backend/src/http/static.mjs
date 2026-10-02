@@ -8,19 +8,23 @@ export function createStaticHandler(securityHeaders) {
     if (req.url.startsWith('/api/')) {
       return send(res, { error: 'Not found' }, 404);
     }
+
     if (req.method !== 'GET') {
       return send(res, { error: 'Not found' }, 404);
     }
+
     try {
       const root = resolve('frontend/dist');
       const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
       if (pathname.split('/').some((segment) => segment.startsWith('.'))) {
         return send(res, { error: 'Not found' }, 404);
       }
+
       const path = resolve(root, '.' + pathname);
       if (!path.startsWith(root + '/') && path !== root) {
         return send(res, { error: 'Not found' }, 404);
       }
+
       let data;
       let ext = extname(path);
       try {
@@ -29,9 +33,11 @@ export function createStaticHandler(securityHeaders) {
         if (ext) {
           return send(res, { error: 'Not found' }, 404);
         }
+
         data = await readFile(resolve(root, 'index.html'));
         ext = '.html';
       }
+
       res.writeHead(200, {
         'Content-Type':
           {

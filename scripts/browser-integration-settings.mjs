@@ -1,4 +1,4 @@
-import { readTestPostgresConfig } from '../backend/test/helpers/postgres.js';
+import { readTestPostgresConfig } from '../backend/test/helpers/postgres.mjs';
 import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -6,21 +6,21 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from '@aws-sdk/client-bedrock';
-import { Store } from '../backend/src/store.js';
-import { createApp } from '../backend/src/app.js';
-import { ensureDeploymentMode } from '../backend/src/deployment-mode.js';
-import { createHouseholdAuth } from '../backend/src/household-auth.js';
-import { ensureAccessSchema, validateAndSetGrants } from '../backend/src/access.js';
-import { createSettingsStore } from '../backend/src/settings.js';
-import { createRedbarkSettings } from '../backend/src/redbark-settings.js';
-import { createRedbarkIntegration } from '../backend/src/worker.js';
-import { createRegistration } from '../backend/src/registration.js';
-import { createClassificationIntegration } from '../backend/src/classification.js';
-import { createAssistantSettings } from '../backend/src/assistant-settings.js';
-import { createNotificationIntegration } from '../backend/src/notifications.js';
-import { createTelegramPairing } from '../backend/src/telegram.js';
-import { createImportHealth } from '../backend/src/import-health.js';
-import { createUserManagement } from '../backend/src/users.js';
+import { Store } from '../backend/src/lib/store.mjs';
+import { createApp } from '../backend/src/app.mjs';
+import { ensureDeploymentMode } from '../backend/src/lib/deployment-mode.mjs';
+import { createHouseholdAuth } from '../backend/src/lib/household-auth.mjs';
+import { ensureAccessSchema, validateAndSetGrants } from '../backend/src/lib/access.mjs';
+import { createSettingsStore } from '../backend/src/lib/settings.mjs';
+import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
+import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
+import { createRegistration } from '../backend/src/lib/registration.mjs';
+import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
+import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
+import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
+import { createImportHealth } from '../backend/src/lib/import-health.mjs';
+import { createUserManagement } from '../backend/src/lib/users.mjs';
 
 // Real compiled frontend + HTTP createApp + isolated PostgreSQL schema. Only
 // outbound provider transports are injected. No /api response is intercepted.
@@ -51,6 +51,7 @@ let providerCalls = 0,
 const forbiddenOutbound = async () => {
   throw Error('Unexpected outbound provider operation in isolated browser fixture');
 };
+
 const config = {
   mode: 'live',
   host: '127.0.0.1',
@@ -66,6 +67,7 @@ const proof = (message) => {
   evidence.push(message);
   console.log(`PASS ${message}`);
 };
+
 try {
   await ensureDeploymentMode(pool, 'live');
   const store = new Store(pool, { mode: 'live', timezone: config.timezone });
@@ -214,6 +216,7 @@ try {
               ]
             };
           }
+
           assert(
             command instanceof ListInferenceProfilesCommand,
             'Discovery must not invoke AWS or accept model agreements'
@@ -241,12 +244,32 @@ try {
     assert.equal(response.status, 200, `${path}: ${await response.clone().text()}`);
     return response.json();
   };
+
   const fresh = await api('/api/settings/provider');
   assert.equal(fresh.source, 'database');
   assert.equal(fresh.configured, false);
   assert.equal(fresh.enabled, false);
   assert.equal(fresh.autoClassify, false);
   proof('Real PostgreSQL fixture exposes database-only, disabled fresh defaults');
+
+  // Retired envelopes are opaque synthetic bytes, never real deployment secrets.
+  for (const [setting, provider] of [
+    ['notifications.smtp.url', 'smtp'],
+    ['notifications.telegram.botToken', 'telegram'],
+    ['simplefin.accessUrl', 'simplefin']
+  ]) {
+    await pool.query('INSERT INTO encrypted_credentials(setting,provider,ciphertext) VALUES($1,$2,$3)', [
+      setting,
+      provider,
+      {
+        v: 2,
+        salt: randomBytes(32).toString('base64'),
+        nonce: randomBytes(12).toString('base64'),
+        tag: randomBytes(16).toString('base64'),
+        data: randomBytes(32).toString('base64')
+      }
+    ]);
+  }
 
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
@@ -270,9 +293,11 @@ try {
         external.push(route.request().url());
         return route.abort();
       }
+
       return route.continue();
     });
   }
+
   await addSession(context, adminCookie);
   const page = await context.newPage();
   const assertPageStorageUnused = await installBrowserStorageGuard(page);
@@ -296,6 +321,7 @@ try {
     await expect(page.getByRole('button', { name, exact: true })).toBeEnabled();
     return response.json();
   }
+
   await page.goto(base);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Redbark API key', { exact: true })).toBeEnabled();
@@ -460,6 +486,33 @@ try {
     'Bedrock Save stores credentials without a model and automatically loads the mocked catalog; selection stays disabled and switching back preserves the original OpenAI key'
   );
 
+  await expect(page.getByText('The saved SMTP connection cannot be decrypted.', { exact: false })).toBeVisible();
+  await expect(page.getByText('The saved Telegram token cannot be decrypted.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Saved credentials cannot be decrypted.', { exact: false })).toBeVisible();
+  await expect(page.getByLabel('SMTP connection URL', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Telegram bot token', { exact: true })).toHaveValue('');
+  const unavailableNotifications = await api('/api/settings/notifications');
+  assert.equal(unavailableNotifications.smtp.configured, true);
+  assert.equal(unavailableNotifications.smtp.credentialsAvailable, false);
+  assert.equal(unavailableNotifications.telegram.configured, true);
+  assert.equal(unavailableNotifications.telegram.credentialsAvailable, false);
+  const replacementSmtp = 'smtps://synthetic:replacement@smtp.example.com:465';
+  const replacementTelegram = '123456:synthetic_replacement_token_for_browser';
+  await page.getByLabel('SMTP connection URL', { exact: true }).fill(replacementSmtp);
+  await page.getByLabel('Telegram bot token', { exact: true }).fill(replacementTelegram);
+  await save('Save notification settings', '/api/settings/notifications');
+  await expect(page.getByLabel('SMTP connection URL', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Telegram bot token', { exact: true })).toHaveValue('');
+  await expect(page.getByText('The saved SMTP connection cannot be decrypted.', { exact: false })).toHaveCount(0);
+  await expect(page.getByText('The saved Telegram token cannot be decrypted.', { exact: false })).toHaveCount(0);
+  assert.equal(await settings.getSecret('notifications.smtp.url', 'smtp'), replacementSmtp);
+  assert.equal(await settings.getSecret('notifications.telegram.botToken', 'telegram'), replacementTelegram);
+  assert.equal((await api('/api/settings/notifications')).telegram.paired, false);
+  assert.equal((await api('/api/settings/simplefin')).credentialsAvailable, false);
+  proof(
+    'Compiled Settings shows retired-envelope warnings with empty secret fields; explicit SMTP/Telegram replacement removes warnings without external sends, while SimpleFIN retains its recovery limitation'
+  );
+
   await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant-model');
   await page.getByLabel('Assistant OpenAI API key', { exact: true }).fill('synthetic-assistant-key');
   await save('Save assistant settings', '/api/settings/assistant');
@@ -610,6 +663,7 @@ try {
       );
     }
   }
+
   await memberPage.screenshot({
     path: `${screenshots}/dolphino-database-settings-member.png`,
     fullPage: true,
@@ -653,6 +707,7 @@ try {
   if (server) {
     await new Promise((resolve) => server.close(resolve));
   }
+
   await pool.end();
   await owner.query(`DROP SCHEMA ${schema} CASCADE`);
   await owner.end();

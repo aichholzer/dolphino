@@ -9,7 +9,7 @@ import {
   Clock,
   ArrowRight
 } from 'lucide-react';
-import { money } from '../../money.js';
+import { money } from '../../money.mjs';
 import { Empty } from '../../components/empty-state';
 
 export function OverviewPage({ data, isAdmin, month, period, currency, navigate, drill }) {
@@ -227,6 +227,7 @@ function Metric({ title, value, subtitle, icon: Icon, color, onClick }) {
     </button>
   );
 }
+
 function CashChart({ rows, currency }) {
   const max = Math.max(
     1,
@@ -270,6 +271,7 @@ function CashChart({ rows, currency }) {
     </div>
   );
 }
+
 function CategoryChart({ rows, currency, onSelect }) {
   const colors = [
     'var(--chart-ocean)',

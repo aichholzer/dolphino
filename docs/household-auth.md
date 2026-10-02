@@ -29,9 +29,9 @@ Links use a URL fragment so the token is not part of the HTTP request URL. The b
 If all administrators lose passwords or SMTP is unavailable, a trusted host/database operator can issue a one-hour reset link for an existing active user:
 
 ```sh
-node --env-file=.env scripts/recover-user.js --email user@example.com
+node --env-file=.env scripts/recover-user.mjs --email user@example.com
 # Container alternative (inherits configured live environment):
-docker compose exec app node scripts/recover-user.js --email user@example.com
+docker compose exec app node scripts/recover-user.mjs --email user@example.com
 ```
 
 For bundled PostgreSQL, use the same `-f compose.yaml -f compose.postgres.yaml` Compose flags. The command requires live mode, the migrated database and a valid HTTPS APP_ORIGIN. It prints the secret link once to the local operator's terminal; do not capture that output in persistent/shared logs. Open it privately, set a new password, then sign in normally. It neither creates a new account nor bypasses account disablement. No HTTP endpoint exposes this operator capability. Password reset revokes the user's sessions. This development verification did not invoke the recovery command against a real account.

@@ -15,6 +15,7 @@ export function UsersSettings({ api, session, onSession }) {
     setData(people);
     setCatalog(options);
   }
+
   useEffect(() => {
     if (!session.demo) {
       load().catch((e) => setError(e.message));
@@ -36,6 +37,7 @@ export function UsersSettings({ api, session, onSession }) {
       setBusy(false);
     }
   }
+
   return (
     <section className="card settings-card integration-settings">
       <h2>Household accounts</h2>
@@ -196,6 +198,7 @@ function GrantFields({ catalog, grants, setGrants, prefix }) {
       [kind]: [...(grants[kind] || []).filter((g) => g[key] !== id), ...(access ? [{ [key]: id, access }] : [])]
     });
   }
+
   return (
     <div className="grants-editor">
       <p className="footnote">
@@ -233,6 +236,7 @@ function GrantFields({ catalog, grants, setGrants, prefix }) {
     </div>
   );
 }
+
 function UserGrants({ user, catalog, busy, save }) {
   const [grants, setGrants] = useState(user.grants || { accounts: [], budgets: [] });
   useEffect(() => setGrants(user.grants || { accounts: [], budgets: [] }), [user]);

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { householdSessionToken } from '../household-auth.js';
+import { householdSessionToken } from '../lib/household-auth.mjs';
 import { body } from '../http/body.mjs';
 
 export function registerNotificationRoutes({ route, notifications, telegram, sensitive }) {

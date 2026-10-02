@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useBedrockModels } from '../hooks/use-bedrock-models.js';
+import { useBedrockModels } from '../hooks/use-bedrock-models.mjs';
 import { Button } from './ui/button';
 
 const kinds = {

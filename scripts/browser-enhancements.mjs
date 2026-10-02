@@ -115,6 +115,7 @@ await page.route('**/api/**', async (route) => {
     if (req.method() === 'PUT') {
       Object.assign(provider, req.postDataJSON(), { apiKey: undefined });
     }
+
     data = provider;
   } else if (path === '/api/settings/provider/test-model') {
     data = { message: 'Synthetic model test passed' };
@@ -182,6 +183,7 @@ await page.route('**/api/**', async (route) => {
   } else if (path === '/api/settings') {
     data = {};
   }
+
   await route.fulfill({ json: data });
 });
 try {

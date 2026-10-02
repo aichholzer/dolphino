@@ -7,7 +7,9 @@ const css = await readFile('frontend/src/style.css', 'utf8');
 const sourcePaths = await readdir('frontend/src', { recursive: true });
 const frontendSource = (
   await Promise.all(
-    sourcePaths.filter((path) => /\.jsx?$/.test(path)).map((path) => readFile(join('frontend/src', path), 'utf8'))
+    sourcePaths
+      .filter((path) => /\.(?:jsx|mjs)$/.test(path))
+      .map((path) => readFile(join('frontend/src', path), 'utf8'))
   )
 ).join('\n');
 const tokens = Object.fromEntries([...css.matchAll(/--([a-z-]+):\s*(#[a-f\d]{6});/g)].map((m) => [m[1], m[2]]));
@@ -15,6 +17,7 @@ const definitions = new Set([...css.matchAll(/--([a-z-]+):/g)].map((m) => m[1]))
 for (const [, token] of (css + frontendSource).matchAll(/var\(--([a-z-]+)\)/g)) {
   assert(definitions.has(token), `Undefined theme token: ${token}`);
 }
+
 function luminance(hex) {
   const rgb = hex.match(/[a-f\d]{2}/gi).map((v) => {
     const x = parseInt(v, 16) / 255;
@@ -22,10 +25,12 @@ function luminance(hex) {
   });
   return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
 }
+
 function contrast(a, b) {
   const values = [luminance(a), luminance(b)].sort((a, b) => b - a);
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
+
 const pairs = [
   ['Primary text', tokens.ink, tokens.canvas],
   ['Secondary text', tokens['ink-soft'], tokens.surface],
@@ -48,15 +53,18 @@ for (const [name, foreground, background] of pairs) {
   assert(ratio >= 4.5, `${name} contrast ${ratio.toFixed(2)}:1 is below AA`);
   console.log(`${name}: ${ratio.toFixed(2)}:1`);
 }
+
 for (const background of ['surface', 'canvas', 'sea-glass', 'coral-soft', 'ocean-soft']) {
   assert(contrast(tokens.focus, tokens[background]) >= 3, `Focus on ${background}`);
 }
+
 assert(contrast(tokens.focus, tokens.surface) >= 3, 'Sidebar focus');
 assert(!/purple|violet|indigo/i.test(css + frontendSource), 'Obsolete purple theme remains');
 assert(frontendSource.includes('color="ocean"'), 'Net cash flow ocean semantic class');
 for (const name of ['ocean', 'sky', 'sea', 'coral', 'sun', 'tide']) {
   assert(frontendSource.includes(`var(--chart-${name})`), `Chart ${name} token not used`);
 }
+
 const asset = await readFile('frontend/public/dolphino.svg', 'utf8');
 assert.equal(asset, await readFile('artifacts/dolphino-logo.svg', 'utf8'));
 // Original dolphin outline and detail are intentionally unchanged.

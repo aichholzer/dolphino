@@ -1,18 +1,24 @@
 # Code organization and maintenance
 
-Dolphino remains a plain-JavaScript Rayo API, a React frontend and a PostgreSQL-backed accounting engine. The module boundaries follow responsibilities rather than a file-size target. This cleanup does not change HTTP URLs, response shapes, database migrations, provider protocols or exact-money accounting.
+Dolphino remains a plain-JavaScript Rayo API, a React frontend and a PostgreSQL-backed accounting engine. The module boundaries follow responsibilities rather than a file-size target. Module moves preserve HTTP URLs, financial calculations and the existing SQL migrations. The deliberate environment, cookie, credential-envelope and internal-namespace changes are documented separately in [upgrade and recovery guidance](upgrading.md); notification credential availability is exposed explicitly.
+
+## Module naming and ownership
+
+All repository plain JavaScript uses the explicit `.mjs` extension, including frontend helpers, shared code, tests, scripts and configuration; files containing JSX stay `.jsx`. Keep relative import extensions explicit and update package scripts, Docker paths and browser/test entrypoints when moving a module. Do not add duplicate wrapper modules solely to preserve retired paths.
 
 ## Backend
 
-- `backend/src/postgres-config.js` validates individual PostgreSQL identity, secret-file and explicit TLS settings for every application/maintenance entry point. Its options are passed directly to node-postgres, with no connection-string parser or fallback.
+`backend/src/` contains only the HTTP and process composition roots, `app.mjs` and `server.mjs`. Reusable non-HTTP services belong in `backend/src/lib/`. Operational/demo entrypoints belong in `backend/src/utils/`: `migrate.mjs`, `seed.mjs` and `demo.mjs`. The 13 substantive SQL files in `backend/migrations/` remain the schema history; they are not a squash/reset target.
+
+- `backend/src/lib/postgres-config.mjs` validates individual PostgreSQL identity, secret-file and explicit TLS settings for every application/maintenance entry point. Its options are passed directly to node-postgres, with no connection-string parser or fallback.
 - `backend/src/http/client-ip.mjs` owns bounded trusted-proxy IP resolution; the HTTP boundary and authentication limiter use the same policy.
-- `backend/src/server.js` is the process composition root: construct services, initialize schema, start workers, and coordinate shutdown.
-- `backend/src/app.js` is the HTTP composition root: construct the shared guards and register domain routes. It must not contain domain handlers or start background work.
+- `backend/src/server.mjs` is the process composition root: construct services, initialize schema, start workers, and coordinate shutdown.
+- `backend/src/app.mjs` is the HTTP composition root: construct the shared guards and register domain routes. It must not contain domain handlers or start background work.
 - `backend/src/routes/` groups HTTP schemas and handlers by domain: auth, users, accounts, transactions, budgets, reports, reviews, rules, settings, integrations, notifications and the read-only assistant.
 - `backend/src/http/` owns the bounded body parser, JSON responses, security headers, access/origin/error boundary, sensitive-action limiter and static frontend serving.
 - `backend/src/routes/finance-queries.mjs` owns HTTP report/filter adaptation; `finance-schemas.mjs` contains the small shared finance request primitives.
-- `backend/src/smtp-transport.js` owns shared invitation/notification email validation and delivery; SMTP DNS pinning, TLS policy and error redaction remain together.
-- The accounting engine, access facade, persistence store and provider/worker services stay independent of HTTP routing. Their transaction, lock, deduplication and credential-fencing behavior is preserved.
+- `backend/src/lib/smtp-transport.mjs` owns shared invitation/notification email validation and delivery; SMTP DNS pinning, TLS policy and error redaction remain together.
+- The accounting engine, access facade, persistence store and provider/worker services stay independent of HTTP routing. Their transaction, deduplication and credential-fencing boundaries remain cohesive. Current lock namespaces require every prior worker to stop before an upgrade; mixed releases cannot safely coordinate.
 
 ### Adding a route safely
 
@@ -32,7 +38,7 @@ When adding or intentionally changing an endpoint, review the policy fixture in 
 - `frontend/src/components/` contains the shared app shell, page heading, empty state, primitive controls and independently scoped settings/assistant components.
 - `frontend/src/features/` contains domain pages and their editors. Exact transaction and budget validation lives beside the corresponding feature, in plain-JavaScript model helpers.
 - `frontend/src/hooks/` owns page-data fetching and transaction filters. `frontend/src/lib/` contains the API client, report query construction and server-issued UI capability interpretation.
-- `shared/money.js` remains the single exact-money utility, re-exported by the frontend. Display and editor code must not convert persisted minor units through floating-point arithmetic.
+- `shared/money.mjs` remains the single exact-money utility, re-exported by the frontend. Display and editor code must not convert persisted minor units through floating-point arithmetic.
 
 Financial state belongs to a workspace keyed by the authenticated principal and permissions. Logout, activation, a different user or changed grants dispose of cached reports, accounts, dialogs and other workspace state. Responses from an old workspace are ignored. A failed initial load displays an error/empty state rather than invented zero totals or another user's cached data. Server-side grants remain authoritative; frontend capability checks are only a presentation layer.
 
@@ -44,7 +50,9 @@ The persistence store and provider job services deliberately retain their cohesi
 
 ## Formatting and checks
 
-ESLint's recommended rules apply to all repository JavaScript, JSX and MJS, with scoped browser/Node globals, required braces and unused-variable detection. Prettier covers supported source, tests, configuration and documentation formats, excluding generated output and the generated npm lockfile.
+ESLint 10's recommended rules apply to repository `.mjs` and `.jsx` with scoped browser/Node globals, required braces and unused-variable detection. Intentionally unused arguments may start with `_`; object-rest omissions remain allowed. `@stylistic/eslint-plugin` 5.10.0 adds only `padding-line-between-statements` at error severity: always require a blank line after a function declaration, an export statement or a multiline block-like statement when followed by another statement. No broad stylistic preset is enabled.
+
+Prettier stays responsible for 120-column wrapping, two-space indentation, single quotes, semicolons, no trailing commas, bracket spacing and parentheses around every arrow-function parameter. It covers supported source, tests, configuration and documentation formats, excluding generated output and the generated npm lockfile. The blank-line lint rule complements that unchanged configuration.
 
 ```sh
 npm run lint

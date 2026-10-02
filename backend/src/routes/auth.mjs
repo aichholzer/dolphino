@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createAccessStore } from '../access.js';
+import { createAccessStore } from '../lib/access.mjs';
 import { body } from '../http/body.mjs';
 
 export function registerAuthRoutes({ route, store, auth, users, sensitive, config }) {

@@ -59,6 +59,7 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
     setWebhook(w);
     setBaseUrl(w.publicBaseUrl || '');
   }
+
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
@@ -79,6 +80,7 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
       setBusy(false);
     }
   }
+
   const secretFields =
     values.provider === 'bedrock'
       ? [
@@ -138,6 +140,7 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
                 payload[key] = redbarkSecrets[key];
               }
             }
+
             await action(async () => {
               await api('/settings/redbark', {
                 method: 'PUT',
@@ -274,6 +277,7 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
             if (busy || activeSave.current || demo) {
               return;
             }
+
             const request = {};
             activeSave.current = request;
             const submittedContext = saveContext;
@@ -286,6 +290,7 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
                 writeSecrets[key] = secrets[key];
               }
             }
+
             setBusy(true);
             setError('');
             setNotice('');
@@ -307,12 +312,14 @@ export function IntegrationSettings({ api, demo, onUpdated }) {
               if (activeSave.current !== request) {
                 return;
               }
+
               if (latestSaveContext.current !== submittedContext) {
                 setNotice(
                   'Settings saved, but the form changed while saving. Save your current changes to load models.'
                 );
                 return;
               }
+
               const nextValues = { ...values, ...saved };
               setSettings(saved);
               setValues(nextValues);

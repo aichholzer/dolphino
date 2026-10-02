@@ -22,15 +22,18 @@ const screenshot = async (name, target = page, preserveFocus = false) => {
   if (!preserveFocus) {
     await target.getByRole('heading').first().click();
   }
+
   await target.screenshot({
     path: `artifacts/${name}.png`,
     fullPage: !name.includes('assistant'),
     animations: 'disabled'
   });
 };
+
 const fits = async (name, target = page) => {
   assert(await target.locator('body').evaluate((el) => el.scrollWidth <= innerWidth), `${name}: viewport overflow`);
 };
+
 async function fullHeightSidebar(name) {
   const dimensions = await page.locator('.sidebar').evaluate((el) => ({
     sidebar: el.getBoundingClientRect().height,
@@ -44,13 +47,16 @@ async function fullHeightSidebar(name) {
   assert(nav.y >= -1 && nav.y <= 1, `${name}: navigation remains sticky while page scrolls`);
   await page.evaluate(() => window.scrollTo(0, 0));
 }
+
 async function navigate(name) {
   if (page.viewportSize().width <= 680) {
     await page.getByRole('button', { name: 'Open menu', exact: true }).click();
   }
+
   await page.getByRole('button', { name, exact: true }).click();
   await page.locator('.loading').waitFor({ state: 'hidden' });
 }
+
 try {
   await page.goto(base);
   await page.getByText('Total income', { exact: true }).waitFor();
@@ -70,6 +76,7 @@ try {
     if (name === 'Settings') {
       await fullHeightSidebar('Long Settings page');
     }
+
     await screenshot(`dolphino-${name.toLowerCase()}`);
     if (name === 'Settings') {
       await page
@@ -78,6 +85,7 @@ try {
         .screenshot({ path: 'artifacts/dolphino-integration-settings.png' });
     }
   }
+
   assert(
     await page.getByRole('button', { name: 'Test connection', exact: true }).isDisabled(),
     'Demo connection stays disabled'
@@ -145,6 +153,7 @@ try {
     if (width === 390) {
       await screenshot('dolphino-mobile');
     }
+
     for (const name of ['Transactions', 'Accounts', 'Budgets', 'Review', 'Rules', 'Settings']) {
       await navigate(name);
       await fits(`${width}px ${name}`);
@@ -152,6 +161,7 @@ try {
         await screenshot('dolphino-settings-mobile');
       }
     }
+
     await navigate('Overview');
     await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
     await page.getByRole('heading', { name: 'Your assistant is not enabled yet' }).waitFor();
@@ -159,9 +169,11 @@ try {
     if (width === 390) {
       await screenshot('dolphino-assistant-unconfigured-mobile');
     }
+
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
   }
+
   const auth = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
     reducedMotion: 'reduce'

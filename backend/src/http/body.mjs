@@ -8,12 +8,15 @@ export async function body(req, raw = false) {
     if (size > MAX_BODY_BYTES) {
       throw Object.assign(Error('Request too large'), { status: 413 });
     }
+
     chunks.push(chunk);
   }
+
   const value = Buffer.concat(chunks);
   if (raw) {
     return value;
   }
+
   try {
     return JSON.parse(value.toString() || '{}');
   } catch {

@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { testProviderConnection, testProviderModel } from '../llm.js';
-import { testAssistantModel } from '../assistant-provider-test.js';
-import { FINANCE_TOOLS } from '../assistant-tools.js';
+import { testProviderConnection, testProviderModel } from '../lib/llm.mjs';
+import { testAssistantModel } from '../lib/assistant-provider-test.mjs';
+import { FINANCE_TOOLS } from '../lib/assistant-tools.mjs';
 import { body } from '../http/body.mjs';
-import { discoverSavedBedrockModels } from '../bedrock-models.js';
+import { discoverSavedBedrockModels } from '../lib/bedrock-models.mjs';
 
 export function registerSettingsRoutes({
   route,
@@ -28,6 +28,7 @@ export function registerSettingsRoutes({
           cancel.abort();
         }
       };
+
       req.once('aborted', disconnected);
       res.once('close', disconnected);
       try {
@@ -42,6 +43,7 @@ export function registerSettingsRoutes({
       }
     });
   }
+
   route('get', '/api/settings/assistant', async () => ({
     ...(await assistantSettings.getPublic()),
     tools: FINANCE_TOOLS,

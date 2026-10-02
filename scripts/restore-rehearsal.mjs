@@ -1,27 +1,27 @@
-import { readTestPostgresConfig, testPostgresEnv } from '../backend/test/helpers/postgres.js';
-import { createSimplefinIntegration } from '../backend/src/simplefin.js';
+import { readTestPostgresConfig, testPostgresEnv } from '../backend/test/helpers/postgres.mjs';
+import { createSimplefinIntegration } from '../backend/src/lib/simplefin.mjs';
 // Destructive only to new, randomly named databases created by this script.
 // Never accepts an existing source or target database name.
 import pg from 'pg';
-import { ensureDeploymentMode } from '../backend/src/deployment-mode.js';
+import { ensureDeploymentMode } from '../backend/src/lib/deployment-mode.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createHouseholdAuth, hashHouseholdPassword } from '../backend/src/household-auth.js';
-import { createUserManagement } from '../backend/src/users.js';
-import { ensureAccessSchema } from '../backend/src/access.js';
-import { createAssistantSettings } from '../backend/src/assistant-settings.js';
-import { createAssistantUsage } from '../backend/src/assistant-usage.js';
-import { createSettingsStore } from '../backend/src/settings.js';
-import { createNotificationIntegration } from '../backend/src/notifications.js';
-import { createRegistration } from '../backend/src/registration.js';
-import { createRedbarkSettings } from '../backend/src/redbark-settings.js';
-import { Store } from '../backend/src/store.js';
-import { ensureRedbarkSchema } from '../backend/src/worker.js';
-import { createClassificationIntegration } from '../backend/src/classification.js';
+import { createHouseholdAuth, hashHouseholdPassword } from '../backend/src/lib/household-auth.mjs';
+import { createUserManagement } from '../backend/src/lib/users.mjs';
+import { ensureAccessSchema } from '../backend/src/lib/access.mjs';
+import { createAssistantSettings } from '../backend/src/lib/assistant-settings.mjs';
+import { createAssistantUsage } from '../backend/src/lib/assistant-usage.mjs';
+import { createSettingsStore } from '../backend/src/lib/settings.mjs';
+import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
+import { createRegistration } from '../backend/src/lib/registration.mjs';
+import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
+import { Store } from '../backend/src/lib/store.mjs';
+import { ensureRedbarkSchema } from '../backend/src/lib/worker.mjs';
+import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
 
 // Prefer standard PG* inputs. The legacy rehearsal-only override remains useful
 // when a test runner has separate application and administrative databases.
@@ -33,9 +33,11 @@ const database = readTestPostgresConfig(postgresEnv);
 if (!database) {
   throw Error('Set PGHOST, PGDATABASE, PGUSER and PGPASSWORD for a disposable local PostgreSQL server');
 }
+
 if (!['127.0.0.1', 'localhost', '::1'].includes(database.host)) {
   throw Error('Restore rehearsal is restricted to a local test PostgreSQL server');
 }
+
 const suffix = randomUUID().replaceAll('-', '');
 const source = `dolphino_backup_test_${suffix}`;
 const target = `dolphino_restore_test_${suffix}`;
@@ -57,6 +59,7 @@ function connect(name) {
   pools.push(pool);
   return pool;
 }
+
 async function snapshot(pool) {
   const names = (await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
   const tables = {};
@@ -67,13 +70,16 @@ async function snapshot(pool) {
     );
     tables[tablename] = rows.map(({ row }) => row);
   }
+
   return tables;
 }
+
 try {
   for (const name of [source, target]) {
     await admin.query(`CREATE DATABASE ${name}`);
     created.push(name);
   }
+
   const srcPool = connect(source);
   await ensureDeploymentMode(srcPool, 'demo');
   const store = new Store(srcPool, { mode: 'demo' });
@@ -260,6 +266,7 @@ try {
   for (const [setting, provider, value] of extraCredentials) {
     await settings.setSecret(setting, provider, value);
   }
+
   await srcPool.query(
     "INSERT INTO webhook_registration(singleton,callback_url,destination_id,state,ping_event_id) VALUES(true,'https://dolphino.example.invalid/api/webhooks/redbark','ed_fictionalbackup','registered','evt_fictionalbackup')"
   );
@@ -418,6 +425,7 @@ try {
   for (const [setting, provider, value] of extraCredentials) {
     assert.equal(await restoredSettings.getSecret(setting, provider), value);
   }
+
   assert.equal(
     (await dstPool.query("SELECT count(*)::int count FROM notification_outbox WHERE status='pending'")).rows[0].count,
     1
@@ -492,9 +500,11 @@ try {
   for (const pool of pools) {
     await pool.end();
   }
+
   for (const name of created.reverse()) {
     await admin.query(`DROP DATABASE ${name}`);
   }
+
   await admin.end();
   await rm(backupDir, { recursive: true, force: true });
 }

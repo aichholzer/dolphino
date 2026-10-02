@@ -34,6 +34,7 @@ try {
   if (await clear.count()) {
     await clear.click();
   }
+
   await page.getByLabel('Search transactions').fill('Corner Coffee');
   await page.waitForTimeout(350);
   await page.getByText('Corner Coffee', { exact: true }).first().waitFor();
@@ -71,6 +72,7 @@ try {
       headers: { Origin: base }
     });
   }
+
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('heading', { name: 'Redbark connection', exact: true }).waitFor();
   assert(await page.getByRole('button', { name: 'Test connection', exact: true }).isDisabled());

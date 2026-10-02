@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { Sparkles, Plus, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
-import { api } from '../../lib/api.js';
-import { CATEGORIES } from './categories.js';
-import { money, minorToDecimal } from '../../money.js';
-import { transactionCorrection } from './transaction-model.js';
+import { api } from '../../lib/api.mjs';
+import { CATEGORIES } from './categories.mjs';
+import { money, minorToDecimal } from '../../money.mjs';
+import { transactionCorrection } from './transaction-model.mjs';
 
 export function EditTransaction({ canSuggest, transaction, open, close, busy, save, serverError }) {
   const [llmEnabled, setLlmEnabled] = useState(false),
@@ -17,6 +17,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
       setSuggestion(null);
       return;
     }
+
     if (transaction) {
       setSuggestion(null);
       api('/settings')

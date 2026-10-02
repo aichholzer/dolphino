@@ -119,6 +119,7 @@ await page.route('**/api/**', async (route) => {
   } else if (path === '/api/users/member') {
     data = { message: 'Synthetic role updated' };
   }
+
   await route.fulfill({ json: data });
 });
 try {

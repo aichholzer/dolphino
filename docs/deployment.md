@@ -1,5 +1,7 @@
 # Deploy dolphino in a homelab
 
+For existing installations, first read [upgrade boundaries and credential recovery](upgrading.md). Stop every old app/worker process before starting the new release: lock and SMTP Message-ID namespaces have changed. Keep the same database/volume and current APP_SECRET. Saved version 1/2 credentials remain stored but unreadable; replace or clear them explicitly, with the documented SimpleFIN historical-mapping limitation.
+
 ## Database selection and isolation
 
 Use a dedicated database and database role. Default deployment uses the standard individual `PGHOST`, `PGPORT` (default `5432`), `PGDATABASE`, `PGUSER` and `PGPASSWORD` settings pointing to your PostgreSQL server. All identity fields and a nonempty password are required; `PGPASSWORD_FILE` can supply the password. Restrict network access to the application host and explicitly choose transport security for off-host connections as described below. `DATABASE_URL` and `DATABASE_URL_FILE` are rejected with migration guidance, even when individual settings are also present. An unavailable database produces an error; the app never silently substitutes another database. Startup applies schema migrations; `npm run migrate` also runs them explicitly. Back up before upgrading.
@@ -20,7 +22,7 @@ npm ci
 
 For named household authentication, follow [restricted first-administrator setup and shared-password upgrade](household-auth.md). Configure `DOLPHINO_BOOTSTRAP_TOKEN_FILE=/run/secrets/bootstrap_token` for first setup, then remove it after the administrator is established. Keep the app private during setup. Existing ledger data and APP_SECRET are preserved on upgrade; old shared-password sessions are invalidated. Do not paste secrets into chat or put them in Git. Protect `.env`, backups and secret files.
 
-Before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse an account password or bootstrap token. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
+For a new installation, before saving credentials in Settings, generate an independent encryption master key with `openssl rand -base64 32` and set `APP_SECRET` or `APP_SECRET_FILE`. Keep it outside PostgreSQL and back it up separately. Do not reuse an account password or bootstrap token. Missing or incorrect keys disable access to credentials while imported data remains usable. See [settings encryption and explicit offline key rotation](settings-security.md); changing the environment variable alone does not rotate ciphertext.
 
 Each deployment secret `PGPASSWORD`, `DOLPHINO_BOOTSTRAP_TOKEN` and `APP_SECRET` supports a corresponding `_FILE` variable. Integration secrets are configured only through administrator Settings and stored encrypted in PostgreSQL; former integration environment variables and `_FILE` variants are ignored. For file-based Docker configuration, leave the direct value empty, store the value in `./secrets/<name>`, and set the `_FILE` value to `/run/secrets/<name>`. Compose mounts this directory read-only. Bundled PostgreSQL password files are the exception: use the dedicated `./postgres-secrets` mount described in the bundled section, keeping APP_SECRET and bootstrap secrets out of the database container. Ensure the container's non-root Node user (UID 1000) can read the files without making them world-readable. Docker/Swarm secrets mounted at `/run/secrets` work with the same convention.
 
@@ -90,7 +92,7 @@ References: [PostgreSQL TLS modes](https://www.postgresql.org/docs/current/libpq
 
 ## Explicit alternative: bundled PostgreSQL
 
-Only use this override if you choose a local database instead of your LAN instance. **Existing installations must first follow [the rename upgrade instructions](rename-upgrade.md)** and retain the actual existing volume/database/user. Do not create a replacement volume for an upgrade.
+Only use this override if you choose a local database instead of your LAN instance. **Existing installations must first follow [the upgrade instructions](upgrading.md)** and retain the actual existing volume/database/user. Do not create a replacement volume for an upgrade.
 
 For a **new installation only**, generate a strong password with `openssl rand -hex 32`, set `PGPASSWORD` (or `PGPASSWORD_FILE`, leaving the direct value empty), `POSTGRES_VOLUME=dolphino_postgres`, `PGDATABASE=dolphino` and `PGUSER=dolphino` in `.env`, and leave `PGSSLMODE`/`PGSSLROOTCERT` unset. Passwords no longer need URI encoding. Then explicitly create the volume:
 
@@ -121,9 +123,9 @@ Optional LLM assistance remains disabled until a provider is configured and enab
 
 ## Upgrade environment-only integrations
 
-Follow the [database integration upgrade checklist](database-integration-upgrade.md). Redbark and classification settings are now read only from PostgreSQL. Legacy integration environment variables are ignored, even if database settings are absent. No credentials, versions or limits are silently imported. Re-enter them in the administrator UI and test the saved configuration before enabling imports or AI automation. Existing encrypted settings and registration secrets are retained; missing configuration pauses only the affected integration. Imports, manual overrides, jobs and notification configuration/outbox records remain in the existing database.
+Follow the [database integration upgrade checklist](database-integration-upgrade.md). Redbark and classification settings are now read only from PostgreSQL. Legacy integration environment variables are ignored, even if database settings are absent. No credentials, versions or limits are silently imported. Re-enter them in the administrator UI and test the saved configuration before enabling imports or AI automation. Existing encrypted settings and registration secrets remain stored, but this release reads only version 3 envelopes. Retired versions 1/2 require explicit replacement or clearing, not a blank save or a new APP_SECRET. Follow each provider's [recovery boundary](upgrading.md#recover-saved-integrations-explicitly), particularly SimpleFIN's unsupported historical relinking. Missing/unreadable configuration pauses or fails closed only the affected credential-dependent operation. Imports, manual overrides, jobs and notification configuration/outbox records remain in the existing database.
 
-Deployment settings remain environment-based: PostgreSQL `PG*` connection/TLS settings, deployment mode, `HOST`/`PORT`, `APP_BIND`, `TRUST_PROXY`, `APP_ORIGIN`, bootstrap proof and `APP_SECRET`. Currency/timezone environment values remain defaults. Do not change these during this migration. Retain the exact APP_SECRET with the matching restored database; generating a new key does not unlock existing ciphertext.
+Deployment settings remain environment-based: PostgreSQL `PG*` connection/TLS settings, deployment mode, `HOST`/`PORT`, `APP_BIND`, `TRUST_PROXY`, `APP_ORIGIN`, bootstrap proof and `APP_SECRET`. Currency/timezone environment values remain defaults. Preserve the intended values while explicitly converting old branded aliases to the current `DOLPHINO_*` names; unsupported aliases are no longer read. Retain the current APP_SECRET with the matching database. Generating a new key does not unlock existing ciphertext, and a matching old key does not make retired envelope formats readable in this release.
 
 ## Export, backup and restore
 
@@ -135,7 +137,7 @@ For an external database, install PostgreSQL client tools at least as new as you
 PGHOST=your-db PGPORT=5432 PGUSER=dolphino PGDATABASE=dolphino scripts/backup.sh ./backups
 ```
 
-The script produces a custom-format consistent database snapshot with restrictive file permissions. Encrypt backups at rest, copy them off the application host, and record the application commit/version and non-secret configuration separately. Keep a separate encrypted backup of required secrets, especially `APP_SECRET`, matched to the database backup version. A database dump alone cannot recover Settings credentials. Adopt a retention policy suitable for your finances. Stop ingestion during planned upgrades and take a backup first.
+The script produces a custom-format consistent database snapshot with restrictive file permissions. Encrypt backups at rest, copy them off the application host, and record the application commit/version and non-secret configuration separately. Keep a separate encrypted backup of required secrets, especially `APP_SECRET`, matched to the database backup version. A database dump alone cannot recover Settings credentials. Keep the matching application version too: pre-upgrade version 1/2 envelopes need a compatible earlier application to decrypt; the current application deliberately rejects them even with the matching key. Adopt a retention policy suitable for your finances. Stop ingestion during planned upgrades and take a backup first.
 
 For bundled PostgreSQL:
 

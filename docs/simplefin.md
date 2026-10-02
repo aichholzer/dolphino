@@ -52,15 +52,17 @@ The account coverage shown elsewhere in Dolphino is the latest fetched window, n
 
 If claiming fails, times out, loses the database, or is interrupted, the token may already have been consumed remotely. Its fingerprint is durably recorded before sending. Do not retry it. Revoke that token or app connection at the provider and create a new token. An interrupted claim can be cleared with **Disconnect locally**. A 403 can mean an invalid, already-used or compromised token.
 
-Credentials, source identities, mappings, claim replay protection, immutable source evidence and jobs are part of the PostgreSQL backup. Retain the matching APP_SECRET separately. A missing or wrong key fails credential access closed. Existing vault rotation re-encrypts this credential with its setting/provider-bound authenticated encryption, preserving the source identity.
+Credentials, source identities, mappings, claim replay protection, immutable source evidence and jobs are part of the PostgreSQL backup. Retain the matching APP_SECRET separately. A missing or wrong key fails credential access closed. Current vault rotation preserves the source identity only for a readable version 3 credential; any retired version 1/2 row makes the entire rotation roll back. Retaining its original key does not make a retired envelope readable in this release.
+
+For a configured but unreadable Access URL, use **Disconnect locally** before claiming a new one-use setup token. Disconnect retains financial history and reserved mappings, but the next claim creates a new source identity. Historical account relinking is unsupported, so this does **not** automatically resume imports into previously mapped accounts, even for the same provider. Do not wipe financial data to bypass the ownership boundary. Review this limitation before upgrading or disconnecting; see [upgrade recovery](upgrading.md#recover-saved-integrations-explicitly).
 
 ## Verification
 
 Synthetic-only verification lives in:
 
-- `backend/test/simplefin-client.test.js`: public-network restrictions, pinned DNS/TLS host, redirect rejection, time/body limits, one-time claim behavior, protocol parsing and exact money
-- `backend/test/simplefin-integration.test.js`: real PostgreSQL, immutable original-source provenance with recursive credential redaction, ledger corrections, durable retry/restart, source conflicts, stale-result fencing and boundary/account identities
-- `backend/test/simplefin-independent-adversarial.test.js`: independent real PostgreSQL sessions/HTTP authorization matrix, concurrent claims, replay/readback and hostile provider errors
+- `backend/test/simplefin-client.test.mjs`: public-network restrictions, pinned DNS/TLS host, redirect rejection, time/body limits, one-time claim behavior, protocol parsing and exact money
+- `backend/test/simplefin-integration.test.mjs`: real PostgreSQL, immutable original-source provenance with recursive credential redaction, ledger corrections, durable retry/restart, source conflicts, stale-result fencing and boundary/account identities
+- `backend/test/simplefin-independent-adversarial.test.mjs`: independent real PostgreSQL sessions/HTTP authorization matrix, concurrent claims, replay/readback and hostile provider errors
 - `scripts/browser-simplefin.mjs`: actual compiled frontend, backend HTTP, household session and PostgreSQL with only outbound provider transport mocked
 - `scripts/restore-rehearsal.mjs`: full backup/restore comparisons, including SimpleFIN credential/source/job/evidence state
 

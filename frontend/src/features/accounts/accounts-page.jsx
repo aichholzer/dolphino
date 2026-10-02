@@ -1,7 +1,7 @@
 import { Landmark, ArrowRight, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
-import { money } from '../../money.js';
+import { money } from '../../money.mjs';
 
 export function AccountsPage({ accounts, canEditAccount, onEdit, onViewTransactions }) {
   return (

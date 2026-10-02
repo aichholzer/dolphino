@@ -22,7 +22,7 @@ Final combined replay: **28 tests passed, zero failures, zero skips**, including
 
 All integration probes ran against a newly initialized, isolated PostgreSQL 17.6 instance and a real listening HTTP server. Tests seed synthetic administrator/member sessions in PostgreSQL, then authenticate requests through the application's real session middleware. They do not replace HTTP authorization with mocks. No real credentials, accounts, integrations, public callback requests or LAN traffic are involved.
 
-Added regression suite: `backend/test/database-settings-adversarial-http.test.js`.
+Added regression suite: `backend/test/database-settings-adversarial-http.test.mjs`.
 
 - Seventy direct anonymous/member/forged-or-missing-Origin probes across settings, provider tests, assistant tests, webhook registration and Redbark connection-test routes; denied requests made zero outbound calls
 - Database-only unconfigured defaults despite legacy integration environment values; nonexistent integration `*_FILE` paths ignored
@@ -46,7 +46,7 @@ Added regression suite: `backend/test/database-settings-adversarial-http.test.js
 Run the focused suite with `TEST_DATABASE_URL` pointing exclusively at a disposable local PostgreSQL instance:
 
 ```sh
-node --test --test-concurrency=1 backend/test/database-settings-adversarial-http.test.js
+node --test --test-concurrency=1 backend/test/database-settings-adversarial-http.test.mjs
 ```
 
 The destructive database-outage test is opt-in. It additionally requires all of:
@@ -62,7 +62,7 @@ The outage test stops that instance and restarts it on loopback with Unix socket
 Browser regression command, with the executable provided by the test environment:
 
 ```sh
-CHROMIUM_PATH=/path/to/chromium-headless-shell node --test backend/test/security-adversarial.test.js
+CHROMIUM_PATH=/path/to/chromium-headless-shell node --test backend/test/security-adversarial.test.mjs
 ```
 
 ## Boundaries and residual uncertainty

@@ -72,6 +72,7 @@ export function AssistantSettings({ api, demo }) {
           if (busy || activeSave.current || demo) {
             return;
           }
+
           const request = {};
           activeSave.current = request;
           const submittedContext = saveContext;
@@ -96,9 +97,11 @@ export function AssistantSettings({ api, demo }) {
             if (incompleteBedrock) {
               payload.enabled = false;
             }
+
             if (values.provider !== 'bedrock') {
               delete payload.region;
             }
+
             for (const [k] of fields) {
               if (clears[k]) {
                 payload[k] = null;
@@ -106,6 +109,7 @@ export function AssistantSettings({ api, demo }) {
                 payload[k] = secrets[k];
               }
             }
+
             const d = await api('/settings/assistant', {
               method: 'PUT',
               body: JSON.stringify(payload)
@@ -113,10 +117,12 @@ export function AssistantSettings({ api, demo }) {
             if (activeSave.current !== request) {
               return;
             }
+
             if (latestSaveContext.current !== submittedContext) {
               setNotice('Settings saved, but the form changed while saving. Save your current changes to load models.');
               return;
             }
+
             d.tools = data?.tools;
             const nextValues = { ...values, ...d };
             setData(d);

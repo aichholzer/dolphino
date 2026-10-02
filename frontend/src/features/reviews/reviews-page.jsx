@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, Check } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
-import { money } from '../../money.js';
+import { money } from '../../money.mjs';
 
 export function ReviewsPage({ reviews, busy, onEdit, mutate }) {
   return (

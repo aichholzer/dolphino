@@ -13,7 +13,7 @@ Reviewed the backend, frontend integration, migrations, deployment configuration
 
 ## Confirmed architecture
 
-`server.js` starts the ingestion timer. It checks every 15 seconds and inserts unique four-hour poll buckets. PostgreSQL advisory locking serializes workers; durable queued jobs and receipts support restart and replay. The selected thin webhook contract queues the same REST discovery/import routine as polling, so both paths use the same source aliases and canonical ledger. Full transaction webhooks are deliberately unsupported.
+`server.mjs` starts the ingestion timer. It checks every 15 seconds and inserts unique four-hour poll buckets. PostgreSQL advisory locking serializes workers; durable queued jobs and receipts support restart and replay. The selected thin webhook contract queues the same REST discovery/import routine as polling, so both paths use the same source aliases and canonical ledger. Full transaction webhooks are deliberately unsupported.
 
 Financial reports use integer minor units and explicit currency, with one backend calculation engine for reports, budget spending and export summaries. Raw evidence and manual overrides are separate. Pending records remain outside posted actuals and ambiguous replacements require review. Balance snapshots remain explicitly unreconciled. Live authentication gates financial routes independently of Redbark connection status. Secrets are server configuration only; errors do not return raw provider responses or credentials. No real financial calls were used in this review.
 

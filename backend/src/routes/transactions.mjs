@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createAccessStore } from '../access.js';
+import { createAccessStore } from '../lib/access.mjs';
 import { body } from '../http/body.mjs';
 import { category, kind, minor } from './finance-schemas.mjs';
 

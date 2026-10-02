@@ -26,6 +26,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
             if (creating && password !== confirm) {
               throw Error('Passwords do not match.');
             }
+
             const path = mode === 'activate' ? '/auth/activate' : mode === 'bootstrap' ? '/auth/bootstrap' : '/login';
             const body =
               mode === 'activate'
@@ -44,6 +45,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
             if (mode === 'activate') {
               history.replaceState(null, '', location.pathname);
             }
+
             const next = await api('/session');
             if (!next.authenticated && !next.demo) {
               setNotice('Account created. Sign in with your email and password.');
@@ -189,6 +191,7 @@ export function PasswordForm({ api, onChanged }) {
           if (password !== confirm) {
             throw Error('Passwords do not match.');
           }
+
           await api('/auth/change-password', {
             method: 'POST',
             body: JSON.stringify({

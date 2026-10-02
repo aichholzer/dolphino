@@ -17,6 +17,7 @@ export function registerIntegrationRoutes({ route, integration, registration, si
       if (path === 'test') {
         z.object({}).strict().parse(input);
       }
+
       return simplefin[method](input);
     });
   }
@@ -33,6 +34,7 @@ export function registerIntegrationRoutes({ route, integration, registration, si
     if (!(await integration.status()).verified) {
       throw Object.assign(Error('Test the Redbark connection successfully before registering'), { status: 409 });
     }
+
     return registration.register(
       z
         .object({

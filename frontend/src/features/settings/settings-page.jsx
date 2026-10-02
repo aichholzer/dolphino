@@ -6,7 +6,7 @@ import { AssistantSettings } from '../../components/assistant-settings';
 import { UsersSettings } from '../../components/users-settings';
 import { NotificationSettings } from '../../components/notification-settings';
 import { ImportHealth } from '../../components/import-health';
-import { api } from '../../lib/api.js';
+import { api } from '../../lib/api.mjs';
 
 export function SettingsPage({ data, session, month, currency, busy, mutate, onUpdated, onSession }) {
   return (
