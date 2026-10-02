@@ -39,7 +39,7 @@ export function PageHeading({ page, session, month, currency, period, setPeriod,
           </label>
           {page === 'Overview' && (
             <select aria-label="Overview period" value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
-              {[1, 2, 3, 4, 6].map((n) => (
+              {[1, 2, 3, 4, 5, 6].map((n) => (
                 <option key={n} value={n}>
                   {n} {n === 1 ? 'month' : 'months'}
                 </option>

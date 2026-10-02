@@ -201,13 +201,14 @@ test('finance query adaptation preserves exact scopes and minor-unit report valu
   for (const query of [
     { month: '2026-13' },
     { currency: 'aud' },
-    { months: '5' },
+    { months: '7' },
     { from: '2026-02-30' },
     { from: '2026-10-02', to: '2026-10-01' }
   ]) {
     assert.throws(() => filters({ query }), { status: 400 });
   }
 
+  assert.equal(filters({ query: { months: '5' } }).months, 5);
   const raw = {
     expensesMinor: '9007199254740993',
     daily: [{ date: '2026-09-01', spentMinor: '123' }],

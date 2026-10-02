@@ -8,8 +8,7 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   LogOut,
-  Menu,
-  ChevronRight
+  Menu
 } from 'lucide-react';
 import { GlobalSearch } from './global-search';
 import { BrandMark } from './brand';
@@ -66,7 +65,7 @@ export function AppShell({
             </div>
           </div>
           <div className="nav-label">WORKSPACE</div>
-          <nav>
+          <nav id="workspace-navigation">
             {Object.entries(icons)
               .filter(([name]) => canNavigate(name))
               .map(([name, Icon]) => (
@@ -116,17 +115,15 @@ export function AppShell({
       {menu && <div className="mobile-overlay" onClick={() => setMenu(false)} />}
       <div className="main-shell">
         <header className="topbar">
-          <button className="mobile-menu" aria-label="Open menu" onClick={() => setMenu(!menu)}>
+          <button
+            className="mobile-menu"
+            aria-label="Open menu"
+            aria-expanded={menu}
+            aria-controls="workspace-navigation"
+            onClick={() => setMenu(!menu)}
+          >
             <Menu size={21} />
           </button>
-          <div className="breadcrumb">
-            <span className="header-brand">
-              <img src="/dolphino.svg" alt="" aria-hidden="true" />
-              dolphino
-            </span>{' '}
-            <ChevronRight size={14} />
-            <span>{page}</span>
-          </div>
           <GlobalSearch canSearch={canSearch} activeSearch={activeSearch} routeKey={routeKey} onSearch={onSearch} />
           <div className="topbar-right">
             {hasFinancialAccess && <AssistantPanel api={api} session={session} onViewTransaction={onViewTransaction} />}

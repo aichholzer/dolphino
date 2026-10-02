@@ -234,8 +234,8 @@ export function calculatePeriodReport(
   { month, currency = 'AUD', months = 1, today = new Date().toISOString().slice(0, 10) }
 ) {
   months = Number(months);
-  if (![1, 2, 3, 4, 6].includes(months)) {
-    throw domainError('months must be 1, 2, 3, 4 or 6');
+  if (![1, 2, 3, 4, 5, 6].includes(months)) {
+    throw domainError('months must be 1, 2, 3, 4, 5 or 6');
   }
 
   const last = calculateReport(transactions, budgets, { month, currency });

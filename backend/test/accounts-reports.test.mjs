@@ -50,8 +50,8 @@ test('multi-month exact totals, monthly comparison, leap date and drilldowns', (
   assert.deepEqual(report.transactionIds.expenses, ['a', 'b']);
   assert.equal(report.monthly[1].expensesMinor, '-100');
   assert.deepEqual(report.categories[0].transactionIds, ['a', 'b']);
-  assert.throws(() => calculatePeriodReport([], [], { month: '2024-02', months: 5 }));
-  for (const months of [1, 2, 3, 4, 6]) {
+  assert.throws(() => calculatePeriodReport([], [], { month: '2024-02', months: 7 }));
+  for (const months of [1, 2, 3, 4, 5, 6]) {
     assert.equal(calculatePeriodReport([], [], { month: '2024-02', months }).monthly.length, months);
   }
 });
@@ -250,3 +250,31 @@ test(
     }
   }
 );
+
+test('five-month reporting crosses a year boundary with exact totals and excludes adjacent months', () => {
+  const base = { currency: 'AUD', status: 'posted', kind: 'expense', category: 'Travel' };
+  const report = calculatePeriodReport(
+    [
+      { ...base, id: 'before', date: '2023-09-30', amountMinor: '-999' },
+      { ...base, id: 'first', date: '2023-10-01', amountMinor: '-9007199254740993' },
+      { ...base, id: 'last', date: '2024-02-29', amountMinor: '-101' },
+      { ...base, id: 'refund', date: '2024-02-29', kind: 'refund', amountMinor: '100' },
+      { ...base, id: 'transfer', date: '2024-02-29', kind: 'transfer', amountMinor: '-500' },
+      { ...base, id: 'after', date: '2024-03-01', amountMinor: '-999' }
+    ],
+    [],
+    { month: '2024-02', months: 5, today: '2024-02-15' }
+  );
+  assert.deepEqual(
+    report.monthly.map((row) => row.month),
+    ['2023-10', '2023-11', '2023-12', '2024-01', '2024-02']
+  );
+  assert.equal(report.startDate, '2023-10-01');
+  assert.equal(report.endDate, '2024-02-29');
+  assert.equal(report.expensesMinor, '9007199254740994');
+  assert.deepEqual(report.transactionIds.expenses, ['first', 'last', 'refund']);
+  assert.deepEqual(
+    report.monthly.map((row) => row.partial),
+    [false, false, false, false, true]
+  );
+});

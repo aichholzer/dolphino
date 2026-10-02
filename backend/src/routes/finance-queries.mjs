@@ -26,7 +26,7 @@ export function createFinanceQueries({ config }) {
       throw Object.assign(Error('Invalid currency'), { status: 400 });
     }
 
-    if (q.months && ![1, 2, 3, 4, 6].includes(Number(q.months))) {
+    if (q.months && ![1, 2, 3, 4, 5, 6].includes(Number(q.months))) {
       throw Object.assign(Error('Invalid overview period'), { status: 400 });
     }
 
