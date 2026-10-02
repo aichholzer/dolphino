@@ -87,5 +87,14 @@
   ["get", "/api/settings/categories", "admin"],
   ["post", "/api/settings/categories", "admin"],
   ["patch", "/api/settings/categories", "admin"],
-  ["delete", "/api/settings/categories", "admin"]
+  ["delete", "/api/settings/categories", "admin"],
+  ["post", "/api/manual/accounts", "admin"],
+  ["post", "/api/manual/entries", "financial"],
+  ["get", "/api/manual/entries/:id", "financial"],
+  ["patch", "/api/manual/entries/:id", "financial"],
+  ["post", "/api/manual/entries/:id/void", "financial"],
+  ["post", "/api/accounts/:id/lifecycle", "financial"],
+  ["get", "/api/settings/deleted-accounts", "admin"],
+  ["post", "/api/settings/deleted-accounts/preview", "admin"],
+  ["post", "/api/settings/deleted-accounts/purge", "admin"]
 ]

@@ -21,7 +21,11 @@ export function AccountDialog({ account, close, busy, error, save, onDirtyChange
       open={!!account}
       onOpenChange={(v) => !v && close()}
       title="Your account details"
-      description="Local details remain unchanged when your bank updates."
+      description={
+        account?.sourceType === 'manual'
+          ? 'Edit this manual account’s label and description.'
+          : 'Local details remain unchanged when your bank updates.'
+      }
     >
       <form
         onSubmit={(e) => {

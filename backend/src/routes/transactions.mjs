@@ -39,7 +39,11 @@ export function registerTransactionRoutes({ route, store, classification, ledger
   );
 
   route('post', '/api/transactions/:id/suggest', async (req) => {
-    await (await createAccessStore(store, req.user)).assertTransaction(req.params.id, 'edit');
+    const transaction = await (await createAccessStore(store, req.user)).assertTransaction(req.params.id, 'edit');
+    if (transaction.manualEntryId) {
+      throw Object.assign(Error('Manual entries use explicit categories'), { status: 400 });
+    }
+
     return classification.suggest(req.params.id);
   });
 }

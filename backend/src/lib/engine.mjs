@@ -82,7 +82,7 @@ export function calculateReport(transactions, budgets = [], { month, currency = 
     throw domainError('month must be YYYY-MM');
   }
 
-  const all = transactions.filter((t) => t.currency === currency);
+  const all = transactions.filter((t) => t.currency === currency && !t.voided);
   const included = all.filter((t) => t.date.slice(0, 7) === month);
   let income = 0n,
     expenses = 0n,
@@ -96,6 +96,10 @@ export function calculateReport(transactions, budgets = [], { month, currency = 
     if (t.status === 'pending') {
       pending += amount;
       ids.pending.push(t.id);
+      continue;
+    }
+
+    if (['opening', 'adjustment'].includes(t.kind)) {
       continue;
     }
 
@@ -132,7 +136,12 @@ export function calculateReport(transactions, budgets = [], { month, currency = 
 
   const spendingFor = (category, m) =>
     all
-      .filter((t) => t.status === 'posted' && t.kind !== 'transfer' && t.kind !== 'income' && t.date.slice(0, 7) === m)
+      .filter(
+        (t) =>
+          t.status === 'posted' &&
+          !['transfer', 'income', 'opening', 'adjustment'].includes(t.kind) &&
+          t.date.slice(0, 7) === m
+      )
       .reduce(
         (sum, t) =>
           sum +
@@ -303,7 +312,7 @@ function aggregateMonthly(report) {
 
 /** Summarize exactly an export selection, including arbitrary ranges/all history. */
 export function calculateSelectionReport(transactions, { currency = 'AUD', month, from, to } = {}) {
-  const selected = transactions.filter((t) => t.currency === currency);
+  const selected = transactions.filter((t) => t.currency === currency && !t.voided);
   const keys = [...new Set(selected.map((t) => t.date.slice(0, 7)))].sort();
   if (!keys.length) {
     keys.push(month || (from || to || new Date().toISOString()).slice(0, 7));

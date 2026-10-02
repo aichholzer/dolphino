@@ -117,9 +117,17 @@ export function TransactionsPage({
           <option value="posted">Posted</option>
           <option value="pending">Pending</option>
         </select>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={!!filters.includeVoided}
+            onChange={(e) => onFiltersChange({ includeVoided: e.target.checked })}
+          />
+          Show voided entries
+        </label>
         <select aria-label="Filter type" value={kind} onChange={(e) => onFiltersChange({ kind: e.target.value })}>
           <option value="">All types</option>
-          {['expense', 'income', 'transfer', 'refund'].map((k) => (
+          {['expense', 'income', 'transfer', 'refund', 'opening', 'adjustment'].map((k) => (
             <option key={k}>{k}</option>
           ))}
         </select>
@@ -153,7 +161,11 @@ export function TransactionsPage({
                     <div>
                       <strong>{t.description}</strong>
                       <small>
-                        {t.status === 'pending' ? 'Pending · excluded from actuals' : t.kind || 'expense'}
+                        {t.voided
+                          ? 'Voided · excluded from balances and reports'
+                          : t.status === 'pending'
+                            ? 'Pending · excluded from actuals'
+                            : t.kind || 'expense'}
                         {t.reviewReason ? ' · Needs review' : ''}
                       </small>
                       <div className="tag-list">
@@ -182,7 +194,7 @@ export function TransactionsPage({
                   {money(t.amountMinor, t.currency)}
                 </td>
                 <td>
-                  {isAdmin && (
+                  {isAdmin && !t.manualEntryId && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -192,9 +204,16 @@ export function TransactionsPage({
                       Create rule
                     </Button>
                   )}
-                  {(t.canEdit || canEditAccount(t.accountId)) && (
-                    <Button size="sm" variant="ghost" aria-label={`Edit ${t.description}`} onClick={() => onEdit(t)}>
-                      Edit
+                  {(t.manualEntryId
+                    ? t.canEdit || isAdmin
+                    : !t.frozen && (t.canEdit || canEditAccount(t.accountId))) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`${t.manualEntryId && !t.canEdit ? 'View history for' : 'Edit'} ${t.description}`}
+                      onClick={() => onEdit(t)}
+                    >
+                      {t.manualEntryId && !t.canEdit ? 'History' : 'Edit'}
                     </Button>
                   )}
                 </td>

@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS simplefin_fetches (
  id bigserial PRIMARY KEY, source_id uuid NOT NULL, remote_key text NOT NULL, fetched_at timestamptz NOT NULL DEFAULT now(),
  coverage jsonb NOT NULL, raw jsonb NOT NULL
 );
-CREATE OR REPLACE FUNCTION reject_simplefin_evidence_changes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'SimpleFIN evidence is immutable'; END; $$;
+CREATE OR REPLACE FUNCTION reject_simplefin_evidence_changes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF TG_OP='DELETE' AND to_regprocedure('account_purge_allowed(text,text)') IS NOT NULL THEN
+  IF EXISTS(SELECT 1 FROM simplefin_accounts WHERE source_id=OLD.source_id AND remote_key=OLD.remote_key AND account_purge_allowed('live',local_id)) THEN RETURN OLD; END IF;
+ END IF;
+ RAISE EXCEPTION 'SimpleFIN evidence is immutable';
+END; $$;
 DROP TRIGGER IF EXISTS immutable_simplefin_fetches ON simplefin_fetches;
 CREATE TRIGGER immutable_simplefin_fetches BEFORE UPDATE OR DELETE ON simplefin_fetches FOR EACH ROW EXECUTE FUNCTION reject_simplefin_evidence_changes();

@@ -3205,3 +3205,56 @@ label {
     margin: 0;
   }
 }
+
+.balance-summary {
+  padding: 22px;
+  margin-bottom: 20px;
+}
+.balance-summary h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.balance-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+.balance-totals strong {
+  display: block;
+  font-size: 25px;
+}
+.balance-totals span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.account-add {
+  margin-bottom: 16px;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0;
+}
+.manual-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.manual-audit {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  font-size: 12px;
+}
+.manual-audit small {
+  display: block;
+}
+.manual-audit p {
+  margin: 4px 0;
+}
+
+.account-actions {
+  position: relative;
+  z-index: 1;
+}

@@ -13,6 +13,10 @@ export function readTransactionRoute(query, defaults) {
     filters[key] = (params.get(key) || '').slice(0, limit);
   }
 
+  if (params.get('includeVoided') === 'true') {
+    filters.includeVoided = true;
+  }
+
   filters.allHistory = params.get('allHistory') === 'true';
   for (const key of ['from', 'to']) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(params.get(key) || '')) {
@@ -24,7 +28,7 @@ export function readTransactionRoute(query, defaults) {
     filters.status = params.get('status');
   }
 
-  if (['expense', 'income', 'transfer', 'refund'].includes(params.get('kind'))) {
+  if (['expense', 'income', 'transfer', 'refund', 'opening', 'adjustment'].includes(params.get('kind'))) {
     filters.kind = params.get('kind');
   }
 
@@ -58,6 +62,10 @@ export function writeTransactionRoute(filters, { month, currency }) {
     if (filters[key]) {
       params.set(key, filters[key]);
     }
+  }
+
+  if (filters.includeVoided) {
+    params.set('includeVoided', 'true');
   }
 
   if (filters.allHistory) {

@@ -22,6 +22,7 @@ export function reportQuery({ page, month, currency, period, filters }) {
       ? {
           page: String(txPage),
           pageSize: '50',
+          ...(filters.includeVoided ? { includeVoided: 'true' } : {}),
           ...(accountId ? { accountId } : {}),
           ...(allHistory ? { allHistory: 'true' } : {}),
           ...(from ? { from } : {}),

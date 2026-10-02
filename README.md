@@ -17,7 +17,8 @@ Open <http://localhost:3001>. Demo mode is prominently labelled and makes no liv
 
 ## What is included
 
-- Income, expenses, cash flow, category charts, source account balances and freshness.
+- Income, expenses, cash flow, category charts, local manual/feed account balances and freshness.
+- [Manual accounts](docs/manual-accounts.md), auditable entries, linked transfers, balance adjustments and account lifecycle.
 - Search and filters, transaction corrections, exact splits, rules and a review queue.
 - Monthly category caps, persistent deduplicated in-app overspend alerts, allocations and opt-in positive rollover.
 - PostgreSQL provider observations, canonical identities, independent manual overrides and audit history.
@@ -26,7 +27,7 @@ Open <http://localhost:3001>. Demo mode is prominently labelled and makes no liv
 - Optional read-only AI assistant with private temporary chats, scoped finance tools, exact reports and feature-specific models/limits using the same AI connection as classification.
 - Named household accounts, administrator-managed invitations and revocable database sessions for live data, JSON export, and backup/restore scripts.
 
-Amounts travel as integer minor-unit strings; calculations use integer arithmetic. Posted transactions drive actual spending, pending items are separate, refunds reduce spending on their posted date, and transfers/card repayments do not count as expenses. Budget allocations do not create bank transactions. Account balances remain provider snapshots; unsupported reconciliation is explicitly marked rather than repaired with invented entries.
+Amounts travel as integer minor-unit strings; calculations use integer arithmetic. Posted transactions drive actual spending, pending items are separate, refunds reduce spending on their posted date, and transfers/card repayments do not count as expenses. Budget allocations do not create bank transactions. Feed balances remain provider snapshots; manual balances come from explicit opening balances and active ledger entries. Opening balances and adjustments never count as income or spending. No bank reconciliation is claimed.
 
 ## Integration settings and upgrades
 

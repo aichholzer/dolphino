@@ -1,3 +1,4 @@
+import { registerManualAccountRoutes } from './routes/manual-accounts.mjs';
 import rayo from 'rayo';
 import { createSimplefinIntegration } from './lib/simplefin.mjs';
 import { createHouseholdAuth } from './lib/household-auth.mjs';
@@ -75,6 +76,7 @@ export function createApp({
   registerIntegrationRoutes({ route, integration, registration, simplefin, importHealth, sensitive });
   registerNotificationRoutes({ route, notifications, telegram, sensitive });
   registerAccountRoutes({ route, ledger });
+  registerManualAccountRoutes({ route, store });
   registerTransactionRoutes({ route, store, classification, ledger, filters });
   registerCategoryRoutes({ route, store, ledger });
   registerBudgetRoutes({ route, ledger, report });

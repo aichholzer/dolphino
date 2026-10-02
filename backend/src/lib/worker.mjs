@@ -1,3 +1,4 @@
+import { assertFeedAccount } from './manual-ledger.mjs';
 import { ensureSimplefinSchema } from './simplefin.mjs';
 import { createHash } from 'node:crypto';
 import { REDBARK_SETTINGS_LOCK, redbarkAccountFingerprint } from './redbark-settings.mjs';
@@ -22,7 +23,11 @@ export async function ensureRedbarkSchema(pool) {
     ALTER TABLE redbark_jobs ADD COLUMN IF NOT EXISTS params jsonb NOT NULL DEFAULT '{}';
     ALTER TABLE redbark_jobs ADD COLUMN IF NOT EXISTS account_fingerprint text;
     CREATE TABLE IF NOT EXISTS redbark_fetches (id bigserial PRIMARY KEY, account_id text NOT NULL, fetched_at timestamptz NOT NULL, raw jsonb NOT NULL);
-    CREATE OR REPLACE FUNCTION reject_redbark_evidence_changes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Redbark evidence is immutable'; END; $$;
+    CREATE OR REPLACE FUNCTION reject_redbark_evidence_changes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF TG_OP='DELETE' AND TG_TABLE_NAME='redbark_fetches' AND to_regprocedure('account_purge_allowed(text,text)') IS NOT NULL THEN
+        IF account_purge_allowed('live',OLD.account_id) THEN RETURN OLD; END IF;
+      END IF;
+      RAISE EXCEPTION 'Redbark evidence is immutable'; END; $$;
     DROP TRIGGER IF EXISTS immutable_redbark_fetches ON redbark_fetches;
     CREATE TRIGGER immutable_redbark_fetches BEFORE UPDATE OR DELETE ON redbark_fetches FOR EACH ROW EXECUTE FUNCTION reject_redbark_evidence_changes();
     DROP TRIGGER IF EXISTS immutable_redbark_receipts ON redbark_receipts;
@@ -220,6 +225,10 @@ export function createRedbarkIntegration({
         continue;
       }
 
+      if (!(await assertFeedAccount(pool, store.mode, rawAccount.id))) {
+        continue;
+      }
+
       // A deliberately mapped optional source owns its account, including while paused.
       // Never start importing its history through direct Redbark as well.
       if ((await pool.query('SELECT 1 FROM simplefin_accounts WHERE local_id=$1', [rawAccount.id])).rowCount) {
@@ -259,16 +268,30 @@ export function createRedbarkIntegration({
       const rawBalance = rawAccount.category === 'banking' ? await client.balance(rawAccount.id) : null;
       const rawTransactions = await client.transactions(rawAccount.id, from, to);
       // Append raw evidence before normalization; malformed provider responses stay inspectable.
-      await pool.query('INSERT INTO redbark_fetches(account_id,fetched_at,raw) VALUES($1,$2,$3)', [
-        rawAccount.id,
-        fetchedAt,
-        JSON.stringify({
-          account: rawAccount,
-          balance: rawBalance,
-          transactions: rawTransactions,
-          coverage: { from, to }
-        })
-      ]);
+      const kept = await store.atomic(
+        async (c) => {
+          if (!(await assertFeedAccount(c, store.mode, rawAccount.id))) {
+            return false;
+          }
+
+          await c.query('INSERT INTO redbark_fetches(account_id,fetched_at,raw) VALUES($1,$2,$3)', [
+            rawAccount.id,
+            fetchedAt,
+            JSON.stringify({
+              account: rawAccount,
+              balance: rawBalance,
+              transactions: rawTransactions,
+              coverage: { from, to }
+            })
+          ]);
+          return true;
+        },
+        { refresh: false }
+      );
+      if (!kept) {
+        continue;
+      }
+
       const balance = rawBalance?.current;
       if (
         balance &&

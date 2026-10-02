@@ -1,3 +1,4 @@
+import { Store } from '../src/lib/store.mjs';
 import { readTestPostgresConfig } from './helpers/postgres.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -126,12 +127,17 @@ test('mocked live import preserves source evidence and Retry-After gates all job
     return new Response(JSON.stringify(value));
   };
 
+  const store = new Store(pool, { mode: 'live' });
+  await store.migrate();
   const integration = createRedbarkIntegration({
     pool,
-    store: {
-      ingestBatch: async (batch) => batches.push(batch),
+    store: Object.assign(Object.create(store), {
+      ingestBatch: async (batch) => {
+        batches.push(batch);
+        return store.ingestBatch(batch);
+      },
       reconcileRedbarkCategories: async () => ({ updated: 0, unresolved: 0 })
-    },
+    }),
     config: { mode: 'live', timezone: 'Australia/Brisbane' },
     getRedbarkConfig: async () => ({ redbarkApiKey: 'fake' }),
     fetchImpl

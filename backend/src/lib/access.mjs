@@ -1,3 +1,4 @@
+import { accountBalances } from '../../../shared/account-balances.mjs';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { calculatePeriodReport, calculateSelectionReport, domainError } from './engine.mjs';
@@ -230,6 +231,7 @@ export async function createAccessStore(store, user) {
       });
       return {
         ...attach(r, full),
+        accountBalances: accountBalances(accounts),
         monthly: r.monthly.map((m, i) => attach(m, full?.monthly[i])),
         accounts: accounts.map((a) => ({
           ...a,
@@ -257,7 +259,20 @@ export async function createAccessStore(store, user) {
 
   const decorate = async (t) => ({
     ...sanitize(t),
-    canEdit: (await grants()).accounts.some((g) => g.accountId === t.accountId && g.access === 'edit')
+    canEdit:
+      (await grants()).accounts.some((g) => g.accountId === t.accountId && g.access === 'edit') &&
+      (!t.manualEntryId ||
+        (t.canEdit &&
+          !(
+            await store.pool.query(
+              'SELECT 1 FROM transactions WHERE mode=$1 AND manual_entry_id=$2 AND NOT account_id=ANY($3::text[])',
+              [
+                store.mode,
+                t.manualEntryId,
+                (await grants()).accounts.filter((g) => g.access === 'edit').map((g) => g.accountId)
+              ]
+            )
+          ).rowCount))
   });
   return {
     permissions: async () => {

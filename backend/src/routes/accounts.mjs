@@ -1,3 +1,4 @@
+import { accountBalances } from '../../../shared/account-balances.mjs';
 import { z } from 'zod';
 import { body } from '../http/body.mjs';
 
@@ -5,9 +6,10 @@ export function registerAccountRoutes({ route, ledger }) {
   route(
     'get',
     '/api/accounts',
-    async (req) => ({
-      accounts: await ledger(req).listAccounts()
-    }),
+    async (req) => {
+      const accounts = await ledger(req).listAccounts();
+      return { accounts, accountBalances: accountBalances(accounts) };
+    },
     { access: 'financial' }
   );
 

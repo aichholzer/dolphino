@@ -33,8 +33,8 @@ export async function categoryCatalog(store, c = store.pool, scope = {}) {
   const result = await c.query(
     `WITH visible AS (
     SELECT ${effectiveCategorySql} category,o.splits,t.provider_category
-    FROM transactions t LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
-    WHERE t.mode=$1 AND t.superseded_by IS NULL AND ($2::boolean OR t.account_id=ANY($3::text[]))
+    FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
+    WHERE t.mode=$1 AND t.superseded_by IS NULL AND t.voided_at IS NULL AND a.deleted_at IS NULL AND ($2::boolean OR t.account_id=ANY($3::text[]))
       AND ($2::boolean OR NOT ${transferSql})
   ), keys AS (
     SELECT category FROM visible UNION SELECT provider_category FROM visible
@@ -43,8 +43,8 @@ export async function categoryCatalog(store, c = store.pool, scope = {}) {
     UNION SELECT category FROM rules WHERE mode=$1 AND $2
     UNION SELECT category FROM category_catalog WHERE mode=$1 AND ($2 OR shared)
     UNION SELECT 'Transfers' WHERE NOT $2 AND EXISTS(
-      SELECT 1 FROM transactions t LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
-      WHERE t.mode=$1 AND t.superseded_by IS NULL AND t.account_id=ANY($3::text[]) AND ${transferSql})
+      SELECT 1 FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
+      WHERE t.mode=$1 AND t.superseded_by IS NULL AND t.voided_at IS NULL AND a.deleted_at IS NULL AND t.account_id=ANY($3::text[]) AND ${transferSql})
   ) SELECT k.category,
     CASE WHEN NOT $2 AND k.category='Transfers' THEN 'Transfers' ELSE COALESCE(c.name,k.category) END name,
     CASE WHEN NOT $2 AND k.category='Transfers' THEN false ELSE COALESCE(c.archived,false) END archived

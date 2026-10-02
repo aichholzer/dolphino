@@ -1,3 +1,5 @@
+import { accountBalances } from '../../../shared/account-balances.mjs';
+import { assertFeedAccount, manualBalance, ledgerToday } from './manual-ledger.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
@@ -48,6 +50,15 @@ const txRow = (r) => {
     'Uncategorized';
   return {
     id: r.id,
+    sourceType: r.source_type || 'feed',
+    frozen: !!r.frozen_at,
+    ...(r.manual_entry_id
+      ? {
+          manualEntryId: r.manual_entry_id,
+          voided: !!r.voided_at,
+          canEdit: !r.manual_blocked && !r.voided_at
+        }
+      : {}),
     accountId: r.account_id,
     supersededBy: r.superseded_by || null,
     accountName: r.account_name,
@@ -75,7 +86,7 @@ const txRow = (r) => {
   };
 };
 
-const txSelect = `SELECT c.name category_name,ARRAY(SELECT tag FROM transaction_tags WHERE transaction_id=t.id ORDER BY tag) tags,t.*,${transactionCategoryReferencesSql} category_references,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,(SELECT jsonb_agg(split || CASE WHEN sc.name IS NOT NULL AND sc.name<>split->>'category' THEN jsonb_build_object('categoryDisplayLabel',sc.name) ELSE '{}'::jsonb END) FROM jsonb_array_elements(o.splits) split LEFT JOIN category_catalog sc ON sc.mode=t.mode AND sc.category=split->>'category') splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id LEFT JOIN category_catalog c ON c.mode=t.mode AND c.category=${effectiveCategorySql}`;
+const txSelect = `SELECT a.source_type,a.frozen_at,EXISTS(SELECT 1 FROM transactions mt JOIN accounts ma ON ma.mode=mt.mode AND ma.id=mt.account_id WHERE mt.mode=t.mode AND mt.manual_entry_id=t.manual_entry_id AND (ma.frozen_at IS NOT NULL OR ma.deleted_at IS NOT NULL)) manual_blocked,c.name category_name,ARRAY(SELECT tag FROM transaction_tags WHERE transaction_id=t.id ORDER BY tag) tags,t.*,${transactionCategoryReferencesSql} category_references,COALESCE(a.local_label,a.name) account_name,o.transaction_id override_id,o.category override_category,o.kind override_kind,(SELECT jsonb_agg(split || CASE WHEN sc.name IS NOT NULL AND sc.name<>split->>'category' THEN jsonb_build_object('categoryDisplayLabel',sc.name) ELSE '{}'::jsonb END) FROM jsonb_array_elements(o.splits) split LEFT JOIN category_catalog sc ON sc.mode=t.mode AND sc.category=split->>'category') splits,o.note FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id LEFT JOIN category_catalog c ON c.mode=t.mode AND c.category=${effectiveCategorySql}`;
 const budgetRow = (r) => ({
   id: r.id,
   category: r.category,
@@ -117,7 +128,8 @@ export class Store {
       '012_simplefin.sql',
       '013_redbark_category_evidence.sql',
       '014_categories_tags.sql',
-      '015_rule_tags.sql'
+      '015_rule_tags.sql',
+      '016_manual_accounts.sql'
     ]) {
       await this.pool.query(await readFile(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
     }
@@ -157,6 +169,10 @@ export class Store {
     }
   }
   async updateAccount(account, coverage = null, c = this.pool) {
+    if (!(await assertFeedAccount(c, this.mode, account.id))) {
+      return;
+    }
+
     if (!account.id || !/^[A-Z]{3}$/.test(account.currency)) {
       throw domainError('Account id and currency required');
     }
@@ -166,7 +182,7 @@ export class Store {
     }
 
     await c.query(
-      `INSERT INTO accounts(mode,id,name,currency,balance_minor,balance_type,balance_at,fetched_at,coverage) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(mode,id) DO UPDATE SET name=excluded.name,currency=excluded.currency,balance_minor=COALESCE(excluded.balance_minor,accounts.balance_minor),balance_type=COALESCE(excluded.balance_type,accounts.balance_type),balance_at=COALESCE(excluded.balance_at,accounts.balance_at),fetched_at=GREATEST(excluded.fetched_at,accounts.fetched_at),coverage=COALESCE(excluded.coverage,accounts.coverage) WHERE excluded.fetched_at >= accounts.fetched_at`,
+      `INSERT INTO accounts(mode,id,name,currency,balance_minor,balance_type,balance_at,fetched_at,coverage) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(mode,id) DO UPDATE SET name=excluded.name,currency=excluded.currency,balance_minor=COALESCE(excluded.balance_minor,accounts.balance_minor),balance_type=COALESCE(excluded.balance_type,accounts.balance_type),balance_at=COALESCE(excluded.balance_at,accounts.balance_at),fetched_at=GREATEST(excluded.fetched_at,accounts.fetched_at),coverage=COALESCE(excluded.coverage,accounts.coverage),account_revision=accounts.account_revision+1,updated_at=clock_timestamp() WHERE excluded.fetched_at >= accounts.fetched_at`,
       [
         this.mode,
         account.id,
@@ -215,6 +231,10 @@ export class Store {
     return this.atomic((c) => this._ingest(c, observation));
   }
   async _ingest(c, o) {
+    if (!(await assertFeedAccount(c, this.mode, o.accountId))) {
+      return null;
+    }
+
     if (o.mode && o.mode !== this.mode) {
       throw domainError('Observation mode does not match store');
     }
@@ -423,11 +443,19 @@ export class Store {
   }
   async listTransactions(filters = {}, c = this.pool) {
     const values = [this.mode],
-      clauses = ['t.mode=$1', 't.superseded_by IS NULL'];
+      clauses = ['t.mode=$1', 't.superseded_by IS NULL', 'a.deleted_at IS NULL'];
     const add = (sql, value) => {
       values.push(value);
       clauses.push(sql.replace('?', `$${values.length}`));
     };
+
+    if (filters.includeVoided !== true && filters.includeVoided !== 'true') {
+      clauses.push('t.voided_at IS NULL');
+    }
+
+    if (filters.sourceType === 'feed') {
+      clauses.push('t.manual_entry_id IS NULL');
+    }
 
     if (filters.month && filters.allHistory !== true && filters.allHistory !== 'true') {
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(filters.month)) {
@@ -669,7 +697,8 @@ export class Store {
   }
 
   async getTransaction(id, c = this.pool) {
-    const r = (await c.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2`, [this.mode, id])).rows[0];
+    const r = (await c.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2 AND a.deleted_at IS NULL`, [this.mode, id]))
+      .rows[0];
     if (!r) {
       throw domainError('Transaction not found');
     }
@@ -678,10 +707,22 @@ export class Store {
   }
   async correctTransaction(id, patch) {
     await this.atomic(async (c) => {
-      const current = (await c.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2 FOR UPDATE OF t`, [this.mode, id]))
-        .rows[0];
+      const current = (
+        await c.query(`${txSelect} WHERE t.mode=$1 AND t.id=$2 AND a.deleted_at IS NULL FOR UPDATE OF t`, [
+          this.mode,
+          id
+        ])
+      ).rows[0];
       if (!current) {
         throw domainError('Transaction not found');
+      }
+
+      if (current.frozen_at) {
+        throw domainError('Unfreeze the account before making corrections');
+      }
+
+      if (current.manual_entry_id) {
+        throw domainError('Use the manual entry editor to preserve revisions and linked transfers');
       }
 
       if (!['category', 'kind', 'splits', 'note', 'tags'].some((field) => patch[field] !== undefined)) {
@@ -774,10 +815,18 @@ export class Store {
     }
 
     return this.atomic(async (c) => {
-      const before = (await c.query('SELECT * FROM accounts WHERE mode=$1 AND id=$2 FOR UPDATE', [this.mode, id]))
-        .rows[0];
+      const before = (
+        await c.query('SELECT * FROM accounts WHERE mode=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE', [
+          this.mode,
+          id
+        ])
+      ).rows[0];
       if (!before) {
         throw domainError('Account not found');
+      }
+
+      if (before.frozen_at) {
+        throw domainError('Unfreeze the account before editing its details');
       }
 
       await c.query('UPDATE accounts SET local_label=$3,description=$4 WHERE mode=$1 AND id=$2', [
@@ -809,23 +858,47 @@ export class Store {
       return after;
     });
   }
-  async listAccounts(c = this.pool) {
-    return (await c.query('SELECT * FROM accounts WHERE mode=$1 ORDER BY name', [this.mode])).rows.map((r) => ({
-      id: r.id,
-      name: r.local_label || r.name,
-      providerName: r.name,
-      label: r.local_label || '',
-      description: r.description,
-      currency: r.currency,
-      balanceMinor: r.balance_minor == null ? null : String(r.balance_minor),
-      balanceType: r.balance_type,
-      balanceAt: r.balance_at,
-      fetchedAt: r.fetched_at,
-      coverage: r.coverage,
-      reconciled: false,
-      reconciliationReason:
-        'Not reconciled: no verified opening balance with matching type, time and complete transaction coverage.'
-    }));
+  async listAccounts(c = this.pool, { deleted = false } = {}) {
+    const rows = (
+      await c.query(
+        `SELECT * FROM accounts WHERE mode=$1 AND ${deleted ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'} ORDER BY name`,
+        [this.mode]
+      )
+    ).rows;
+    const result = [];
+    for (const r of rows) {
+      result.push({
+        id: r.id,
+        name: r.local_label || r.name,
+        providerName: r.name,
+        label: r.local_label || '',
+        description: r.description,
+        currency: r.currency,
+        sourceType: r.source_type,
+        frozen: !!r.frozen_at,
+        deleted: !!r.deleted_at,
+        revision: r.account_revision,
+        openingEntryId: r.opening_entry_id,
+        includedInBalance: !r.frozen_at && !r.deleted_at,
+        balanceMinor:
+          r.source_type === 'manual'
+            ? await manualBalance(c, this.mode, r.id, ledgerToday(this))
+            : r.balance_minor == null
+              ? null
+              : String(r.balance_minor),
+        balanceType: r.source_type === 'manual' ? 'Book' : r.balance_type,
+        balanceAt: r.source_type === 'manual' ? r.updated_at : r.balance_at,
+        fetchedAt: r.fetched_at,
+        coverage: r.coverage,
+        reconciled: false,
+        reconciliationReason:
+          r.source_type === 'manual'
+            ? 'Book balance from opening balance and active manual entries; not bank verified.'
+            : 'Not reconciled: no verified opening balance with matching type, time and complete transaction coverage.'
+      });
+    }
+
+    return result;
   }
   async report({ month, currency = 'AUD', months = 1 }, client) {
     const calculate = async (c) => {
@@ -846,6 +919,7 @@ export class Store {
       return {
         ...report,
         accounts,
+        accountBalances: accountBalances(accounts),
         coverage: {
           accounts: accounts
             .filter((a) => a.currency === currency)
@@ -857,7 +931,8 @@ export class Store {
               reason: a.reconciliationReason
             })),
           complete: false,
-          reason: 'Imported date windows only; source balances are independent snapshots.'
+          reason:
+            'Feed balances are independent snapshots; manual balances are local book balances. Neither is bank-verified reconciliation.'
         }
       };
     };
@@ -1079,7 +1154,10 @@ export class Store {
           ruleRow
         );
         rules.push(rule);
-        const page = await this.listTransactions({ merchant: rule.contains, paginated: true, pageSize: 20 }, c);
+        const page = await this.listTransactions(
+          { sourceType: 'feed', merchant: rule.contains, paginated: true, pageSize: 20 },
+          c
+        );
         const catalog = await this.listCategoryCatalog(c);
         const samples = [];
         for (const transaction of page.transactions) {
@@ -1164,7 +1242,12 @@ export class Store {
   }
   async reclassify(c) {
     const rules = (await c.query('SELECT * FROM rules WHERE mode=$1', [this.mode])).rows.map(ruleRow);
-    for (const row of (await c.query('SELECT * FROM transactions WHERE mode=$1', [this.mode])).rows) {
+    for (const row of (
+      await c.query(
+        'SELECT * FROM transactions WHERE mode=$1 AND manual_entry_id IS NULL AND account_id IN (SELECT id FROM accounts WHERE mode=$1 AND deleted_at IS NULL)',
+        [this.mode]
+      )
+    ).rows) {
       const result = await this.ruleClassification(c, row, rules);
       await c.query(
         "UPDATE transactions SET classification_category=$2,kind=$3,ai_category=CASE WHEN $2 <> 'Uncategorized' OR kind <> $3 THEN NULL ELSE ai_category END,review_reason=CASE WHEN $4 THEN NULL ELSE review_reason END WHERE id=$1",
@@ -1188,8 +1271,8 @@ export class Store {
     return (
       await this.pool.query(
         `SELECT DISTINCT tag.tag FROM transaction_tags tag
-      JOIN transactions t ON t.id=tag.transaction_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
-      WHERE t.mode=$1 AND t.superseded_by IS NULL AND ($2::text[] IS NULL OR t.account_id=ANY($2))
+      JOIN transactions t ON t.id=tag.transaction_id JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id LEFT JOIN transaction_overrides o ON o.transaction_id=t.id
+      WHERE t.mode=$1 AND t.superseded_by IS NULL AND t.voided_at IS NULL AND a.deleted_at IS NULL AND ($2::text[] IS NULL OR t.account_id=ANY($2))
         AND (NOT $3::boolean OR NOT ${transferSql}) ORDER BY tag.tag LIMIT 1000`,
         [this.mode, accountIds ?? null, redactTransfers]
       )
@@ -1197,6 +1280,7 @@ export class Store {
   }
   async isAutomaticClassificationEligible(tx, c = this.pool) {
     if (
+      tx.manualEntryId ||
       tx.supersededBy ||
       tx.status !== 'posted' ||
       tx.category !== 'Uncategorized' ||
@@ -1302,8 +1386,12 @@ export class Store {
     }
 
     await this.atomic(async (c) => {
-      const row = (await c.query('SELECT review_reason FROM transactions WHERE id=$1 AND mode=$2', [id, this.mode]))
-        .rows[0];
+      const row = (
+        await c.query(
+          'SELECT t.review_reason FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id WHERE t.id=$1 AND t.mode=$2 AND a.deleted_at IS NULL AND a.frozen_at IS NULL AND t.manual_entry_id IS NULL',
+          [id, this.mode]
+        )
+      ).rows[0];
       if (!row) {
         throw domainError('Transaction not found');
       }
@@ -1323,10 +1411,10 @@ export class Store {
 
     await this.atomic(async (c) => {
       const rows = (
-        await c.query('SELECT * FROM transactions WHERE mode=$1 AND id=ANY($2::uuid[]) FOR UPDATE', [
-          this.mode,
-          [postedId, pendingId]
-        ])
+        await c.query(
+          'SELECT t.* FROM transactions t JOIN accounts a ON a.mode=t.mode AND a.id=t.account_id WHERE t.mode=$1 AND t.id=ANY($2::uuid[]) AND t.manual_entry_id IS NULL AND a.deleted_at IS NULL AND a.frozen_at IS NULL FOR UPDATE OF t',
+          [this.mode, [postedId, pendingId]]
+        )
       ).rows;
       const posted = rows.find((r) => r.id === postedId),
         pending = rows.find((r) => r.id === pendingId);

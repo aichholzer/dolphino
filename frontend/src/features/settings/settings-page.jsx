@@ -1,3 +1,4 @@
+import { AccountDataSettings } from './account-data-settings';
 import { useLayoutEffect, useRef } from 'react';
 import { ShieldCheck, RefreshCw, Download } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -137,6 +138,7 @@ export function SettingsPage({
             {section === 'ai' && <AiSettings api={api} demo={session?.demo} onUpdated={onUpdated} />}
             {section === 'data' && (
               <>
+                <AccountDataSettings onUpdated={onUpdated} />
                 <SimplefinSettings api={api} demo={session?.demo} onUpdated={onUpdated} />
                 <ImportHealth api={api} demo={session?.demo} />
                 <section className="card settings-card">

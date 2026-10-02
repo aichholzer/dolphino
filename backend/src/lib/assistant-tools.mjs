@@ -1,3 +1,4 @@
+import { accountBalances } from '../../../shared/account-balances.mjs';
 import { z } from 'zod';
 import { calculateSelectionReport, minor } from './engine.mjs';
 const MAX_ROWS = 10000;
@@ -23,7 +24,7 @@ const common = {
   minAmountMinor: amount,
   maxAmountMinor: amount,
   status: z.enum(['posted', 'pending']).nullable(),
-  kind: z.enum(['expense', 'income', 'transfer', 'refund']).nullable()
+  kind: z.enum(['expense', 'income', 'transfer', 'refund', 'opening', 'adjustment']).nullable()
 };
 const schema = {
   finance_accounts: z.object({ currency: common.currency }).strict(),
@@ -194,6 +195,7 @@ const safeTransaction = (t) =>
       'description',
       'status',
       'kind',
+      'sourceType',
       'category',
       'categoryDisplayLabel',
       'tags',
@@ -342,6 +344,8 @@ export async function invokeFinanceTool(
   const accounts = (await finance.listAccounts()).filter((a) => a.currency === args.currency);
   const coverage = accounts.map((a) => ({
     accountId: a.id,
+    sourceType: a.sourceType,
+    includedInBalance: a.includedInBalance,
     fetchedAt: a.fetchedAt,
     coverage: a.coverage,
     reconciled: a.reconciled === true,
@@ -352,12 +356,18 @@ export async function invokeFinanceTool(
     truncated = false,
     reportQuery;
   if (name === 'finance_accounts') {
-    data = { accounts };
+    data = {
+      accounts,
+      accountBalances: accountBalances(accounts),
+      balancePolicy:
+        'Frozen accounts are visible but excluded from balances. Deleted accounts and their history are hidden. Opening balances and adjustments are excluded from income, expenses and budgets.'
+    };
   } else if (name === 'finance_quality') {
     data = {
       accounts: coverage,
       complete: false,
-      reason: 'Imported coverage only. No bank freshness or arithmetic reconciliation guarantee.'
+      reason:
+        'Feed snapshots and manual book balances are not independently bank-verified. Opening balances and adjustments are excluded from income and spending.'
     };
   } else if (name === 'finance_transaction') {
     const t = await finance.getTransaction(args.transactionId);

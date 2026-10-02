@@ -1,3 +1,4 @@
+import { ManualDialog } from './features/accounts/manual-dialog';
 import { useEffect, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, RefreshCw, Sparkles, X } from 'lucide-react';
 import { api } from './lib/api.mjs';
@@ -37,6 +38,7 @@ export function FinancialWorkspace({ session, onSession }) {
   const [period, setPeriod] = useState(1);
   const [menu, setMenu] = useState(false);
   const [edit, setEdit] = useState(null);
+  const [manual, setManual] = useState(null);
   const [accountEdit, setAccountEdit] = useState(null);
   const [changePassword, setChangePassword] = useState(false);
   const [budget, setBudget] = useState(null);
@@ -53,6 +55,7 @@ export function FinancialWorkspace({ session, onSession }) {
   useEffect(() => {
     setEdit(null);
     setAccountEdit(null);
+    setManual(null);
     setBudget(null);
     setRule(null);
   }, [routeKey]);
@@ -112,6 +115,7 @@ export function FinancialWorkspace({ session, onSession }) {
 
       setEdit(null);
       setAccountEdit(null);
+      setManual(null);
       setBudget(null);
       setRule(null);
       load();
@@ -204,6 +208,14 @@ export function FinancialWorkspace({ session, onSession }) {
               }}
             />
           </Dialog>
+          <ManualDialog
+            draft={manual}
+            close={() => setManual(null)}
+            saved={refreshCurrent}
+            canEditAccount={canEditAccount}
+            onDirtyChange={onDirtyChange}
+            timeZone={session?.timeZone}
+          />
           <AccountDialog
             onDirtyChange={onDirtyChange}
             account={accountEdit}
@@ -213,6 +225,7 @@ export function FinancialWorkspace({ session, onSession }) {
             save={async (values) => {
               if (await mutate(`/accounts/${accountEdit.id}`, values, 'PATCH')) {
                 setAccountEdit(null);
+                setManual(null);
               }
             }}
           />
@@ -335,7 +348,7 @@ export function FinancialWorkspace({ session, onSession }) {
                 isAdmin={isAdmin}
                 navigate={navigate}
                 canEditAccount={canEditAccount}
-                onEdit={setEdit}
+                onEdit={(t) => (t.manualEntryId ? setManual({ type: 'edit', entryId: t.manualEntryId }) : setEdit(t))}
                 onCreateRule={createRuleFromTransaction}
                 filters={filters}
                 onFiltersChange={updateFilters}
@@ -344,6 +357,8 @@ export function FinancialWorkspace({ session, onSession }) {
             {page === 'Accounts' && (
               <AccountsPage
                 accounts={data.accounts || []}
+                isAdmin={isAdmin}
+                onManual={setManual}
                 canEditAccount={canEditAccount}
                 onEdit={setAccountEdit}
                 onViewTransactions={viewAccountTransactions}
@@ -366,7 +381,7 @@ export function FinancialWorkspace({ session, onSession }) {
                 canEditAccount={canEditAccount}
                 reviews={data.reviews || []}
                 busy={busy}
-                onEdit={setEdit}
+                onEdit={(t) => (t.manualEntryId ? setManual({ type: 'edit', entryId: t.manualEntryId }) : setEdit(t))}
                 mutate={mutate}
               />
             )}

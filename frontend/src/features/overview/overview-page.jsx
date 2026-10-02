@@ -1,3 +1,4 @@
+import { BalanceSummary } from '../accounts/balance-summary';
 import {
   AlertCircle,
   ChevronRight,
@@ -15,6 +16,7 @@ import { Empty } from '../../components/empty-state';
 export function OverviewPage({ data, isAdmin, month, period, currency, navigate, drill }) {
   return (
     <>
+      <BalanceSummary accounts={data.accounts || []} />
       {data.alerts?.length > 0 && (
         <div className="budget-alerts">
           {data.alerts.map((a, i) => (

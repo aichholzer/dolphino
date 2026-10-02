@@ -89,7 +89,7 @@ export function createSimplefinIntegration({
     const accounts = s.sourceId
       ? (
           await pool.query(
-            "SELECT metadata,local_id,last_success FROM simplefin_accounts WHERE source_id=$1 ORDER BY metadata->>'name'",
+            "SELECT metadata,local_id,last_success FROM simplefin_accounts WHERE source_id=$1 AND NOT EXISTS(SELECT 1 FROM account_tombstones WHERE mode='live' AND account_id=local_id) ORDER BY metadata->>'name'",
             [s.sourceId]
           )
         ).rows.map((r) => ({
@@ -353,7 +353,19 @@ export function createSimplefinIntegration({
 
     await transaction(async (db) => {
       await assertCurrent(db, s);
+      await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['dolphino:live']);
       for (const account of data.accounts) {
+        if (
+          (
+            await db.query(
+              "SELECT 1 FROM simplefin_accounts a JOIN account_tombstones t ON t.mode='live' AND t.account_id=a.local_id WHERE a.identity_key=$1",
+              [hash(`${s.providerKey}:${account.key}`)]
+            )
+          ).rowCount
+        ) {
+          continue;
+        }
+
         const { transactions, raw, ...metadata } = account;
         void transactions;
         void raw;
@@ -439,6 +451,12 @@ export function createSimplefinIntegration({
       await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['dolphino:live']);
       if ((await db.query("SELECT 1 FROM accounts WHERE mode='live' AND id=$1", [localId])).rowCount) {
         throw error('simplefin_existing_account_source_conflict_migration_not_supported');
+      }
+
+      if (
+        (await db.query("SELECT 1 FROM account_tombstones WHERE mode='live' AND account_id=$1", [localId])).rowCount
+      ) {
+        throw error('simplefin_account_permanently_deleted');
       }
 
       // An extra Redbark ID is only accepted from Redbark's own origin.
@@ -554,7 +572,10 @@ export function createSimplefinIntegration({
       }
 
       const mapped = (
-        await db.query('SELECT * FROM simplefin_accounts WHERE source_id=$1 AND local_id IS NOT NULL', [s.sourceId])
+        await db.query(
+          "SELECT * FROM simplefin_accounts WHERE source_id=$1 AND local_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM account_tombstones WHERE mode='live' AND account_id=local_id)",
+          [s.sourceId]
+        )
       ).rows;
       for (const row of mapped) {
         const end = Math.floor(now() / 1000) + 1;
@@ -653,6 +674,16 @@ export function createSimplefinIntegration({
                 ? 'Provider reported incomplete data; retry required'
                 : 'Provider-reported window; upstream completeness and opening balance cannot be independently verified'
           };
+          if (
+            (
+              await c.query("SELECT 1 FROM account_tombstones WHERE mode='live' AND account_id=$1", [
+                mappedRow.local_id
+              ])
+            ).rowCount
+          ) {
+            return;
+          }
+
           await c.query('INSERT INTO simplefin_fetches(source_id,remote_key,coverage,raw) VALUES($1,$2,$3,$4)', [
             s.sourceId,
             job.remote_key,

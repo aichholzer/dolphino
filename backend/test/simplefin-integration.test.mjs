@@ -605,3 +605,76 @@ test(
     assert.equal(state.lastSuccess, null);
   }
 );
+
+test(
+  'SimpleFIN tombstones survive adapter initialization, purge evidence locally and prevent rediscovery or polling recreation',
+  { skip: !database },
+  async (t) => {
+    const f = await fixture(t),
+      found = await f.connect();
+    await f.sf.mapAccount({ key: found.key, confirmNewAccount: true });
+    await f.enable();
+    await f.sf.tick();
+    const account = (await f.store.listAccounts())[0];
+    const { createHouseholdAuth } = await import('../src/lib/household-auth.mjs');
+    const { createAccountLifecycle } = await import('../src/lib/account-lifecycle.mjs');
+    await createHouseholdAuth({ pool: f.pool, config: f.config }).init();
+    const user = (
+      await f.pool.query(
+        "INSERT INTO household_users(email,name,role,password_hash) VALUES('lifecycle@example.test','Synthetic admin','admin','unused-synthetic-hash') RETURNING id,role"
+      )
+    ).rows[0];
+    const lifecycle = createAccountLifecycle(f.store, user);
+    await lifecycle.change(account.id, {
+      requestId: randomUUID(),
+      revision: account.revision,
+      action: 'freeze',
+      reason: 'Freeze synthetic account'
+    });
+    f.data.accounts[0].balance = '125.00';
+    f.setClock(Date.now() + 5 * 3600000);
+    await f.sf.tick();
+    assert.equal((await f.store.listAccounts())[0].balanceMinor, '12500');
+    await lifecycle.change(account.id, {
+      requestId: randomUUID(),
+      revision: (await f.store.listAccounts())[0].revision,
+      action: 'delete',
+      reason: 'Delete synthetic account'
+    });
+    f.data.accounts[0].balance = '130.00';
+    f.setClock(Date.now() + 10 * 3600000);
+    await f.sf.tick();
+    const hidden = (await lifecycle.listDeleted()).accounts[0];
+    assert.equal(hidden.balanceMinor, '13000');
+    const upstream = f.data.accounts;
+    f.data.accounts = [];
+    f.setClock(Date.now() + 15 * 3600000);
+    await f.sf.tick();
+    const retained = (await lifecycle.listDeleted()).accounts[0];
+    assert.equal(retained.balanceMinor, hidden.balanceMinor);
+    assert.deepEqual(retained.fetchedAt, hidden.fetchedAt);
+    assert.equal((await f.pool.query('SELECT * FROM transactions')).rowCount > 0, true);
+    f.data.accounts = upstream;
+    const preview = await lifecycle.preview({ accountIds: [account.id] });
+    assert.ok(preview.counts.simplefin_fetches > 0);
+    // Init re-runs the adapter schema: evidence must still be immutable outside confirmed purge.
+    await f.sf.init();
+    await assert.rejects(f.pool.query('DELETE FROM simplefin_fetches'), /immutable/);
+    await lifecycle.purge({
+      requestId: randomUUID(),
+      accountIds: [account.id],
+      previewToken: preview.previewToken,
+      confirmation: preview.confirmation
+    });
+    assert.equal((await f.pool.query('SELECT * FROM simplefin_fetches')).rowCount, 0);
+    assert.deepEqual((await f.pool.query('SELECT metadata FROM simplefin_accounts')).rows[0].metadata, {});
+    await f.sf.discover();
+    assert.equal((await f.sf.status()).accounts.length, 0);
+    const callCount = f.calls.length;
+    f.setClock(Date.now() + 30 * 3600000);
+    await f.sf.tick();
+    assert.equal(f.calls.length, callCount);
+    assert.equal((await f.store.listAccounts()).length, 0);
+    assert.equal((await f.store.listTransactions()).length, 0);
+  }
+);

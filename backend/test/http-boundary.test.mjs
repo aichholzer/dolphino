@@ -1,3 +1,4 @@
+import { accountBalances } from '../../shared/account-balances.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
@@ -114,9 +115,13 @@ test('HTTP boundary retains default-admin guards, scoped financial access and he
   assert.equal(allowed.headers.get('referrer-policy'), 'no-referrer');
   assert.equal(allowed.headers.get('strict-transport-security'), 'max-age=31536000');
   assert.match(allowed.headers.get('permissions-policy'), /camera=\(\)/);
-  assert.deepEqual(await (await request('/api/accounts', { role: 'member' })).json(), { accounts: [] });
+  assert.deepEqual(await (await request('/api/accounts', { role: 'member' })).json(), {
+    accounts: [],
+    accountBalances: []
+  });
   assert.deepEqual(await (await request('/api/accounts', { role: 'admin' })).json(), {
-    accounts: await store.listAccounts()
+    accounts: await store.listAccounts(),
+    accountBalances: JSON.parse(JSON.stringify(accountBalances(await store.listAccounts())))
   });
   assert.equal((await request('/api/transactions/guessed/suggest', { role: 'member', method: 'POST' })).status, 403);
   store.listAccounts = async () => {
