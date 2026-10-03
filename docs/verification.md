@@ -79,7 +79,7 @@ The independent HTTP assessment found and fixed recoverable stale chat context a
 
 The separately requested [local adversarial security assessment](security-assessment.md) records the threat model, endpoint/role matrix, concrete attack cases, fixes and remaining boundaries. It is an internal development assessment, not independent certification or a claim that the application is bulletproof.
 
-Four browser suites cover the actual demo, household roles, integration/settings controls and mocked assistant interaction. The assistant suite tests disabled configuration, explicit data-sharing consent, unsafe model HTML/links rendered as plain text, authorized source downloads, cross-currency transaction drilldown, cancellation/stale responses, desktop/mobile layout, focus trapping and Escape. Clean assistant screenshots are explicitly fictional mock answers.
+Four browser suites cover the actual demo, household roles, integration/settings controls and mocked assistant interaction. The assistant suite tests disabled configuration, explicit data-sharing consent, inert model HTML/links, authorized source downloads, cross-currency transaction drilldown, cancellation/stale responses, desktop/mobile layout, focus trapping and Escape. Clean assistant screenshots are explicitly fictional mock answers.
 
 Backup/restore now covers 32 tables, separate encrypted assistant credentials and durable quotas, alongside unchanged financial reports. Both Compose options parse, and npm dependency audits report zero known vulnerabilities at verification time. Full Docker image build and real reverse-proxy/TLS deployment remain unverified because image retrieval was blocked; no real provider or financial access was configured.
 
@@ -108,3 +108,18 @@ At that earlier database-settings milestone, the APP_BIND block, Compose deploym
 ## Maintainability and browser-memory isolation milestone
 
 The [maintainability verification](maintainability-verification.md) records the domain-module refactor, genuine ESLint and complete Prettier configuration, 216 passing tests with zero skips, ten passing browser commands with persistent-storage guards, the 37-table restore rehearsal, and independently reproduced fixes for stale in-memory data across authentication and navigation.
+
+## Assistant Markdown verification
+
+The literal formatting markers came from rendering every message directly inside a plain paragraph. The provider/HTTP path already preserved Markdown correctly. Assistant messages now use pinned `marked` lexer tokens and `entities` text decoding, rendered through an explicit React allowlist; both packages are installed from the official npm registry and add no transitive dependencies. User messages and stored responses are unchanged. Raw HTML is omitted, generated links/images are inert text, and authorized source controls remain separate. No global backslash removal, generated HTML insertion or syntax execution is used.
+
+After `npm run build`, run:
+
+```sh
+npm run test:browser:assistant-markdown
+DOLPHINO_SCREENSHOT_DIR=/tmp/dolphino-assistant-check npm run test:browser:assistant
+# TEST_DATABASE_URL must point to disposable local PostgreSQL, never live data.
+npm run test:browser:assistant-spending
+```
+
+The first suite covers semantic headings, emphasis, nested/ordered/task lists, paragraphs, code, tables, correct entities/escapes, native selection, keyboard-scrollable regions and 1440/390/320px layouts. Its 22 adversarial payloads exercise HTML, URL, image, reference and code-language attacks; long/deep content falls back safely. The real PostgreSQL/HTTP spending suite uses synthetic Bedrock Converse responses through the production adapter, verifies unchanged Markdown in JSON and private chat history, checks anonymous rejection and confirms the original authorized total/report dates. The existing assistant suite retains consent, loading, cancellation, forbidden-history, source navigation and focus checks. All browser suites serve compiled assets, guard against persistent storage and use synthetic data/transports only. Screenshots are written under `/tmp`.

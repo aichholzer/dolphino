@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
-import { assistantSpendingFixture, spendingQuestion } from '../../backend/test/helpers/assistant-spending-fixture.mjs';
+import {
+  assistantSpendingFixture,
+  spendingQuestion,
+  spendingMarkdown
+} from '../../backend/test/helpers/assistant-spending-fixture.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
 const f = await assistantSpendingFixture('bedrock');
+f.scenario('markdown');
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   args: ['--no-sandbox']
@@ -42,8 +47,15 @@ try {
   await question.fill(spendingQuestion);
   await expect(dialog.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await consent.check();
+  const sent = page.waitForResponse((response) => response.url().endsWith('/messages'));
   await question.press('Enter');
+  const wire = await (await sent).json();
+  assert.equal(wire.reply, spendingMarkdown, 'Provider Markdown reaches JSON unchanged');
+  assert.equal(wire.chat.messages.at(-1).content, spendingMarkdown);
   await expect(dialog.locator('.assistant-message-assistant')).toContainText('AUD 23.00');
+  await expect(dialog.locator('.assistant-markdown strong').first()).toHaveText('AUD 23.00');
+  await expect(dialog.locator('.assistant-markdown em')).toHaveText('Eating out');
+  await expect(dialog.locator('.assistant-markdown li')).toHaveCount(2);
   await expect(dialog.locator('.assistant-message-assistant')).toContainText('1–31 August 2026');
   await expect(dialog.locator('.assistant-citations')).toContainText('2026-08-01 — 2026-08-31 · America/Los_Angeles');
   assert.equal(f.calls.length, 3);
@@ -51,6 +63,17 @@ try {
   const response = await context.request.get(f.url + (await reportLink.getAttribute('href')));
   assert.equal(response.status(), 200);
   assert.equal((await response.json()).data.totals.expensesMinor, '2300');
+  const saved = await context.request.get(`${f.url}/api/assistant/chats/${wire.chat.id}`);
+  assert.equal(saved.status(), 200);
+  assert.equal((await saved.json()).messages.at(-1).content, spendingMarkdown, 'Chat retains exact provider text');
+  const stranger = await browser.newContext();
+  try {
+    const denied = await stranger.request.get(`${f.url}/api/assistant/chats/${wire.chat.id}`);
+    assert.equal(denied.status(), 401);
+  } finally {
+    await stranger.close();
+  }
+
   await dialog.getByRole('button', { name: 'New', exact: true }).click();
   f.scenario('provider-failure');
   await consent.check();
@@ -77,7 +100,7 @@ try {
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
   console.log(
-    'Compiled assistant spending passed: exact typo question, household calendar, real scoped PostgreSQL total, Bedrock Converse replay, authorized report, recoverable provider error/retry, keyboard and 1440/390/320px; no live integrations or browser storage.'
+    'Compiled assistant spending passed: exact provider Markdown preserved in HTTP/private chat, semantic bold/emphasis/lists, unauthenticated denial, exact typo question, household calendar, real scoped PostgreSQL total, Bedrock Converse replay, authorized report, recoverable provider error/retry, keyboard and 1440/390/320px; no live integrations or browser storage.'
   );
 } finally {
   await context.close();

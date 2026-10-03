@@ -1970,6 +1970,117 @@ label select {
   white-space: pre-wrap;
   margin-top: 8px;
 }
+.assistant-markdown {
+  margin-top: 8px;
+  min-width: 0;
+}
+.assistant-markdown > :first-child {
+  margin-top: 0;
+}
+.assistant-markdown > :last-child {
+  margin-bottom: 0;
+}
+.assistant-markdown p,
+.assistant-markdown ul,
+.assistant-markdown ol,
+.assistant-markdown blockquote,
+.assistant-markdown pre,
+.assistant-table {
+  margin: 10px 0;
+}
+.assistant-markdown ul,
+.assistant-markdown ol {
+  padding-left: 22px;
+}
+.assistant-markdown ul {
+  list-style: disc;
+}
+.assistant-markdown ol {
+  list-style: decimal;
+}
+.assistant-markdown li + li {
+  margin-top: 5px;
+}
+.assistant-markdown li > p {
+  margin: 5px 0;
+}
+.assistant-markdown h3,
+.assistant-markdown h4,
+.assistant-markdown h5,
+.assistant-markdown h6 {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ocean);
+  margin: 16px 0 6px;
+  line-height: 1.5;
+}
+.assistant-markdown strong {
+  font-weight: 650;
+}
+.assistant-markdown blockquote {
+  border-left: 3px solid var(--ocean);
+  padding-left: 12px;
+  color: var(--muted);
+}
+.assistant-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--ocean-soft);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.assistant-markdown pre {
+  padding: 12px;
+  background: var(--ocean-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.assistant-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.assistant-table {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.assistant-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: inherit;
+}
+.assistant-table th,
+.assistant-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  min-width: 100px;
+  white-space: normal;
+}
+.assistant-table th {
+  color: var(--ocean);
+  background: var(--ocean-soft);
+}
+.assistant-table tr:last-child td {
+  border-bottom: 0;
+}
+.assistant-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 16px 0;
+}
+.assistant-markdown pre:focus-visible,
+.assistant-table:focus-visible {
+  outline: 2px solid var(--ocean);
+  outline-offset: 2px;
+}
+.assistant-markdown-plain {
+  white-space: pre-wrap;
+}
 .assistant-citations {
   border-top: 1px solid var(--line);
   margin-top: 15px;

@@ -7,6 +7,9 @@ import { FINANCE_TOOLS, invokeFinanceTool } from '../../src/lib/assistant-tools.
 
 export const spendingQuestion = 'Hoe much did I spend eating out last month?';
 
+export const spendingMarkdown =
+  'You spent **AUD 23.00** on *Eating out* from **1–31 August 2026**, across your authorized accounts.\n\n- Refunds reduce this amount.\n- Pending entries and transfers are excluded.\n\nCoverage is not independently bank-verified.';
+
 export const aggregateQuery = {
   currency: 'AUD',
   from: '2026-08-01',
@@ -159,7 +162,10 @@ export async function assistantSpendingFixture(provider = 'openai') {
         assert.ok(!JSON.stringify(results).includes('Hidden merchant'));
         assert.ok(!JSON.stringify(results).includes('Secret category'));
         return {
-          text: 'You spent AUD 23.00 on Eating out from 1–31 August 2026, across your authorized accounts. Refunds reduce this amount; pending entries and transfers are excluded. Coverage is not independently bank-verified.'
+          text:
+            scenario === 'markdown'
+              ? spendingMarkdown
+              : 'You spent AUD 23.00 on Eating out from 1–31 August 2026, across your authorized accounts. Refunds reduce this amount; pending entries and transfers are excluded. Coverage is not independently bank-verified.'
         };
       }
 

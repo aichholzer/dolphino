@@ -82,7 +82,7 @@ await page.route('**/api/**', async (route) => {
             role: 'assistant',
             content: cleanPreview
               ? 'Demo answer · fictional data only.\n\nSeptember spending was AUD 3,548.74. Housing was AUD 2,100.00. Transfers are excluded and refunds reduce spending.\n\nCheck the source report below.'
-              : 'Spending is AUD 123.45. <img src=x onerror=alert(1)> [external](https://unsafe.example)',
+              : 'Spending is **AUD 123.45**. <img src=x onerror=alert(1)> [external](https://unsafe.example)',
             citations: [
               {
                 id: 'result_1',
@@ -146,6 +146,7 @@ try {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByText('Authorized monthly report', { exact: true }).waitFor();
   assert.equal(await page.locator('.assistant-message img').count(), 0);
+  assert.equal(await page.locator('.assistant-markdown strong').innerText(), 'AUD 123.45');
   assert.equal(await page.locator('.assistant-message a[href^="https:"]').count(), 0);
   assert.equal(
     await page.getByRole('link', { name: 'Download authorized report' }).getAttribute('href'),
@@ -233,7 +234,7 @@ try {
   assert.deepEqual(errors, []);
   await assertPageStorageUnused();
   console.log(
-    'Assistant browser checks passed: unavailable config, explicit sharing acknowledgment, plaintext/XSS-safe reply, authorized report link, abort/cancel late-result protection, forbidden conversation hides history, responsive mobile focus trap/Escape. All APIs mocked.'
+    'Assistant browser checks passed: unavailable config, explicit sharing acknowledgment, Markdown/XSS-safe reply, authorized report link, abort/cancel late-result protection, forbidden conversation hides history, responsive mobile focus trap/Escape. All APIs mocked.'
   );
 } finally {
   await browser.close();

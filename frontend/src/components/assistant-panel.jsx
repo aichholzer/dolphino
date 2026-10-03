@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Sparkles, Send, Square, Plus, FileDown } from 'lucide-react';
 import { Button } from './ui/button';
+import { AssistantMarkdown } from './assistant-markdown';
 const safeId = (id) => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(id);
 function Message({ message, onViewTransaction }) {
   const text =
@@ -9,7 +10,7 @@ function Message({ message, onViewTransaction }) {
   return (
     <article className={`assistant-message assistant-message-${message.role === 'user' ? 'user' : 'assistant'}`}>
       <strong>{message.role === 'user' ? 'You' : 'dolphino assistant'}</strong>
-      <p>{text}</p>
+      {message.role === 'assistant' ? <AssistantMarkdown text={text} /> : <p>{text}</p>}
       {message.citations?.length > 0 && (
         <div className="assistant-citations">
           {message.citations.map((c, i) => (
