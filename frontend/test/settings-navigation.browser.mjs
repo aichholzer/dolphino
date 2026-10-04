@@ -276,15 +276,20 @@ try {
   // Even an administrator URL cannot mount settings for a lower-privilege principal.
   session.user = { id: 'navigation-member', role: 'member', name: 'Test member' };
   session.permissions = { accounts: [{ accountId: 'allowed', access: 'view' }] };
-  const start = calls.length;
+  // Let the administrator's AI section finish its reads, then count only requests from the reloaded document.
+  await expect(page.getByLabel('Available classification Bedrock models')).toBeEnabled();
+  await expect(page.getByLabel('Available assistant Bedrock models')).toBeEnabled();
+  let start = calls.length;
+  const committed = page.waitForEvent('framenavigated', (frame) => {
+    start = calls.length;
+    return frame === page.mainFrame();
+  });
   await page.reload();
+  await committed;
   await expect(page.getByRole('heading', { name: 'Your money, at a glance.' })).toBeVisible();
   await expect(nav()).toHaveCount(0);
-  assert.equal(
-    calls.slice(start).some((call) => call.path.startsWith('/api/settings')),
-    false,
-    'member deep link never fetches settings'
-  );
+  const settingsReads = calls.slice(start).filter((call) => call.path.startsWith('/api/settings'));
+  assert.deepEqual(settingsReads, [], 'member deep link never fetches settings');
   console.log(
     'Compiled Settings navigation passed: Bank feeds grouping, keyboard accordion controls, preserved provider drafts, deep links, active-only mounts, Back/Forward/reload, dirty form cancellation, 1440/390/320px layouts, no browser storage/external requests and member access boundaries. All APIs mocked.'
   );
