@@ -13,6 +13,20 @@ import {
   normalizeTransaction
 } from './redbark.mjs';
 
+// One account the provider refuses to serve is skipped; rate limits, outages and credential
+// failures still stop the whole sync and back off.
+const accountFailures = new Set(['invalid_provider_list', 'single_day_truncated', 'pagination_loop']);
+const accountScoped = (error) =>
+  error instanceof RedbarkError &&
+  ((error.code.startsWith('provider_http_') && [400, 403, 404, 409, 422].includes(error.status)) ||
+    accountFailures.has(error.code));
+
+function skippedSummary(skipped, attempted) {
+  const listed = skipped.slice(0, 3).map(({ name, error }) => `${name}: ${describeRedbarkError(error)}`);
+  const more = skipped.length > 3 ? `; ${skipped.length - 3} more` : '';
+  return `Skipped ${skipped.length} of ${attempted} accounts. ${listed.join('; ')}${more}`;
+}
+
 export async function ensureRedbarkSchema(pool) {
   await ensureSimplefinSchema(pool);
   await pool.query(`CREATE TABLE IF NOT EXISTS redbark_state (id integer PRIMARY KEY CHECK(id=1), fingerprint text, tested_at timestamptz, last_success timestamptz, last_error text, next_attempt timestamptz);
@@ -221,6 +235,8 @@ export function createRedbarkIntegration({
       throw new RedbarkError('backfill_account_unavailable', 409);
     }
 
+    const skipped = [];
+    let attempted = 0;
     for (const rawAccount of accounts) {
       if (params.accountId && rawAccount.id !== params.accountId) {
         continue;
@@ -266,8 +282,20 @@ export function createRedbarkIntegration({
 
       await pool.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
       const fetchedAt = new Date().toISOString();
-      const rawBalance = rawAccount.category === 'banking' ? await client.balance(rawAccount.id) : null;
-      const rawTransactions = await client.transactions(rawAccount.id, from, to);
+      attempted++;
+      let rawBalance, rawTransactions;
+      try {
+        rawBalance = rawAccount.category === 'banking' ? await client.balance(rawAccount.id) : null;
+        rawTransactions = await client.transactions(rawAccount.id, from, to);
+      } catch (error) {
+        if (!accountScoped(error)) {
+          throw error;
+        }
+
+        skipped.push({ name: rawAccount.name || 'Bank account', error });
+        continue;
+      }
+
       // Append raw evidence before normalization; malformed provider responses stay inspectable.
       const kept = await store.atomic(
         async (c) => {
@@ -331,6 +359,11 @@ export function createRedbarkIntegration({
     }
 
     await pool.query('UPDATE redbark_state SET category_error=$1 WHERE id=1', [categoryError]);
+    if (skipped.length && skipped.length === attempted) {
+      throw skipped[0].error;
+    }
+
+    return skipped.length ? skippedSummary(skipped, attempted) : null;
   }
 
   async function repairCategories() {
@@ -536,12 +569,14 @@ export function createRedbarkIntegration({
       }
 
       try {
-        await sync(current, job.params || {});
+        const skipped = await sync(current, job.params || {});
         await db.query(
           "UPDATE redbark_jobs SET status='completed', completed_at=now(),attempts=attempts+1,last_error=NULL WHERE id=$1",
           [job.id]
         );
-        await db.query('UPDATE redbark_state SET last_success=now(),last_error=NULL,next_attempt=NULL WHERE id=1');
+        await db.query('UPDATE redbark_state SET last_success=now(),last_error=$1,next_attempt=NULL WHERE id=1', [
+          skipped
+        ]);
       } catch (error) {
         const code = describeRedbarkError(error);
         const delay = Math.max(error.retryAfter || 0, Math.min(4 * 3600, 60 * 2 ** Math.min(job.attempts, 8)));

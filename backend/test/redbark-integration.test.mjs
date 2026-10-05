@@ -166,3 +166,88 @@ test('mocked live import preserves source evidence and Retry-After gates all job
     await admin.end();
   }
 });
+
+test(
+  'one refused account is skipped and recorded; every account refused fails the job',
+  { skip: !database },
+  async () => {
+    const schema = `redbark_test_${randomUUID().replaceAll('-', '')}`;
+    const admin = new pg.Pool({ ...database });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    const pool = new pg.Pool({
+      ...database,
+      options: `-c search_path=${schema}`
+    });
+    const accounts = [
+      { id: 'acct_A', name: 'Fictional Everyday', category: 'banking', currency: 'aud' },
+      { id: 'acct_B', name: 'Fictional Savings', category: 'banking', currency: 'aud' }
+    ];
+    let refused = new Set(['acct_B']);
+    const batches = [];
+    const fetchImpl = async (url) => {
+      const { pathname, searchParams } = new URL(url);
+      if (pathname.endsWith('/transactions') && refused.has(searchParams.get('account'))) {
+        return new Response(
+          JSON.stringify({ error: { code: 'parameter_invalid', param: 'from', message: 'private bank detail' } }),
+          { status: 400 }
+        );
+      }
+
+      const value = pathname.endsWith('/balance')
+        ? { current: { amount: 10000, currency: 'aud' }, observed_at: '2026-09-30T00:00:00Z' }
+        : { data: pathname.endsWith('/transactions') ? [] : accounts, next_page_url: null };
+      return new Response(JSON.stringify(value));
+    };
+
+    const store = new Store(pool, { mode: 'live' });
+    await store.migrate();
+    const integration = createRedbarkIntegration({
+      pool,
+      store: Object.assign(Object.create(store), {
+        ingestBatch: async (batch) => {
+          batches.push(batch);
+          return store.ingestBatch(batch);
+        },
+        reconcileRedbarkCategories: async () => ({ updated: 0, unresolved: 0 })
+      }),
+      config: { mode: 'live', timezone: 'Australia/Brisbane' },
+      getRedbarkConfig: async () => ({ redbarkApiKey: 'fake' }),
+      fetchImpl
+    });
+    try {
+      await integration.init();
+      await integration.testConnection();
+      await integration.tick();
+      assert.deepEqual(
+        batches.map((batch) => batch.account.id),
+        ['acct_A'],
+        'the readable account still imports'
+      );
+      let status = await integration.status();
+      assert.equal(
+        status.lastError,
+        'Skipped 1 of 2 accounts. Fictional Savings: provider_http_400 on transactions: parameter_invalid (from)'
+      );
+      assert.ok(status.lastSuccess, 'a partial poll completes');
+      assert.equal((await pool.query("SELECT * FROM redbark_jobs WHERE status='queued'")).rowCount, 0);
+
+      refused = new Set(['acct_A', 'acct_B']);
+      await pool.query("INSERT INTO redbark_jobs(dedupe_key,account_fingerprint) VALUES('manual-1',$1)", [
+        redbarkAccountFingerprint('fake')
+      ]);
+      await integration.tick();
+      status = await integration.status();
+      assert.equal(status.lastError, 'provider_http_400 on transactions: parameter_invalid (from)');
+      const [job] = (await pool.query("SELECT status,last_error FROM redbark_jobs WHERE dedupe_key='manual-1'")).rows;
+      assert.deepEqual(job, {
+        status: 'queued',
+        last_error: 'provider_http_400 on transactions: parameter_invalid (from)'
+      });
+      assert.equal(batches.length, 1, 'no account imported when every account was refused');
+    } finally {
+      await pool.end();
+      await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+      await admin.end();
+    }
+  }
+);

@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.2 - 2026-10-05
+
+### Fixed
+
+- A Redbark account whose balance or transactions request is refused is skipped and named in the status, and the other accounts keep importing. When every account is refused, the sync fails and retries as before. Rate limits, provider outages and credential failures still stop the whole sync.
+
 ## 0.2.1 - 2026-10-05
 
 ### Changed
