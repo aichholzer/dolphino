@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { api } from '../../lib/api.mjs';
 import { Button } from '../../components/ui/button';
 import { useSettingsDirty } from './settings-dirty';
@@ -76,7 +77,10 @@ export function CategoriesSettings() {
           New category
           <input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
         </label>
-        <Button disabled={busy || loading || !name.trim()}>Create category</Button>
+        <Button disabled={busy || loading || !name.trim()}>
+          <Plus size={16} />
+          Add category
+        </Button>
       </form>
       {loading ? (
         <p role="status">Loading categories…</p>
@@ -103,7 +107,7 @@ export function CategoriesSettings() {
                     />
                   </label>
                   <Button disabled={busy || !editing.name.trim()}>Save name</Button>
-                  <Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(null)}>
+                  <Button type="button" variant="outline" disabled={busy} onClick={() => setEditing(null)}>
                     Cancel
                   </Button>
                 </form>
@@ -116,8 +120,7 @@ export function CategoriesSettings() {
                   {entry.category !== 'Uncategorized' && (
                     <div className="category-actions">
                       <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="outline"
                         disabled={busy}
                         aria-label={`Rename ${entry.name}`}
                         onClick={() => setEditing({ category: entry.category, name: entry.name })}
@@ -126,7 +129,6 @@ export function CategoriesSettings() {
                       </Button>
                       <Button
                         variant="outline"
-                        size="sm"
                         disabled={busy}
                         aria-label={`${entry.archived ? 'Restore' : 'Delete'} ${entry.name}`}
                         onClick={() =>
@@ -136,7 +138,7 @@ export function CategoriesSettings() {
                           })
                         }
                       >
-                        {entry.archived ? 'Restore' : 'Delete (archive)'}
+                        {entry.archived ? 'Restore' : 'Archive'}
                       </Button>
                     </div>
                   )}

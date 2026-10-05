@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function TransactionTags({ tags, onChange, suggestions, onDraftChange }) {
@@ -60,6 +60,7 @@ export function TransactionTags({ tags, onChange, suggestions, onDraftChange }) 
             ))}
         </datalist>
         <Button type="button" variant="outline" disabled={!draft.trim() || tags.length >= 20} onClick={add}>
+          <Plus size={16} />
           Add tag
         </Button>
       </div>

@@ -91,7 +91,7 @@ try {
     report.monthly.map((row) => row.expensesMinor),
     ['1001', '2002', '3003', '4004', baseline.expensesMinor]
   );
-  await expect(page.locator('.period-caption')).toContainText('2026-05-01 — 2026-09-30 · 5 months');
+  await expect(page.locator('.period-caption')).toContainText('2026-05-01 to 2026-09-30 · 5 months');
   await expect(page.locator('.monthly-comparison tbody tr')).toHaveCount(5);
   await expect(page.locator('.metric').filter({ hasText: 'Total spending' })).toContainText(money(expected, 'AUD'));
   for (const width of [1440, 900, 390, 320]) {

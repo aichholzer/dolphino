@@ -153,6 +153,14 @@ async function fixturePage() {
   return { page, state };
 }
 
+const typeFact = (kind) =>
+  ({
+    expense: 'Expense',
+    income: 'Income',
+    refund: 'Refund',
+    transfer: 'Transfer, excluded from income and spending totals'
+  })[kind];
+
 function rowFor(page, review) {
   return page
     .locator('.review-row')
@@ -167,16 +175,20 @@ async function assertReviewRows(page) {
     await expect(row.locator('p').nth(0)).toHaveText(
       `${cases[index].amount} ${review.currency} · 2026-09-29 · ${review.accountName}`
     );
-    await expect(row.locator('p').nth(1)).toHaveText(`${review.category} · Current type: ${review.kind}`);
-    await expect(row.locator('p').nth(2)).toHaveText(review.reviewReason);
-    await expect(row.locator('small')).toHaveText(`Transaction: ${review.id}`);
+    await expect(row.getByRole('term')).toHaveText(['Type', 'Category', 'Reason', 'Transaction']);
+    await expect(row.getByRole('definition')).toHaveText([
+      typeFact(review.kind),
+      review.category,
+      review.reviewReason.charAt(0).toUpperCase() + review.reviewReason.slice(1),
+      review.id
+    ]);
   }
 }
 
 async function openDetails(page, index) {
   const review = reviews[index];
   await rowFor(page, review).getByRole('button', { name: 'Review details', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Make it your own', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Edit transaction', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAccessibleDescription(`${review.description} · ${cases[index].amount}`);
   await expect(dialog.getByRole('combobox', { name: 'Transaction type', exact: true })).toHaveValue(review.kind);
@@ -236,7 +248,7 @@ try {
         await dialog.getByRole('combobox', { name: 'Category', exact: true }).selectOption('Groceries');
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(page.getByRole('dialog')).toHaveCount(0);
-        await expect(rowFor(page, review)).toContainText(`Current type: ${review.kind}`);
+        await expect(rowFor(page, review).getByRole('definition').first()).toHaveText(typeFact(review.kind));
         const reopened = await openDetails(page, index);
         if (index % 2) {
           await page.keyboard.press('Escape');

@@ -10,8 +10,10 @@ import { useDraftGuard } from '../../hooks/use-draft-guard.mjs';
 import { api } from '../../lib/api.mjs';
 
 import { ruleValues } from './rule-model.mjs';
+import { kindLabel } from '../../lib/labels.mjs';
 
 export function RulesPage({ rules, onEdit, busy, onDelete }) {
+  const [confirming, setConfirming] = useState(null);
   return (
     <>
       <div className="section-toolbar">
@@ -28,8 +30,8 @@ export function RulesPage({ rules, onEdit, busy, onDelete }) {
             <div>
               <h2>Description contains “{rule.match}”</h2>
               <p>
-                Classify as {rule.categoryDisplayLabel || rule.category} · {rule.kind || 'imported type'} · Priority{' '}
-                {rule.priority}
+                Classify as {rule.categoryDisplayLabel || rule.category} ·{' '}
+                {rule.kind ? kindLabel(rule.kind) : 'keeps the imported type'} · Priority {rule.priority}
               </p>
               <div className="tag-list">
                 {rule.tags?.map((tag) => (
@@ -42,28 +44,45 @@ export function RulesPage({ rules, onEdit, busy, onDelete }) {
             <div className="rule-actions">
               <Button
                 variant="outline"
-                size="sm"
                 disabled={busy}
                 aria-label={`Edit rule ${rule.match}`}
                 onClick={() => onEdit(rule)}
               >
                 Edit
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                aria-label={`Delete rule ${rule.match}`}
-                onClick={() => onDelete(rule.id)}
-              >
-                Delete
-              </Button>
+              {confirming === rule.id ? (
+                <>
+                  <Button
+                    variant="destructive"
+                    disabled={busy}
+                    aria-label={`Confirm delete rule ${rule.match}`}
+                    onClick={() => {
+                      setConfirming(null);
+                      onDelete(rule.id);
+                    }}
+                  >
+                    Delete rule
+                  </Button>
+                  <Button variant="outline" onClick={() => setConfirming(null)}>
+                    Keep
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  aria-label={`Delete rule ${rule.match}`}
+                  onClick={() => setConfirming(rule.id)}
+                >
+                  Delete
+                </Button>
+              )}
             </div>
           </div>
         ))}
         {!rules.length && (
           <Empty
-            title="Put the familiar on autopilot"
+            title="No rules yet"
             detail="Create a rule for a merchant or description. Your manual corrections always take priority."
           />
         )}
@@ -195,7 +214,9 @@ export function RuleDialog({ rule, close, busy, save, serverError, onDirtyChange
           >
             <option value="">Use imported type</option>
             {['expense', 'income', 'transfer', 'refund'].map((kind) => (
-              <option key={kind}>{kind}</option>
+              <option key={kind} value={kind}>
+                {kindLabel(kind)}
+              </option>
             ))}
           </select>
         </label>
@@ -239,7 +260,7 @@ export function RuleDialog({ rule, close, busy, save, serverError, onDirtyChange
                 <li key={sample.id}>
                   <strong>{sample.description}</strong>
                   <span>
-                    {sample.category} · {sample.kind}
+                    {sample.category} · {kindLabel(sample.kind)}
                     {!sample.selectedRuleWins ? ' · Another rule takes precedence' : ''}
                     {sample.manualCorrection ? ' · Manual correction preserved' : ''}
                   </span>

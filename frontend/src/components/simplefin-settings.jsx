@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { useSettingsDirty } from '../features/settings/settings-dirty';
+import { formatStamp } from '../lib/dates.mjs';
 const explanations = {
   simplefin_retry_after_out_of_range:
     'The provider requested an unsupported retry delay of more than ten years. This connection is paused and requires explicit reconnection; no early retry will be attempted.',
@@ -187,8 +188,9 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
               <p className="muted">
                 Access URL: {state.credential.masked}. Credentials are write-only and never returned to this browser.
               </p>
-              <div className="button-row">
+              <div className="settings-actions">
                 <Button
+                  variant="outline"
                   disabled={disabled || !state.credentialsAvailable}
                   onClick={() =>
                     action('/test', {}, 'Connection tested. Review the accounts below before enabling imports.')
@@ -344,9 +346,9 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
           <p className="muted">
             Queued windows: {state.queuedJobs} · Historical paused windows: {state.pausedJobs}.{' '}
             {state.lastSuccess
-              ? `Last complete response: ${new Date(state.lastSuccess).toLocaleString()}.`
+              ? `Last complete response: ${formatStamp(state.lastSuccess)}.`
               : 'No complete import response yet.'}{' '}
-            {state.nextAttempt ? `Next retry after ${new Date(state.nextAttempt).toLocaleString()}.` : ''}
+            {state.nextAttempt ? `Next retry after ${formatStamp(state.nextAttempt)}.` : ''}
           </p>
           {state.jobs?.length > 0 && (
             <details>

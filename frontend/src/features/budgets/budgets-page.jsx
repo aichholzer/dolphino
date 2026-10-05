@@ -7,12 +7,16 @@ export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
   const budgets = data.budgets || [];
   return (
     <>
-      {data.alerts?.map((a, i) => (
-        <div key={i} role="status" className="alert budget-alert">
-          <AlertCircle size={16} />
-          {a.message} · {money(a.amountMinor, currency)}
+      {data.alerts?.length > 0 && (
+        <div className="budget-alerts">
+          {data.alerts.map((a, i) => (
+            <span key={i} role="status" className="budget-chip">
+              <AlertCircle size={14} />
+              {a.message} · {money(a.amountMinor, currency)}
+            </span>
+          ))}
         </div>
-      ))}
+      )}
       {!isAdmin && (
         <p className="setup-note">
           Shared budgets show full household category totals. This does not grant access to their underlying
@@ -50,7 +54,7 @@ export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
               <div className="card-heading">
                 <h2>{b.categoryDisplayLabel || b.category}</h2>
                 {(isAdmin || b.canEdit || b.access === 'edit') && (
-                  <Button variant="ghost" size="sm" onClick={() => onEdit(b)}>
+                  <Button variant="outline" onClick={() => onEdit(b)}>
                     Edit
                   </Button>
                 )}
@@ -71,7 +75,7 @@ export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
                 {b.rolloverEnabled && <span className="category-tag">Rollover on</span>}
               </div>
               <div className="budget-footer">
-                <span>Rollover: {money(b.rolloverMinor, currency)}</span>
+                <span>{b.rolloverEnabled ? `Rollover: ${money(b.rolloverMinor, currency)}` : 'Rollover off'}</span>
                 {isAdmin && (
                   <button
                     onClick={() =>
@@ -91,7 +95,7 @@ export function BudgetsPage({ data, isAdmin, month, currency, onEdit, drill }) {
       </div>
       {!budgets.length && (
         <Empty
-          title="A plan for your priorities"
+          title="No budgets yet"
           detail="Add your first monthly category cap. Allocations never create bank expenses."
         />
       )}

@@ -1,6 +1,6 @@
 import { ManualDialog } from './features/accounts/manual-dialog';
 import { useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, Check, RefreshCw, Sparkles, X } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, RefreshCw, X, Info } from 'lucide-react';
 import { api } from './lib/api.mjs';
 import { reportQuery, reportingMonth } from './lib/report-query.mjs';
 import { workspaceAccess } from './lib/workspace-access.mjs';
@@ -30,6 +30,7 @@ import { writeTransactionRoute } from './lib/transaction-route.mjs';
 import { RulesPage, RuleDialog } from './features/rules/rules-page';
 import { ruleFromTransaction } from './features/rules/rule-model.mjs';
 import { SettingsPage } from './features/settings/settings-page';
+import { setStampTimeZone } from './lib/dates.mjs';
 
 export function FinancialWorkspace({ session, onSession }) {
   const { page, section, transactionQuery, changeRoute, confirmLeave, onDirtyChange } = useWorkspaceNavigation();
@@ -45,6 +46,8 @@ export function FinancialWorkspace({ session, onSession }) {
   const [rule, setRule] = useState(null);
   const { isAdmin, hasAccountAccess, hasBudgetAccess, hasFinancialAccess, canEditAccount, canNavigate } =
     workspaceAccess(session);
+  // Every stamp below renders in the zone the footer prints.
+  setStampTimeZone(session?.timeZone || 'Australia/Brisbane');
   const {
     filters,
     updateFilters,
@@ -275,6 +278,7 @@ export function FinancialWorkspace({ session, onSession }) {
       <main>
         <PageHeading
           page={page}
+          data={data}
           session={session}
           month={month}
           currency={currency}
@@ -291,7 +295,7 @@ export function FinancialWorkspace({ session, onSession }) {
         />
         {session?.demo && (
           <div className="demo-notice">
-            <Sparkles size={15} />
+            <Info size={15} />
             <span>You're exploring dolphino with fictional demo data. No bank connection is active.</span>
             <button onClick={() => navigate('Settings')}>
               Connection setup <ArrowRight size={14} />
@@ -302,7 +306,7 @@ export function FinancialWorkspace({ session, onSession }) {
           <div role="alert" className="alert alert-error">
             <AlertCircle size={18} />
             <span>{error}</span>
-            <Button variant="ghost" size="sm" onClick={load}>
+            <Button variant="outline" onClick={load}>
               Try again
             </Button>
           </div>
@@ -333,6 +337,7 @@ export function FinancialWorkspace({ session, onSession }) {
               <OverviewPage
                 data={data}
                 isAdmin={isAdmin}
+                canReview={canNavigate('Review')}
                 month={month}
                 period={period}
                 currency={currency}
@@ -382,7 +387,8 @@ export function FinancialWorkspace({ session, onSession }) {
                 reviews={data.reviews || []}
                 busy={busy}
                 onEdit={(t) => (t.manualEntryId ? setManual({ type: 'edit', entryId: t.manualEntryId }) : setEdit(t))}
-                mutate={mutate}
+                onRefresh={refreshCurrent}
+                onNotice={setNotice}
               />
             )}
             {page === 'Rules' && (

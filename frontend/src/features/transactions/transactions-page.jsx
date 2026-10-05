@@ -4,6 +4,7 @@ import { Empty } from '../../components/empty-state';
 import { money } from '../../money.mjs';
 import { CategorySelect } from '../../components/category-select';
 import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
+import { kindLabel } from '../../lib/labels.mjs';
 
 export function TransactionsPage({
   data,
@@ -128,12 +129,14 @@ export function TransactionsPage({
         <select aria-label="Filter type" value={kind} onChange={(e) => onFiltersChange({ kind: e.target.value })}>
           <option value="">All types</option>
           {['expense', 'income', 'transfer', 'refund', 'opening', 'adjustment'].map((k) => (
-            <option key={k}>{k}</option>
+            <option key={k} value={k}>
+              {kindLabel(k)}
+            </option>
           ))}
         </select>
         <Button asChild variant="outline">
           <a href={`/api/export?${query}`}>
-            <Download size={15} />
+            <Download size={16} />
             Export
           </a>
         </Button>
@@ -155,8 +158,8 @@ export function TransactionsPage({
               <tr key={t.id}>
                 <td>
                   <div className="transaction-name">
-                    <div className={`transaction-icon ${t.kind === 'income' ? 'green' : ''}`}>
-                      {t.kind === 'income' ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
+                    <div className={`transaction-icon ${BigInt(t.amountMinor || 0) > 0n ? 'incoming' : 'outgoing'}`}>
+                      {BigInt(t.amountMinor || 0) > 0n ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
                     </div>
                     <div>
                       <strong>{t.description}</strong>
@@ -165,7 +168,7 @@ export function TransactionsPage({
                           ? 'Voided · excluded from balances and reports'
                           : t.status === 'pending'
                             ? 'Pending · excluded from actuals'
-                            : t.kind || 'expense'}
+                            : kindLabel(t.kind || 'expense')}
                         {t.reviewReason ? ' · Needs review' : ''}
                       </small>
                       <div className="tag-list">
@@ -196,8 +199,7 @@ export function TransactionsPage({
                 <td>
                   {isAdmin && !t.manualEntryId && (
                     <Button
-                      size="sm"
-                      variant="ghost"
+                      variant="outline"
                       aria-label={`Create rule from ${t.description}`}
                       onClick={() => onCreateRule(t)}
                     >
@@ -208,8 +210,7 @@ export function TransactionsPage({
                     ? t.canEdit || isAdmin
                     : !t.frozen && (t.canEdit || canEditAccount(t.accountId))) && (
                     <Button
-                      size="sm"
-                      variant="ghost"
+                      variant="outline"
                       aria-label={`${t.manualEntryId && !t.canEdit ? 'View history for' : 'Edit'} ${t.description}`}
                       onClick={() => onEdit(t)}
                     >
@@ -242,18 +243,12 @@ export function TransactionsPage({
           {data.total ?? transactions.length} transactions · {currency} · Posted actuals use transaction date
         </span>
         <div className="pagination">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={txPage <= 1}
-            onClick={() => onFiltersChange({ txPage: txPage - 1 })}
-          >
+          <Button variant="outline" disabled={txPage <= 1} onClick={() => onFiltersChange({ txPage: txPage - 1 })}>
             Previous
           </Button>
           <span>Page {txPage}</span>
           <Button
             variant="outline"
-            size="sm"
             disabled={
               data.hasMore === false || (data.total != null ? txPage * 50 >= data.total : transactions.length < 50)
             }

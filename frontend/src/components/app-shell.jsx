@@ -1,25 +1,41 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   ArrowLeftRight,
   Wallet,
-  ChartNoAxesCombined,
+  PiggyBank,
   Settings,
   Inbox,
   SlidersHorizontal,
-  ShieldCheck,
+  KeyRound,
   LogOut,
-  Menu
+  Menu,
+  X
 } from 'lucide-react';
 import { GlobalSearch } from './global-search';
 import { BrandMark } from './brand';
 import { AssistantPanel } from './assistant-panel';
 import { api } from '../lib/api.mjs';
 
+const drawerQuery = '(max-width: 680px)';
+
+// The drawer is off-canvas only at phone widths; there it must leave the tab order while closed.
+function useDrawerMode() {
+  const [drawer, setDrawer] = useState(() => matchMedia(drawerQuery).matches);
+  useEffect(() => {
+    const query = matchMedia(drawerQuery);
+    const update = () => setDrawer(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return drawer;
+}
+
 const icons = {
   Overview: LayoutDashboard,
   Transactions: ArrowLeftRight,
   Accounts: Wallet,
-  Budgets: ChartNoAxesCombined,
+  Budgets: PiggyBank,
   Review: Inbox,
   Rules: SlidersHorizontal,
   Settings
@@ -43,64 +59,77 @@ export function AppShell({
   children,
   dialogs
 }) {
+  const initial = (session?.user?.name || 'Personal workspace').trim().charAt(0).toUpperCase();
+  const drawer = useDrawerMode();
+  const menuButton = useRef(null);
+  const navigation = useRef(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (!drawer) {
+      return undefined;
+    }
+
+    if (menu) {
+      wasOpen.current = true;
+      navigation.current?.querySelector('button')?.focus();
+      const close = (event) => event.key === 'Escape' && setMenu(false);
+      document.addEventListener('keydown', close);
+      return () => document.removeEventListener('keydown', close);
+    }
+
+    if (wasOpen.current) {
+      wasOpen.current = false;
+      menuButton.current?.focus();
+    }
+
+    return undefined;
+  }, [menu, drawer, setMenu]);
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${menu ? 'sidebar-open' : ''}`}>
+      <aside className={`sidebar ${menu ? 'sidebar-open' : ''}`} inert={drawer && !menu}>
         <div className="sidebar-inner">
-          <a
-            className="brand"
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              navigate('Overview');
-            }}
-          >
-            <BrandMark />
-          </a>
-          <div className="workspace">
-            <div className="workspace-avatar">S</div>
-            <div>
-              <strong>My personal finances</strong>
-              <small>Your space. Your pace.</small>
-            </div>
+          <div className="brand-row">
+            <a
+              className="brand"
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('Overview');
+              }}
+            >
+              <BrandMark />
+            </a>
+            <button className="drawer-close" aria-label="Close menu" onClick={() => setMenu(false)}>
+              <X size={20} />
+            </button>
           </div>
-          <div className="nav-label">WORKSPACE</div>
-          <nav id="workspace-navigation">
+          <nav id="workspace-navigation" ref={navigation} aria-label="Workspace">
             {Object.entries(icons)
               .filter(([name]) => canNavigate(name))
               .map(([name, Icon]) => (
                 <button
                   key={name}
                   className={`nav-item ${page === name ? 'active' : ''}`}
+                  aria-current={page === name ? 'page' : undefined}
                   onClick={() => navigate(name)}
                 >
                   <Icon size={19} />
                   <span>{name}</span>
-                  {name === 'Overview' && <span className="nav-active-dot" />}
                 </button>
               ))}
           </nav>
           <div className="sidebar-bottom">
-            <div className="privacy">
-              <ShieldCheck size={19} />
-              <div>
-                <strong>Financially yours.</strong>
-                <p>
-                  Private by design.
-                  <br />
-                  At home on your own server.
-                </p>
-              </div>
-            </div>
             <div className="profile">
-              <div className="profile-avatar">S</div>
+              <div className="profile-avatar" aria-hidden="true">
+                {initial}
+              </div>
               <div>
                 <strong>{session?.user?.name || 'Personal workspace'}</strong>
                 <small>{session?.demo ? 'Demo environment' : 'Self-hosted'}</small>
               </div>
               {!session?.demo && (
                 <button aria-label="Change password" title="Change password" onClick={() => onChangePassword()}>
-                  <ShieldCheck size={17} />
+                  <KeyRound size={17} />
                 </button>
               )}
               {!session?.demo && (
@@ -116,6 +145,7 @@ export function AppShell({
       <div className="main-shell">
         <header className="topbar">
           <button
+            ref={menuButton}
             className="mobile-menu"
             aria-label="Open menu"
             aria-expanded={menu}
@@ -133,10 +163,6 @@ export function AppShell({
                 DEMO DATA
               </span>
             )}
-            <span className="private-label">
-              <ShieldCheck size={14} />
-              Private workspace
-            </span>
           </div>
         </header>
         {children}

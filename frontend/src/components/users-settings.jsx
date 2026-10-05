@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { useSettingsDirty } from '../features/settings/settings-dirty';
 import { PasswordForm } from './auth';
+import { formatStamp } from '../lib/dates.mjs';
 export function UsersSettings({ api, session, onSession }) {
   const [data, setData] = useState({ users: [], invitations: [] }),
     [email, setEmail] = useState(''),
@@ -122,7 +123,6 @@ export function UsersSettings({ api, session, onSession }) {
               <div className="settings-actions">
                 <Button
                   variant="outline"
-                  size="sm"
                   disabled={busy || u.id === session.user?.id}
                   onClick={() => action(`/users/${u.id}`, { role: u.role === 'admin' ? 'member' : 'admin' }, 'PATCH')}
                 >
@@ -130,7 +130,6 @@ export function UsersSettings({ api, session, onSession }) {
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
                   disabled={busy || u.id === session.user?.id}
                   onClick={() => action(`/users/${u.id}`, { disabled: !u.disabled }, 'PATCH')}
                 >
@@ -138,7 +137,6 @@ export function UsersSettings({ api, session, onSession }) {
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
                   disabled={busy || u.disabled}
                   onClick={() => action(`/users/${u.id}/reset-password`)}
                 >
@@ -164,25 +162,15 @@ export function UsersSettings({ api, session, onSession }) {
                     : 'Member invitation'}{' '}
                 · {i.usedAt ? 'Used' : i.revokedAt ? 'Revoked' : i.deliveryState || 'Pending'}
                 <br />
-                Expires {new Date(i.expiresAt).toLocaleString()}
+                Expires {formatStamp(i.expiresAt)}
                 {i.lastError ? ` · ${i.lastError}` : ''}
               </p>
               {!i.usedAt && !i.revokedAt && (
                 <div className="settings-actions">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => action(`/users/invitations/${i.id}/resend`)}
-                  >
+                  <Button variant="outline" disabled={busy} onClick={() => action(`/users/invitations/${i.id}/resend`)}>
                     Resend email
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => action(`/users/invitations/${i.id}/revoke`)}
-                  >
+                  <Button variant="outline" disabled={busy} onClick={() => action(`/users/invitations/${i.id}/revoke`)}>
                     Revoke invitation
                   </Button>
                 </div>
@@ -257,7 +245,7 @@ function UserGrants({ user, catalog, busy, save }) {
     <details className="user-grants">
       <summary>Manage financial access</summary>
       <GrantFields catalog={catalog} grants={grants} setGrants={setGrants} prefix={user.email} />
-      <Button variant="outline" size="sm" disabled={busy} onClick={() => save(grants)}>
+      <Button variant="outline" disabled={busy} onClick={() => save(grants)}>
         Save access for {user.email}
       </Button>
     </details>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { useSettingsDirty } from '../features/settings/settings-dirty';
+import { formatStamp } from '../lib/dates.mjs';
 export function NotificationSettings({ api, demo }) {
   const [data, setData] = useState(null),
     [deliveries, setDeliveries] = useState([]),
@@ -315,7 +316,7 @@ export function NotificationSettings({ api, demo }) {
               <strong>Confirm the group before enabling delivery</strong>
               {pairing.expiresAt && (
                 <p className="footnote">
-                  Expires {new Date(pairing.expiresAt).toLocaleString()}. Start pairing again if this expires.
+                  Expires {formatStamp(pairing.expiresAt)}. Start pairing again if this expires.
                 </p>
               )}
               {pairing.deepLink && (
@@ -480,7 +481,6 @@ export function NotificationSettings({ api, demo }) {
           {d.status === 'failed' && (
             <Button
               variant="outline"
-              size="sm"
               disabled={busy || demo}
               onClick={() =>
                 action(() =>

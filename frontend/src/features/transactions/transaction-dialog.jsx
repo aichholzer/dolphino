@@ -9,6 +9,7 @@ import { TransactionTags } from '../../components/transaction-tags';
 import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { money, minorToDecimal } from '../../money.mjs';
 import { transactionCorrection } from './transaction-model.mjs';
+import { kindLabel } from '../../lib/labels.mjs';
 
 export function EditTransaction({ canSuggest, transaction, open, close, busy, save, serverError, onDirtyChange }) {
   const options = useCategoryOptions(transaction?.id);
@@ -73,7 +74,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
     <Dialog
       open={open}
       onOpenChange={(v) => !v && close()}
-      title="Make it your own"
+      title="Edit transaction"
       description={
         transaction
           ? `${transaction.description} · ${money(transaction.amountMinor ?? null, transaction.currency)}`
@@ -135,7 +136,9 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
             onChange={(e) => setKind(e.target.value)}
           >
             {['expense', 'income', 'transfer', 'refund'].map((k) => (
-              <option key={k}>{k}</option>
+              <option key={k} value={k}>
+                {kindLabel(k)}
+              </option>
             ))}
           </select>
         </label>
@@ -161,7 +164,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
                 }
               }}
             >
-              <Sparkles size={14} />
+              <Sparkles size={16} />
               {suggesting ? 'Getting suggestion…' : 'Suggest category with AI'}
             </Button>
             {suggestion && (
@@ -185,8 +188,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
           <strong>Split categories</strong>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="outline"
             onClick={() =>
               setSplits([
                 ...splits,
@@ -201,7 +203,7 @@ export function EditTransaction({ canSuggest, transaction, open, close, busy, sa
               ])
             }
           >
-            <Plus size={14} />
+            <Plus size={16} />
             Add split
           </Button>
         </div>

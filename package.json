@@ -35,6 +35,7 @@
     "test:browser:categories": "node frontend/test/categories-tags.browser.mjs",
     "test:browser:rules-search": "node frontend/test/rules-search.browser.mjs",
     "test:browser:reviews": "node frontend/test/reviews.browser.mjs",
+    "test:browser:review-queue": "node frontend/test/review-queue.browser.mjs",
     "test:browser:header-overview": "node frontend/test/header-overview.browser.mjs",
     "test:browser:manual": "node frontend/test/manual-accounts.browser.mjs",
     "test:browser:pocketsmith": "node frontend/test/pocketsmith.browser.mjs"

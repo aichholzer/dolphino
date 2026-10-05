@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { api } from '../../lib/api.mjs';
 import { useSettingsDirty } from './settings-dirty';
+import { formatStamp } from '../../lib/dates.mjs';
 export function AccountDataSettings({ onUpdated }) {
   const [accounts, setAccounts] = useState([]),
     [selected, setSelected] = useState([]),
@@ -87,13 +88,10 @@ export function AccountDataSettings({ onUpdated }) {
               {a.frozen ? ' · frozen' : ''}
             </label>
             {a.sourceType === 'feed' && (
-              <small>
-                Last stored feed update: {a.fetchedAt ? new Date(a.fetchedAt).toLocaleString() : 'Unavailable'}
-              </small>
+              <small>Last stored feed update: {a.fetchedAt ? formatStamp(a.fetchedAt) : 'Unavailable'}</small>
             )}
             <Button
               variant="outline"
-              size="sm"
               disabled={busy}
               onClick={() =>
                 run(async () => {
@@ -204,7 +202,7 @@ export function AccountDataSettings({ onUpdated }) {
             </form>
           )}
           <Button
-            variant="ghost"
+            variant="outline"
             disabled={busy}
             onClick={() => {
               setPreview(null);

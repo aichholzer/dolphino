@@ -48,7 +48,7 @@ try {
   await key.fill(testPocketSmithKey);
   await panel.getByRole('button', { name: 'Save PocketSmith settings' }).click();
   await expect(key).toHaveValue('');
-  await expect(key).toHaveAttribute('placeholder', 'Saved key — leave blank to keep');
+  await expect(key).toHaveAttribute('placeholder', 'Saved key: leave blank to keep');
   f.setHook(async () => ({ status: 401, body: `Provider echo: ${testPocketSmithKey}` }));
   await panel.getByRole('button', { name: 'Test and discover accounts' }).click();
   await expect(panel.getByRole('alert')).toHaveText(
@@ -70,10 +70,10 @@ try {
   await page.reload();
   await page.locator('.bank-feed-panel > summary').filter({ hasText: 'PocketSmith' }).click();
   await expect(panel).toContainText('Last successful import:');
-  await panel.getByLabel('History from — Ocean checking').fill('2026-09-01');
+  await panel.getByLabel('History from: Ocean checking').fill('2026-09-01');
   const queue = panel.getByRole('button', { name: 'Queue history for Ocean checking' });
   await expect(queue).toBeDisabled();
-  await panel.getByLabel('History to — Ocean checking').fill('2026-09-30');
+  await panel.getByLabel('History to: Ocean checking').fill('2026-09-30');
   await queue.click();
   await expect(panel).toContainText('History queued: 2026-09-01 through 2026-09-30');
   await page.locator('#workspace-navigation').getByRole('button', { name: 'Accounts', exact: true }).click();

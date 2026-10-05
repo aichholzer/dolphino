@@ -20,7 +20,7 @@ function Message({ message, onViewTransaction }) {
               {/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(c.provenance?.filters?.from || '') &&
                 /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(c.provenance?.filters?.to || '') && (
                   <small>
-                    {c.provenance.filters.from} — {c.provenance.filters.to}
+                    {c.provenance.filters.from} to {c.provenance.filters.to}
                     {c.provenance.timeZone ? ` · ${c.provenance.timeZone}` : ''}
                     {c.provenance.dateRange?.includesToday ? ' · Today is partial' : ''}
                   </small>
@@ -310,8 +310,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               ))}
             </select>
             <Button
-              variant="ghost"
-              size="sm"
+              variant="outline"
               disabled={busy}
               onClick={() => {
                 generation.current++;
@@ -322,7 +321,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                 setError('');
               }}
             >
-              <Plus size={15} />
+              <Plus size={16} />
               New
             </Button>
           </div>
@@ -336,7 +335,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                   {status?.disabledReason ||
                     'An administrator must configure the shared AI connection and enable the assistant and financial data sharing in Settings → AI features.'}
                 </p>
-                <p>Classification credentials are not reused. You can keep using dolphino without an assistant.</p>
+                <p>You can keep using dolphino without an assistant.</p>
                 <Button variant="outline" onClick={refresh}>
                   Refresh assistant status
                 </Button>
@@ -375,7 +374,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               <div role="alert" className="alert alert-error">
                 <span>{error}</span>
                 {lastQuestion && usable && !busy && (
-                  <Button variant="outline" size="sm" disabled={!ack} onClick={() => send(lastQuestion)}>
+                  <Button variant="outline" disabled={!ack} onClick={() => send(lastQuestion)}>
                     Retry question
                   </Button>
                 )}
@@ -420,12 +419,12 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               <small>Read-only tools · verify answers against cited records</small>
               {busy ? (
                 <Button type="button" variant="outline" onClick={cancel}>
-                  <Square size={14} />
+                  <Square size={16} />
                   Stop response
                 </Button>
               ) : (
                 <Button disabled={!usable || !ack || !question.trim()}>
-                  <Send size={14} />
+                  <Send size={16} />
                   Send
                 </Button>
               )}

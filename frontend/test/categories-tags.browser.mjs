@@ -58,7 +58,7 @@ try {
   await page.goto(f.url + '/#settings/categories');
   await expect(page.getByRole('heading', { name: 'Your categories', exact: true })).toBeVisible();
   await page.getByLabel('New category', { exact: true }).fill('Equipment & supplies');
-  await page.getByRole('button', { name: 'Create category', exact: true }).click();
+  await page.getByRole('button', { name: 'Add category', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Rename Equipment & supplies', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Rename Equipment & supplies', exact: true })).toBeVisible();
@@ -68,7 +68,7 @@ try {
   await expect(page.getByRole('button', { name: 'Rename Journeys', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   const review = page.locator('.review-row').filter({ hasText: 'Train to conference' });
-  await expect(review.getByRole('button', { name: 'Accept current classification', exact: true })).toBeVisible();
+  await expect(review.getByRole('button', { name: 'Accept classification', exact: true })).toBeVisible();
   await expect(review.getByRole('button', { name: 'Keep separate', exact: true })).toHaveCount(0);
   await review.getByRole('button', { name: 'Review details', exact: true }).click();
   let dialog = page.getByRole('dialog');
@@ -88,7 +88,7 @@ try {
   assert.equal((await f.store.getTransaction(f.tx.id)).reviewRequired, true, 'tags alone must not dismiss review');
   const transferReview = page.locator('.review-row').filter({ hasText: 'Confidential repayment' });
   await expect(transferReview).toContainText('excluded from income and spending totals');
-  await transferReview.getByRole('button', { name: 'Accept current classification', exact: true }).click();
+  await transferReview.getByRole('button', { name: 'Accept classification', exact: true }).click();
   assert.equal((await f.store.getTransaction(f.transfer.id)).kind, 'transfer');
   const pairReview = page.locator('.review-row').filter({ hasText: 'Posted hotel' });
   await expect(pairReview.getByRole('button', { name: 'Link pending', exact: true })).toBeVisible();

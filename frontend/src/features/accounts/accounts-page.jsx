@@ -1,28 +1,30 @@
 import { BalanceSummary } from './balance-summary';
-import { Landmark, ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight, Clock, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Empty } from '../../components/empty-state';
 import { money } from '../../money.mjs';
+import { formatStamp } from '../../lib/dates.mjs';
+import { stateLabel } from '../../lib/labels.mjs';
 
 export function AccountsPage({ accounts, canEditAccount, onEdit, onViewTransactions, isAdmin, onManual }) {
   return (
     <>
       <BalanceSummary accounts={accounts} />
       {isAdmin && (
-        <div className="account-add">
-          <Button onClick={() => onManual({ type: 'account' })}>Add manual account</Button>
+        <div className="section-toolbar">
+          <Button onClick={() => onManual({ type: 'account' })}>
+            <Plus size={16} />
+            Add manual account
+          </Button>
         </div>
       )}
       <div className="account-grid">
         {accounts.map((a) => (
           <section className="card account-card" key={a.id}>
             <div className="account-heading">
-              <div className="bank-icon">
-                <Landmark size={24} />
-              </div>
               <div className="account-controls">
                 {!a.frozen && (a.canEdit || canEditAccount(a.id)) && (
-                  <Button variant="ghost" size="sm" aria-label={`Edit account ${a.name}`} onClick={() => onEdit(a)}>
+                  <Button variant="outline" aria-label={`Edit account ${a.name}`} onClick={() => onEdit(a)}>
                     Edit
                   </Button>
                 )}
@@ -39,7 +41,7 @@ export function AccountsPage({ accounts, canEditAccount, onEdit, onViewTransacti
                 View transactions <ArrowRight size={14} />
               </span>
             </button>
-            <p className="status-pill">
+            <p className={`status-pill ${a.frozen ? 'frozen' : ''}`}>
               {a.sourceType === 'manual' ? 'Manual' : 'Feed'}
               {a.frozen ? ' · Frozen · balance excluded' : ' · Active'}
             </p>
@@ -53,35 +55,31 @@ export function AccountsPage({ accounts, canEditAccount, onEdit, onViewTransacti
                       ['transfer', 'Transfer'],
                       ['adjustment', 'Adjust balance']
                     ].map(([type, label]) => (
-                      <Button key={type} size="sm" variant="outline" onClick={() => onManual({ type, account: a })}>
+                      <Button key={type} variant="outline" onClick={() => onManual({ type, account: a })}>
+                        {type === 'activity' && <Plus size={16} />}
                         {label}
                       </Button>
                     ))}
                   </>
                 )}
                 <Button
-                  size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => onManual({ type: 'lifecycle', action: a.frozen ? 'unfreeze' : 'freeze', account: a })}
                 >
                   {a.frozen ? 'Unfreeze' : 'Freeze'}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onManual({ type: 'lifecycle', action: 'delete', account: a })}
-                >
+                <Button variant="outline" onClick={() => onManual({ type: 'lifecycle', action: 'delete', account: a })}>
                   Delete account
                 </Button>
               </div>
             )}
             <div className="account-meta">
               <span>
-                {a.balanceType || 'Reported'} balance ·{' '}
+                {stateLabel(a.balanceType || 'reported')} balance ·{' '}
                 {a.coverage?.source === 'pocketsmith' && a.coverage.balanceDate
                   ? `Provider balance date ${a.coverage.balanceDate}`
                   : a.balanceAt
-                    ? new Date(a.balanceAt).toLocaleString()
+                    ? formatStamp(a.balanceAt)
                     : 'No balance timestamp'}
               </span>
               <span>
@@ -89,7 +87,7 @@ export function AccountsPage({ accounts, canEditAccount, onEdit, onViewTransacti
                 {a.sourceType === 'manual'
                   ? 'Entered locally · no feed'
                   : a.fetchedAt
-                    ? new Date(a.fetchedAt).toLocaleString()
+                    ? `Synced ${formatStamp(a.fetchedAt)}`
                     : 'Not yet synced'}
               </span>
               <span>{a.reconciliationReason || 'Not reconciled: no compatible balance coverage.'}</span>

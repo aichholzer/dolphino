@@ -56,7 +56,7 @@ export function SettingsPage({
         ))}
       </nav>
       <div className="settings-content">
-        <div className="settings-section-heading">
+        <div className="settings-section-heading sr-only">
           <h2 tabIndex={-1} ref={heading}>
             {active.label}
           </h2>

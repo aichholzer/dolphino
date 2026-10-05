@@ -271,13 +271,15 @@ try {
       await page.goto(base);
       await page.getByRole('button', { name: 'Review', exact: true }).click();
       await page.getByRole('button', { name: 'Dismiss warning', exact: true }).click();
+      // Overview also reads the review count, so only calls after the Review page loaded count here.
+      const reviewLoads = state.calls.filter((call) => call.path === '/api/reviews').length;
       await expect.poll(() => !!heldMutation).toBe(true);
       await page.getByRole('button', { name: 'Accounts', exact: true }).click();
       await page.getByRole('heading', { name: priorAccount.name, exact: true }).waitFor();
       await heldMutation.fulfill({ json: { message: 'Review resolved' } });
       await expect.poll(() => state.calls.filter((call) => call.path === '/api/accounts').length).toBe(2);
       await page.getByRole('heading', { name: priorAccount.name, exact: true }).waitFor();
-      assert.equal(state.calls.filter((call) => call.path === '/api/reviews').length, 1);
+      assert.equal(state.calls.filter((call) => call.path === '/api/reviews').length, reviewLoads);
       await state.assertNoStorageAccess();
       assert.deepEqual(state.errors, []);
       console.log('Passed delayed mutation after navigation: the current page is refreshed');

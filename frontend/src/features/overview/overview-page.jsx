@@ -1,38 +1,39 @@
+import { useEffect, useState } from 'react';
+import { AlertCircle, ChevronRight, ArrowUpRight, ArrowLeftRight, Clock, ArrowRight, Inbox } from 'lucide-react';
 import { BalanceSummary } from '../accounts/balance-summary';
-import {
-  AlertCircle,
-  ChevronRight,
-  ArrowDownLeft,
-  ArrowUpRight,
-  ChartNoAxesCombined,
-  ArrowLeftRight,
-  ShieldCheck,
-  Clock,
-  ArrowRight
-} from 'lucide-react';
+import { api } from '../../lib/api.mjs';
 import { money } from '../../money.mjs';
 import { Empty } from '../../components/empty-state';
+import { formatStamp } from '../../lib/dates.mjs';
 
-export function OverviewPage({ data, isAdmin, month, period, currency, navigate, drill }) {
+export function OverviewPage({ data, isAdmin, canReview, month, period, currency, navigate, drill }) {
+  const reviewCount = useReviewCount(canReview);
   return (
     <>
       <BalanceSummary accounts={data.accounts || []} />
-      {data.alerts?.length > 0 && (
+      {(data.alerts?.length > 0 || reviewCount > 0) && (
         <div className="budget-alerts">
-          {data.alerts.map((a, i) => (
+          {data.alerts?.map((a, i) => (
             <button key={i} onClick={() => navigate('Budgets')}>
               <AlertCircle size={14} />
               {a.message} · {money(a.amountMinor, currency)}
               <ChevronRight size={13} />
             </button>
           ))}
+          {reviewCount > 0 && (
+            <button className="review-chip" onClick={() => navigate('Review')}>
+              <Inbox size={14} />
+              {reviewCount} {reviewCount === 1 ? 'transaction needs' : 'transactions need'} review
+              <ChevronRight size={13} />
+            </button>
+          )}
         </div>
       )}
       {!isAdmin && (
         <p className="setup-note">Overview totals include only accounts shared with you. Budget access is separate.</p>
       )}
       <p className="period-caption">
-        {data.startDate || data.monthly?.[0]?.month || month} — {data.endDate || month} · {period}{' '}
+        {data.startDate || data.monthly?.[0]?.month || month} to {data.endDate || month} · {period}{' '}
         {period === 1 ? 'month' : 'months'}
       </p>
       <div className="metric-grid">
@@ -40,24 +41,18 @@ export function OverviewPage({ data, isAdmin, month, period, currency, navigate,
           title="Total income"
           value={money(data.incomeMinor, currency)}
           subtitle="Posted income in selected period"
-          icon={ArrowDownLeft}
-          color="green"
           onClick={() => drill({ ids: data.transactionIds?.income })}
         />
         <Metric
           title="Total spending"
           value={money(data.expensesMinor, currency)}
           subtitle="Transfers excluded · refunds included"
-          icon={ArrowUpRight}
-          color="orange"
           onClick={() => drill({ ids: data.transactionIds?.expenses })}
         />
         <Metric
           title="Net cash flow"
           value={money(data.netMinor, currency)}
           subtitle="Income minus spending"
-          icon={ChartNoAxesCombined}
-          color="ocean"
           onClick={() =>
             drill({
               ids: [...(data.transactionIds?.income || []), ...(data.transactionIds?.expenses || [])]
@@ -147,7 +142,7 @@ export function OverviewPage({ data, isAdmin, month, period, currency, navigate,
               Spending
             </div>
           </div>
-          <CashChart rows={data.trend || []} currency={currency} />
+          <CashChart rows={data.trend || []} start={data.startDate} end={data.endDate} currency={currency} />
         </section>
         <section className="card">
           <div className="card-heading">
@@ -166,22 +161,20 @@ export function OverviewPage({ data, isAdmin, month, period, currency, navigate,
           <CategoryChart
             rows={data.categories || []}
             currency={currency}
-            onSelect={(category) =>
-              drill({
-                category,
-                ids: data.categories?.find((c) => c.category === category)?.transactionIds
-              })
+            onSelect={(category, ids) =>
+              drill(
+                category
+                  ? { category, ids: data.categories?.find((c) => c.category === category)?.transactionIds }
+                  : { ids }
+              )
             }
           />
         </section>
       </div>
       <div className="overview-bottom">
         <section className="card coverage-card">
-          <div className="coverage-icon">
-            <ShieldCheck size={24} />
-          </div>
           <div>
-            <h2>A picture you can trust</h2>
+            <h2>Freshness and coverage</h2>
             <p>
               {data.coverage?.reason ||
                 'Totals include imported posted transactions for this month and currency. Bank balances are separate snapshots.'}
@@ -190,7 +183,7 @@ export function OverviewPage({ data, isAdmin, month, period, currency, navigate,
               <span>
                 <Clock size={13} />
                 {data.coverage?.fetchedAt
-                  ? `Updated ${new Date(data.coverage.fetchedAt).toLocaleString()}`
+                  ? `Updated ${formatStamp(data.coverage.fetchedAt)}`
                   : 'Freshness depends on your bank connection'}
               </span>
               <button onClick={() => navigate('Accounts')}>
@@ -200,7 +193,7 @@ export function OverviewPage({ data, isAdmin, month, period, currency, navigate,
           </div>
         </section>
         <section className="card pending-card">
-          <span className="label">PENDING TRANSACTIONS</span>
+          <h2>Pending transactions</h2>
           <strong>{money(data.pendingMinor, currency)}</strong>
           <p>Shown separately until posted.</p>
           <button onClick={() => drill({ status: 'pending' })}>
@@ -212,14 +205,29 @@ export function OverviewPage({ data, isAdmin, month, period, currency, navigate,
   );
 }
 
-function Metric({ title, value, subtitle, icon: Icon, color, onClick }) {
+function useReviewCount(enabled) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
+    let live = true;
+    api('/reviews')
+      .then((result) => live && setCount(result.reviews?.length ?? 0))
+      .catch(() => live && setCount(0));
+    return () => {
+      live = false;
+    };
+  }, [enabled]);
+  return count;
+}
+
+function Metric({ title, value, subtitle, onClick }) {
   return (
     <button className="card metric" onClick={onClick}>
       <div className="metric-top">
         <span>{title}</span>
-        <div className={`metric-icon ${color}`}>
-          <Icon size={18} />
-        </div>
       </div>
       <strong>{value}</strong>
       <div className="metric-bottom">
@@ -230,11 +238,58 @@ function Metric({ title, value, subtitle, icon: Icon, color, onClick }) {
   );
 }
 
-function CashChart({ rows, currency }) {
-  const max = Math.max(
+const DAY = 86400000;
+const utc = (date) => Date.parse(`${date}T00:00:00Z`);
+const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+const monthName = new Intl.DateTimeFormat('en-AU', { month: 'short', timeZone: 'UTC' });
+
+// One column per calendar day, so quiet days keep their place on the time axis.
+function calendarDays(rows, start, end) {
+  if (!rows.length) {
+    return [];
+  }
+
+  const byDate = new Map(rows.map((r) => [r.date || r.label, r]));
+  const first = utc(start || rows[0].date || rows[0].label);
+  const lastRow = utc(rows.at(-1).date || rows.at(-1).label);
+  const today = utc(new Date().toLocaleDateString('en-CA'));
+  const last = Math.max(lastRow, Math.min(Math.max(today, first), end ? utc(end) : lastRow));
+  const days = [];
+  for (let at = first; at <= last && days.length < 400; at += DAY) {
+    const date = isoDay(at);
+    const row = byDate.get(date);
+    days.push({ date, incomeMinor: row?.incomeMinor || '0', expensesMinor: row?.expensesMinor || '0' });
+  }
+
+  return days;
+}
+
+const whole = (minor, currency) => money(String(Math.round(minor / 100) * 100), currency).replace(/\.00$/, '');
+
+function CashChart({ rows, start, end, currency }) {
+  const days = calendarDays(rows, start, end);
+  const peak = Math.max(
     1,
-    ...rows.flatMap((r) => [Math.abs(Number(r.incomeMinor || 0)), Math.abs(Number(r.expensesMinor || 0))])
+    ...days.flatMap((r) => [Math.abs(Number(r.incomeMinor || 0)), Math.abs(Number(r.expensesMinor || 0))])
   );
+  // Three even gridline steps on a round number, so the axis reads $2,500 · $5,000 · $7,500.
+  const raw = peak / 3;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * power).find((s) => s >= raw);
+  const max = step * 3;
+  const height = (value) => {
+    const amount = Math.abs(Number(value || 0));
+    return amount ? `${Math.max(2, (amount / max) * 100)}%` : '0';
+  };
+
+  const label = (day, i) => {
+    if (days.length > 62) {
+      return day.date.endsWith('-01') ? monthName.format(utc(day.date)) : '';
+    }
+
+    return i % 7 === 0 ? day.date.slice(8) : '';
+  };
+
   return (
     <div className="cash-chart">
       <div className="chart-grid-lines">
@@ -243,30 +298,57 @@ function CashChart({ rows, currency }) {
         <span />
         <span />
       </div>
-      {rows.length ? (
-        <div className="chart-bars">
-          {rows.map((r, i) => (
-            <div key={i} className="chart-column">
-              <div className="bar-pair">
-                <div
-                  className="bar income-bar"
-                  title={`Income ${money(r.incomeMinor, currency)}`}
-                  style={{
-                    height: `${Math.max(2, (Math.abs(Number(r.incomeMinor || 0)) / max) * 100)}%`
-                  }}
-                />
-                <div
-                  className={`bar expense-bar ${BigInt(r.expensesMinor || 0) < 0n ? 'refund-bar' : ''}`}
-                  title={`${BigInt(r.expensesMinor || 0) < 0n ? 'Refund reduces spending' : 'Spending'} ${money(r.expensesMinor, currency)}`}
-                  style={{
-                    height: `${Math.max(2, (Math.abs(Number(r.expensesMinor || 0)) / max) * 100)}%`
-                  }}
-                />
+      {days.length ? (
+        <>
+          <div className="chart-axis" aria-hidden="true">
+            <span>{whole(max, currency)}</span>
+            <span>{whole((max * 2) / 3, currency)}</span>
+            <span>{whole(max / 3, currency)}</span>
+            <span />
+          </div>
+          <div className="chart-bars" style={{ gap: days.length > 45 ? '1px' : '5px' }} aria-hidden="true">
+            {days.map((r, i) => (
+              <div key={r.date} className="chart-column">
+                <div className="bar-pair">
+                  <div
+                    className="bar income-bar"
+                    title={`${r.date} income ${money(r.incomeMinor, currency)}`}
+                    style={{ height: height(r.incomeMinor) }}
+                  />
+                  <div
+                    className={`bar expense-bar ${BigInt(r.expensesMinor || 0) < 0n ? 'refund-bar' : ''}`}
+                    title={`${r.date} ${BigInt(r.expensesMinor || 0) < 0n ? 'refund reduces spending' : 'spending'} ${money(r.expensesMinor, currency)}`}
+                    style={{ height: height(r.expensesMinor) }}
+                  />
+                </div>
+                <span>{label(r, i)}</span>
               </div>
-              <span>{rows.length > 15 ? (i % 5 === 0 ? r.label.slice(-2) : '') : r.label.slice(5)}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+          <div className="sr-only">
+            <table>
+              <caption>Daily posted income and spending</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Income</th>
+                  <th scope="col">Spending</th>
+                </tr>
+              </thead>
+              <tbody>
+                {days
+                  .filter((r) => BigInt(r.incomeMinor || 0) !== 0n || BigInt(r.expensesMinor || 0) !== 0n)
+                  .map((r) => (
+                    <tr key={r.date}>
+                      <td>{r.date}</td>
+                      <td>{money(r.incomeMinor, currency)}</td>
+                      <td>{money(r.expensesMinor, currency)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <div className="chart-empty">No posted activity in this period.</div>
       )}
@@ -283,10 +365,13 @@ function CategoryChart({ rows, currency, onSelect }) {
     'var(--chart-sun)',
     'var(--chart-tide)'
   ];
+  const shown = rows.slice(0, 6);
+  const rest = rows.slice(6);
+  const other = rest.reduce((sum, r) => sum + BigInt(r.amountMinor || 0), 0n);
   const max = Math.max(1, ...rows.map((r) => Math.abs(Number(r.amountMinor || 0))));
   return (
     <div className="category-chart">
-      {rows.slice(0, 6).map((r, i) => (
+      {shown.map((r, i) => (
         <button key={r.category} onClick={() => onSelect(r.category)} className="category-row">
           <div className="category-line">
             <span>
@@ -305,10 +390,29 @@ function CategoryChart({ rows, currency, onSelect }) {
           </div>
         </button>
       ))}
+      {rest.length > 0 && (
+        <button
+          className="category-row other"
+          onClick={() =>
+            onSelect(
+              null,
+              rest.flatMap((r) => r.transactionIds || [])
+            )
+          }
+        >
+          <div className="category-line">
+            <span>
+              <i />
+              Other · {rest.length} {rest.length === 1 ? 'category' : 'categories'}
+            </span>
+            <strong>{money(other.toString(), currency)}</strong>
+          </div>
+        </button>
+      )}
       {!rows.length && (
         <Empty
-          title="Room for your next chapter"
-          detail="Category spending appears when posted expenses are imported."
+          title="No spending yet"
+          detail="Category totals appear when posted expenses are imported for this period."
         />
       )}
     </div>

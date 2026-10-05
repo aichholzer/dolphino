@@ -2,6 +2,35 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.0 - 2026-10-05
+
+### Added
+
+- Review queue: select items, or all of them, and resolve them in one action. Each item is still resolved and audited on its own; any that fail stay selected and are named with their error.
+- Review keyboard flow: ↑ ↓ or J K to move, A to resolve, X or Space to select and Enter for details. Focus moves to the next item after each resolve.
+- Possible-replacement reviews offer a picker of pending transactions in the same account and currency, closest amount first, with an exact amount preselected. Linking still needs an explicit Link pending.
+- Overview shows how many transactions need review and links to the Review queue.
+
+### Changed
+
+- Cards, menu items, buttons, inputs and notices use 10px squircle corners, and tags use 8px. Cards and menu items have no accent stripes; the selected menu item has a darker fill and a contrasting border.
+- One button system across the app: filled for the main action of a page, form or dialog, bordered for every other action, with one size and padding. Every Add action carries a plus icon, and page-level Add buttons sit on the right.
+- Checkboxes and select chevrons are styled to match the ocean palette.
+- Review items list Type, Category, Reason and Transaction, and one note above the queue explains what accepting does. "Accept current classification" reads "Accept classification".
+- Settings sections have no nested cards or repeated titles, use one 16px rhythm, and show expandable details in a tinted panel. All Settings prose is 12px.
+- List rows share one padding, budget cards match account cards, and transaction arrows are sea green for money in and coral for money out.
+- Page subtitles state what the page holds, such as counts and the last feed update. Helper prose keeps a 75-character measure and no text is smaller than 12px.
+- The Overview cash chart has a labelled axis with round steps and a screen-reader table; the category chart groups the remainder as Other.
+- Deleting a rule asks for confirmation inline. "Create category" reads "Add category".
+- On mobile, the navigation drawer has a close button, closes with Escape and returns focus to the menu button.
+
+### Fixed
+
+- Dates and times read "3 Oct 2026, 04:54 pm" in the household time zone on every screen.
+- Transaction rows show the incoming arrow for every positive amount, including refunds and incoming transfers.
+- Stored values such as transaction kinds and connection states display as words.
+- PocketSmith and SimpleFIN action buttons are spaced. Four PocketSmith buttons had used an undefined button style and rendered unstyled.
+
 ## 0.1.4 - 2026-10-05
 
 ### Removed

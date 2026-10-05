@@ -20,7 +20,7 @@ export function AccountDialog({ account, close, busy, error, save, onDirtyChange
     <Dialog
       open={!!account}
       onOpenChange={(v) => !v && close()}
-      title="Your account details"
+      title="Edit account"
       description={
         account?.sourceType === 'manual'
           ? 'Edit this manual account’s label and description.'

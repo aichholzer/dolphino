@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Plus, X } from 'lucide-react';
 import { Dialog } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import { CategorySelect } from '../../components/category-select';
@@ -7,6 +8,7 @@ import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { useDraftGuard } from '../../hooks/use-draft-guard.mjs';
 import { api } from '../../lib/api.mjs';
 import { decimalToMinor, minorToDecimal, money } from '../../money.mjs';
+import { formatStamp } from '../../lib/dates.mjs';
 
 export function ManualDialog({ draft, close, saved, canEditAccount, onDirtyChange, timeZone }) {
   const [values, setValues] = useState({}),
@@ -398,6 +400,8 @@ export function ManualDialog({ draft, close, saved, canEditAccount, onDirtyChang
                         <Button
                           type="button"
                           variant="ghost"
+                          size="icon"
+                          aria-label={`Remove split ${i + 1}`}
                           onClick={() =>
                             change(
                               'splits',
@@ -405,7 +409,7 @@ export function ManualDialog({ draft, close, saved, canEditAccount, onDirtyChang
                             )
                           }
                         >
-                          Remove
+                          <X size={16} />
                         </Button>
                       </div>
                     ))}
@@ -419,6 +423,7 @@ export function ManualDialog({ draft, close, saved, canEditAccount, onDirtyChang
                         ])
                       }
                     >
+                      <Plus size={16} />
                       Add split
                     </Button>
                   </>
@@ -461,7 +466,7 @@ export function ManualDialog({ draft, close, saved, canEditAccount, onDirtyChang
                   <strong>
                     {a.action.replaceAll('-', ' ')} · {a.actor_name}
                   </strong>
-                  <small>{new Date(a.created_at).toLocaleString()}</small>
+                  <small>{formatStamp(a.created_at)}</small>
                   {a.before_value?.transactions?.map((t) => (
                     <p key={t.id}>
                       Before: {t.date} · {money(t.amountMinor, t.currency)} · {t.description} · {t.category}{' '}
@@ -481,7 +486,7 @@ export function ManualDialog({ draft, close, saved, canEditAccount, onDirtyChang
           )}
           <div className="dialog-actions">
             <Button type="button" variant="outline" onClick={safeClose}>
-              Close
+              {readOnly ? 'Close' : 'Cancel'}
             </Button>
             {entry && !readOnly && entry.type !== 'opening' && (
               <Button

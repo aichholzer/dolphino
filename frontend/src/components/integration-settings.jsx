@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { useSettingsDirty } from '../features/settings/settings-dirty';
+import { formatStamp } from '../lib/dates.mjs';
+import { stateLabel } from '../lib/labels.mjs';
 
 export function IntegrationSettings({ api, demo, onUpdated, status }) {
   const [webhook, setWebhook] = useState(null),
@@ -275,7 +277,7 @@ export function IntegrationSettings({ api, demo, onUpdated, status }) {
             </div>
             <div>
               <dt>Last poll</dt>
-              <dd>{status?.lastPollAt ? new Date(status.lastPollAt).toLocaleString() : 'Not yet run'}</dd>
+              <dd>{status?.lastPollAt ? formatStamp(status.lastPollAt) : 'Not yet run'}</dd>
             </div>
           </dl>
         </details>
@@ -290,7 +292,7 @@ export function IntegrationSettings({ api, demo, onUpdated, status }) {
         <dl>
           <div>
             <dt>Registration</dt>
-            <dd>{webhook?.state || 'Not registered'}</dd>
+            <dd>{stateLabel(webhook?.state) || 'Not registered'}</dd>
           </div>
           <div>
             <dt>Destination</dt>
@@ -354,7 +356,7 @@ export function IntegrationSettings({ api, demo, onUpdated, status }) {
               </Button>
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 disabled={busy}
                 onClick={() =>
                   action(async () => {

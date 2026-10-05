@@ -57,7 +57,7 @@ try {
   await expect(dialog.locator('.assistant-markdown em')).toHaveText('Eating out');
   await expect(dialog.locator('.assistant-markdown li')).toHaveCount(2);
   await expect(dialog.locator('.assistant-message-assistant')).toContainText('1–31 August 2026');
-  await expect(dialog.locator('.assistant-citations')).toContainText('2026-08-01 — 2026-08-31 · America/Los_Angeles');
+  await expect(dialog.locator('.assistant-citations')).toContainText('2026-08-01 to 2026-08-31 · America/Los_Angeles');
   assert.equal(f.calls.length, 3);
   const reportLink = dialog.getByRole('link', { name: 'Download authorized report' }).last();
   const response = await context.request.get(f.url + (await reportLink.getAttribute('href')));

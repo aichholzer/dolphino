@@ -109,6 +109,8 @@ await page.context().route('**/*', async (route) => {
         { ...moneyReport, month: '2026-09', partial: true }
       ]
     };
+  } else if (path === '/api/reviews') {
+    data = { reviews: [] };
   } else if (path === '/api/accounts') {
     data = {
       accounts: [

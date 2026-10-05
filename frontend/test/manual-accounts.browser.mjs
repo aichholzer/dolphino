@@ -151,10 +151,10 @@ try {
   await wallet.getByRole('button', { name: 'Add entry', exact: true }).click();
   await dialog.getByLabel('Description', { exact: true }).fill('Unsaved draft');
   page.once('dialog', (d) => d.dismiss());
-  await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).last().click();
   await expect(dialog).toBeVisible();
   page.once('dialog', (d) => d.accept());
-  await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).last().click();
   await expect(dialog).toBeHidden();
 
   await page.getByRole('button', { name: 'Add manual account', exact: true }).click();

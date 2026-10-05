@@ -37,7 +37,7 @@ export function BudgetDialog({ budget, close, busy, save, serverError, currency,
     <Dialog
       open={!!budget}
       onOpenChange={(v) => !v && close()}
-      title="Make a little plan"
+      title={budget?.id ? 'Edit budget' : 'Add budget'}
       description="Set a monthly category spending cap."
     >
       <form

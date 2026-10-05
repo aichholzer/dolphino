@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { useSettingsDirty } from '../features/settings/settings-dirty';
+import { formatStamp } from '../lib/dates.mjs';
 export function ImportHealth({ api, demo }) {
   const [data, setData] = useState(null),
     [error, setError] = useState(''),
@@ -96,10 +97,10 @@ export function ImportHealth({ api, demo }) {
             {a.postedCount || 0} posted · {a.pendingCount || 0} pending · {a.currency}
             <br />
             {a.firstTransactionDate
-              ? `${String(a.firstTransactionDate).slice(0, 10)} — ${String(a.lastTransactionDate).slice(0, 10)}`
+              ? `${String(a.firstTransactionDate).slice(0, 10)} to ${String(a.lastTransactionDate).slice(0, 10)}`
               : 'No imported transactions'}
             <br />
-            Last fetched: {a.fetchedAt ? new Date(a.fetchedAt).toLocaleString() : 'Not yet fetched'}
+            Last fetched: {a.fetchedAt ? formatStamp(a.fetchedAt) : 'Not yet fetched'}
           </p>
         </div>
       ))}
@@ -155,12 +156,11 @@ export function ImportHealth({ api, demo }) {
           </strong>
           <p className="footnote">
             {j.attempts} attempts{j.lastError ? ` · ${j.lastError}` : ''}
-            {j.availableAt ? ` · eligible ${new Date(j.availableAt).toLocaleString()}` : ''}
+            {j.availableAt ? ` · eligible ${formatStamp(j.availableAt)}` : ''}
           </p>
           {j.lastError && (
             <Button
               variant="outline"
-              size="sm"
               disabled={busy || demo}
               onClick={() => action('/import-health/retry', { jobId: j.id })}
             >

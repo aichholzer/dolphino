@@ -1,8 +1,78 @@
-export function PageHeading({ page, session, month, currency, period, setPeriod, onMonthChange, onCurrencyChange }) {
+import { formatStamp } from '../lib/dates.mjs';
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// The line under each headline states what is on the page right now, from the loaded report.
+function pageDetail(page, data) {
+  switch (page) {
+    case 'Overview': {
+      if (!data.accounts || data.incomeMinor === undefined) {
+        return '';
+      }
+
+      const active = data.accounts.filter((a) => a.includedInBalance !== false && !a.frozen && !a.deleted);
+      const synced = active
+        .map((a) => a.fetchedAt)
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+      return [plural(active.length, 'active account'), synced && `feeds updated ${formatStamp(synced)}`]
+        .filter(Boolean)
+        .join(' · ');
+    }
+
+    case 'Transactions':
+      return data.transactions ? plural(data.total ?? data.transactions.length, 'transaction') : '';
+    case 'Accounts': {
+      if (!data.accounts) {
+        return '';
+      }
+
+      const manual = data.accounts.filter((a) => a.sourceType === 'manual').length;
+      return [
+        plural(data.accounts.length, 'account'),
+        plural(data.accounts.length - manual, 'bank feed'),
+        `${manual} manual`
+      ].join(' · ');
+    }
+
+    case 'Budgets': {
+      if (!data.budgets) {
+        return '';
+      }
+
+      const over = data.budgets.filter((b) => BigInt(b.remainingMinor || 0) < 0n).length;
+      return data.budgets.length ? `${plural(data.budgets.length, 'budget')} · ${over} over` : 'No budgets yet';
+    }
+
+    case 'Review':
+      if (!data.reviews) {
+        return '';
+      }
+
+      return data.reviews.length ? `${plural(data.reviews.length, 'item')} to review` : 'Nothing to review';
+    case 'Rules':
+      return data.rules ? `${plural(data.rules.length, 'rule')} · the first match wins` : '';
+    default:
+      return 'Bank feeds, categories, members, notifications, data and AI features';
+  }
+}
+
+export function PageHeading({
+  page,
+  data = {},
+  session,
+  month,
+  currency,
+  period,
+  setPeriod,
+  onMonthChange,
+  onCurrencyChange
+}) {
+  const detail = pageDetail(page, data);
   return (
     <div className="page-heading">
       <div>
-        <div className="eyebrow">A LITTLE MORE CLARITY</div>
         <h1>
           {page === 'Overview'
             ? 'Your money, at a glance.'
@@ -18,19 +88,7 @@ export function PageHeading({ page, session, month, currency, period, setPeriod,
                       ? 'Less sorting. More living.'
                       : 'Your workspace, your way.'}
         </h1>
-        <p>
-          {
-            {
-              Overview: 'A clear picture of where you stand and where your money goes.',
-              Transactions: 'Search, organize, and make sense of every transaction.',
-              Accounts: 'Balances from your bank, with freshness you can see.',
-              Budgets: 'Simple monthly limits to keep your priorities in focus.',
-              Review: 'Resolve uncertainty before it becomes part of your picture.',
-              Rules: 'Consistent categories, automatically applied.',
-              Settings: 'Manage your connection and keep your data in your hands.'
-            }[page]
-          }
-        </p>
+        <p className="page-detail">{detail}</p>
       </div>
       {['Overview', 'Transactions', 'Budgets'].includes(page) && (
         <div className="period-controls">

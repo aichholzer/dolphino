@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { useSettingsDirty } from './settings-dirty';
 import { money } from '../../money.mjs';
+import { formatStamp } from '../../lib/dates.mjs';
 
 const explain = (code) =>
   ({
@@ -138,7 +139,7 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
               type="password"
               autoComplete="new-password"
               value={key}
-              placeholder={state.configured ? 'Saved key — leave blank to keep' : 'Your personal developer key'}
+              placeholder={state.configured ? 'Saved key: leave blank to keep' : 'Your personal developer key'}
               disabled={disabled || !state.encryptionAvailable}
               onChange={(e) => setKey(e.target.value)}
             />
@@ -163,7 +164,7 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
             />{' '}
             Enable PocketSmith imports
           </label>
-          <div className="button-row">
+          <div className="settings-actions">
             <Button
               disabled={disabled || (!!key && !state.encryptionAvailable)}
               onClick={() => action('', { key, enabled: key ? false : enabled, backfillDays: Number(days) }, 'PUT')}
@@ -171,14 +172,14 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
               Save PocketSmith settings
             </Button>
             <Button
-              variant="secondary"
+              variant="outline"
               disabled={disabled || !state.configured || !!key || dirty}
               onClick={() => action('/test', {})}
             >
               Test and discover accounts
             </Button>
             <Button
-              variant="secondary"
+              variant="outline"
               disabled={disabled || !state.configured}
               onClick={() => action('', { key: null, enabled: false, backfillDays: Number(days) }, 'PUT')}
             >
@@ -212,9 +213,7 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
                   {(account.frozen || account.deleted) && (
                     <p>{account.deleted ? 'Hidden locally' : 'Frozen locally'}; enabled imports continue.</p>
                   )}
-                  {account.lastSuccess && (
-                    <p>Last successful import: {new Date(account.lastSuccess).toLocaleString()}</p>
-                  )}
+                  {account.lastSuccess && <p>Last successful import: {formatStamp(account.lastSuccess)}</p>}
                   {account.lastError && <p role="alert">{explain(account.lastError)}</p>}
                   {account.backfillNext && (
                     <p>
@@ -222,7 +221,7 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
                     </p>
                   )}
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     disabled={disabled || dirty || !!key || !state.verified}
                     onClick={() => action('/account', { accountId: account.id, enabled: !account.enabled })}
                   >
@@ -230,7 +229,7 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
                   </Button>
                   <div className="form-grid">
                     <label>
-                      History from — {account.name}
+                      History from: {account.name}
                       <input
                         type="date"
                         disabled={disabled}
@@ -241,7 +240,7 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
                       />
                     </label>
                     <label>
-                      History to — {account.name}
+                      History to: {account.name}
                       <input
                         type="date"
                         disabled={disabled}
@@ -253,7 +252,6 @@ export function PocketSmithSettings({ api, demo, onUpdated }) {
                     </label>
                   </div>
                   <Button
-                    variant="secondary"
                     disabled={
                       disabled ||
                       dirty ||
