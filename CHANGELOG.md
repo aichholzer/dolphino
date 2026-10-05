@@ -2,6 +2,13 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.3 - 2026-10-05
+
+### Fixed
+
+- The server no longer exits when a database connection drops while a request or background job holds it, for example during a long rule save. node-postgres removes its error listener from a client in use, and the next connection error stopped the process. Every pool client now keeps a listener; the interrupted request fails with an error and the server keeps running.
+- A transaction whose connection is lost reports the original error. The failed `ROLLBACK` no longer hides it, and the broken client is discarded.
+
 ## 0.2.2 - 2026-10-05
 
 ### Fixed

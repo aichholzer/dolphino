@@ -141,6 +141,7 @@ export class Store {
     }
 
     const c = client || (await this.pool.connect());
+    let broken;
     try {
       if (!inTransaction) {
         await c.query('BEGIN');
@@ -159,13 +160,16 @@ export class Store {
       return result;
     } catch (e) {
       if (!inTransaction) {
-        await c.query('ROLLBACK');
+        // A lost connection cannot roll back; the server has already discarded the transaction.
+        await c.query('ROLLBACK').catch((error) => {
+          broken = error;
+        });
       }
 
       throw e;
     } finally {
       if (!client) {
-        c.release();
+        c.release(broken);
       }
     }
   }

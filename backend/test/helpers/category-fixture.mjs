@@ -3,6 +3,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { readTestPostgresConfig } from './postgres.mjs';
 import { Store } from '../../src/lib/store.mjs';
+import { guardPool } from '../../src/lib/db.mjs';
 import { createHouseholdAuth } from '../../src/lib/household-auth.mjs';
 import { validateAndSetGrants } from '../../src/lib/access.mjs';
 import { createApp } from '../../src/app.mjs';
@@ -15,10 +16,13 @@ export async function categoryFixture({ appOptions = async () => ({}), databaseT
   const admin = new pg.Pool(database);
   const schema = `categories_${randomUUID().replaceAll('-', '')}`;
   await admin.query(`CREATE SCHEMA ${schema}`);
-  const pool = new pg.Pool({
-    ...database,
-    options: `-c search_path=${schema}${databaseTimezone ? ` -c timezone=${databaseTimezone}` : ''}`
-  });
+  const pool = guardPool(
+    new pg.Pool({
+      ...database,
+      options: `-c search_path=${schema}${databaseTimezone ? ` -c timezone=${databaseTimezone}` : ''}`
+    }),
+    () => {}
+  );
   let server;
   const close = async () => {
     if (server) {

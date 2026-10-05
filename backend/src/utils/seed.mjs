@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { guardPool } from '../lib/db.mjs';
 import { ensureDeploymentMode } from '../lib/deployment-mode.mjs';
 import { readConfig } from '../lib/config.mjs';
 import { Store } from '../lib/store.mjs';
@@ -7,7 +8,7 @@ if (config.mode !== 'demo') {
   throw Error('Demo fixtures cannot be loaded in live mode');
 }
 
-const pool = new pg.Pool(config.database);
+const pool = guardPool(new pg.Pool(config.database));
 try {
   await ensureDeploymentMode(pool, config.mode);
   const store = new Store(pool, { mode: 'demo', timezone: config.timezone });

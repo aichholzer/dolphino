@@ -1,6 +1,7 @@
 import { createSimplefinIntegration } from './lib/simplefin.mjs';
 import { createPocketSmithIntegration } from './lib/pocketsmith.mjs';
 import pg from 'pg';
+import { guardPool } from './lib/db.mjs';
 import { ensureDeploymentMode } from './lib/deployment-mode.mjs';
 import { createAiSettings } from './lib/ai-settings.mjs';
 import { createAssistantUsage } from './lib/assistant-usage.mjs';
@@ -22,12 +23,13 @@ import { createRedbarkSettings } from './lib/redbark-settings.mjs';
 import { createRegistration } from './lib/registration.mjs';
 import { createApp } from './app.mjs';
 const config = readConfig();
-const pool = new pg.Pool({
-  ...config.database,
-  max: 10,
-  connectionTimeoutMillis: 5000
-});
-pool.on('error', () => console.error('Database connection unavailable'));
+const pool = guardPool(
+  new pg.Pool({
+    ...config.database,
+    max: 10,
+    connectionTimeoutMillis: 5000
+  })
+);
 await ensureDeploymentMode(pool, config.mode);
 const store = new Store(pool, { mode: config.mode, timezone: config.timezone });
 await store.migrate();

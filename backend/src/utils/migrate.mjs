@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { guardPool } from '../lib/db.mjs';
 import { ensureDeploymentMode } from '../lib/deployment-mode.mjs';
 import { createAiSettings } from '../lib/ai-settings.mjs';
 import { createAssistantUsage } from '../lib/assistant-usage.mjs';
@@ -13,7 +14,7 @@ import { createClassificationIntegration } from '../lib/classification.mjs';
 import { Store } from '../lib/store.mjs';
 import { ensureRedbarkSchema } from '../lib/worker.mjs';
 const config = readConfig();
-const pool = new pg.Pool(config.database);
+const pool = guardPool(new pg.Pool(config.database));
 try {
   await ensureDeploymentMode(pool, config.mode);
   await new Store(pool, {
