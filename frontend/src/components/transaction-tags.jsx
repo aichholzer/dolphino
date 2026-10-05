@@ -1,18 +1,21 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function TransactionTags({ tags, onChange, suggestions, onDraftChange }) {
   const [draft, setDraft] = useState('');
   const id = useId();
-  useEffect(() => {
-    onDraftChange?.(draft);
-  }, [draft, onDraftChange]);
+  // Report the draft from the event that changes it. Navigation guards read it in the same render.
+  function changeDraft(value) {
+    setDraft(value);
+    onDraftChange?.(value);
+  }
+
   function add() {
     const tag = draft.trim().toLowerCase();
     if (tag && tag.length <= 40 && tags.length < 20) {
       onChange([...new Set([...tags, tag])].sort());
-      setDraft('');
+      changeDraft('');
     }
   }
 
@@ -41,7 +44,7 @@ export function TransactionTags({ tags, onChange, suggestions, onDraftChange }) 
           maxLength={40}
           list={id}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => changeDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
