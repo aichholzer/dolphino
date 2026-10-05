@@ -208,7 +208,7 @@ try {
   prompt = page.waitForEvent('dialog').then((dialog) => dialog.dismiss());
   await page.getByRole('button', { name: 'Run global search', exact: true }).click();
   await prompt;
-  await expect(page).toHaveURL(/#settings\/redbark$/);
+  await expect(page).toHaveURL(/#settings\/bank-feeds$/);
   await expect(page.getByLabel('Redbark API key', { exact: true })).toHaveValue('synthetic-unsaved-only');
   prompt = page.waitForEvent('dialog').then((dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Run global search', exact: true }).click();

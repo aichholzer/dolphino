@@ -172,6 +172,17 @@ export async function categoryFixture({ appOptions = async () => ({}), databaseT
       },
       assistantSettings: { getUserStatus: async () => ({ enabled: false }) },
       pocketsmith: { status: async () => ({ configured: false, enabled: false, backfillDays: 90, accounts: [] }) },
+      simplefin: {
+        status: async () => ({
+          configured: false,
+          enabled: false,
+          backfillDays: 30,
+          encryptionAvailable: true,
+          credentialsAvailable: true,
+          accounts: [],
+          jobs: []
+        })
+      },
       ...(await appOptions({ pool, store, config }))
     });
     server = await new Promise((resolve) => {

@@ -116,6 +116,8 @@ async function fixturePage(nextSession = memberSession) {
       data = { version: '2026-10-01.wattle', backfillDays: 90, encryptionAvailable: false, credentials: {} };
     } else if (path === '/api/settings/simplefin') {
       data = { backfillDays: 30, enabled: false, accounts: [] };
+    } else if (path === '/api/settings/pocketsmith') {
+      data = { configured: false, enabled: false, backfillDays: 90, accounts: [] };
     } else if (path === '/api/reviews') {
       data = {
         reviews: [{ id: 'review-one', accountId: 'prior-account', canEdit: true, description: 'Synthetic review' }]

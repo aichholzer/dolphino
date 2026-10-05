@@ -61,17 +61,19 @@ try {
     fullPage: true
   });
   await page.getByRole('button', { name: 'Add budget', exact: true }).click();
-  await page.getByLabel('Category', { exact: true }).fill('Browser test');
+  // Budgets take a category from the catalog; the demo has no Health budget.
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Health' });
   await page.getByLabel('Monthly cap', { exact: true }).fill('42.50');
   await page.getByRole('button', { name: 'Save budget', exact: true }).click();
-  await page.getByRole('heading', { name: 'Browser test', exact: true }).waitFor();
-  const budgets = await (await page.request.get(base + '/api/budgets?month=2026-09&currency=AUD')).json();
-  const created = budgets.budgets.find((b) => b.category === 'Browser test');
-  if (created) {
-    await page.request.delete(base + '/api/budgets/' + created.id, {
-      headers: { Origin: base }
-    });
-  }
+  await page.getByRole('heading', { name: 'Health', exact: true }).waitFor();
+  const month = await page.locator('#month').inputValue();
+  const budgets = await (await page.request.get(`${base}/api/budgets?month=${month}&currency=AUD`)).json();
+  const created = budgets.budgets.find((b) => (b.categoryDisplayLabel || b.category) === 'Health');
+  assert(created, 'the saved budget is listed for the month on screen');
+  const removed = await page.request.delete(base + '/api/budgets/' + created.id, {
+    headers: { Origin: base }
+  });
+  assert.equal(removed.status(), 200, 'the synthetic budget is removed again');
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('heading', { name: 'Redbark settings', exact: true }).waitFor();

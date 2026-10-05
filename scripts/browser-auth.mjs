@@ -111,6 +111,10 @@ await page.route('**/api/**', async (route) => {
       credentialsAvailable: true,
       credentials: {}
     };
+  } else if (path === '/api/settings/pocketsmith') {
+    data = { configured: false, enabled: false, backfillDays: 90, accounts: [] };
+  } else if (path === '/api/settings/simplefin') {
+    data = { configured: false, enabled: false, backfillDays: 30, accounts: [] };
   } else if (path === '/api/settings/notifications') {
     data = { smtp: {}, telegram: {} };
   } else if (path === '/api/notifications/deliveries') {

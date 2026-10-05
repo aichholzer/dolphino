@@ -129,6 +129,12 @@ async function navigate(page, name) {
   await button.click();
 }
 
+// Category controls hold the stored key and show its display label.
+async function expectUnresolved(select, key = opaque) {
+  await expect(select).toHaveValue(key);
+  await expect(select.locator('option:checked')).toHaveText('Unresolved category');
+}
+
 async function noOpaqueText(page) {
   const text = await page.locator('body').innerText();
   for (const key of [opaque, splitOpaque]) {
@@ -267,6 +273,18 @@ async function scenario(name, viewport, run, session = admin) {
       data = { provider: 'openai', enabled: false, credentials: {}, encryptionAvailable: false };
     } else if (call.path === '/api/settings/simplefin') {
       data = { backfillDays: 30, enabled: false, accounts: [] };
+    } else if (call.path === '/api/settings/pocketsmith') {
+      data = { configured: false, enabled: false, backfillDays: 90, accounts: [] };
+    } else if (call.path === '/api/settings/deleted-accounts') {
+      data = { accounts: [] };
+    } else if (call.path === '/api/categories') {
+      data = {
+        catalog: ['Groceries', 'Named correction', 'Deliberate manual correction', 'Unsaved navigation edit'].map(
+          (name) => ({ category: name, name, archived: false })
+        )
+      };
+    } else if (call.path === '/api/tags') {
+      data = { tags: [] };
     } else if (call.path === '/api/users') {
       data = { users: [], invitations: [] };
     } else if (call.path === '/api/users/grant-options') {
@@ -433,7 +451,7 @@ try {
       const files = [await screenshot(page, `categories-${size}`)];
       await page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true }).click();
       const dialog = page.getByRole('dialog');
-      await expect(dialog.getByLabel('Category', { exact: true })).toHaveValue('Unresolved category');
+      await expectUnresolved(dialog.getByLabel('Category', { exact: true }));
       await expect(dialog).toContainText('Leaving it unchanged preserves its saved category');
       await noOpaqueText(page);
       files.push(await screenshot(page, `transaction-${size}-unresolved`, dialog));
@@ -455,7 +473,7 @@ try {
         'Kind-only changes cannot manufacture a manual category override'
       );
       await page.getByRole('button', { name: 'Edit Synthetic manual split', exact: true }).click();
-      await expect(dialog.getByLabel('Split 1 category', { exact: true })).toHaveValue('Unresolved category');
+      await expectUnresolved(dialog.getByLabel('Split 1 category', { exact: true }), splitOpaque);
       await expect(dialog.getByLabel('Split 2 category', { exact: true })).toHaveValue('Named manual split');
       await expect(dialog.getByLabel('Split 1 amount', { exact: true })).toHaveValue('-10.00');
       await expect(dialog.getByLabel('Split 2 amount', { exact: true })).toHaveValue('-20.00');
@@ -482,7 +500,7 @@ try {
       assert(!Object.hasOwn(patches(state).at(-1).body, 'notes'));
       await page.getByRole('button', { name: 'Edit Synthetic named purchase', exact: true }).click();
       await expect(dialog.getByLabel('Category', { exact: true })).toHaveValue('Groceries');
-      await dialog.getByLabel('Category', { exact: true }).fill('Named correction');
+      await dialog.getByLabel('Category', { exact: true }).selectOption('Named correction');
       const beforeCancel = patches(state).length;
       await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect(dialog).toHaveCount(0);
@@ -492,7 +510,7 @@ try {
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true }).click();
-      await dialog.getByLabel('Category', { exact: true }).fill('Deliberate manual correction');
+      await dialog.getByLabel('Category', { exact: true }).selectOption('Deliberate manual correction');
       await dialog.getByRole('button', { name: 'Save correction', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       assert.equal(patches(state).at(-1).body.category, 'Deliberate manual correction');
@@ -502,7 +520,7 @@ try {
       ).toBeVisible();
       await noOpaqueText(page);
       await page.locator('.budget-card').getByRole('button', { name: 'Edit', exact: true }).click();
-      await expect(dialog.getByLabel('Category', { exact: true })).toHaveValue('Unresolved category');
+      await expectUnresolved(dialog.getByLabel('Category', { exact: true }));
       await dialog.getByLabel('Monthly cap', { exact: true }).fill('600.00');
       await dialog.getByRole('button', { name: 'Save budget', exact: true }).click();
       await expect(dialog).toHaveCount(0);
@@ -513,13 +531,13 @@ try {
       assert.equal(savedBudget.body.rolloverEnabled, true);
       await page.getByRole('button', { name: 'View spending', exact: true }).click();
       await expect(filter).toHaveValue(opaque);
-      await expect(filter.locator('option:checked')).toHaveText('Selected category');
+      await expect(filter.locator('option:checked')).toHaveText('Unresolved category');
       await noOpaqueText(page);
       await navigate(page, 'Review');
       await expect(page.locator('.review-row')).toContainText('Unresolved category');
       await noOpaqueText(page);
       await page.getByRole('button', { name: 'Review details', exact: true }).click();
-      await expect(dialog.getByLabel('Category', { exact: true })).toHaveValue('Unresolved category');
+      await expectUnresolved(dialog.getByLabel('Category', { exact: true }));
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await navigate(page, 'Rules');
@@ -540,7 +558,7 @@ try {
     await navigate(page, 'Transactions');
     await expect(page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true }).click();
-    await page.getByRole('dialog').getByLabel('Category', { exact: true }).fill('Unsaved navigation edit');
+    await page.getByRole('dialog').getByLabel('Category', { exact: true }).selectOption('Unsaved navigation edit');
     await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await enterSettings(page);
@@ -557,7 +575,7 @@ try {
       .toBeGreaterThan(reloads);
     await navigate(page, 'Transactions');
     await page.getByRole('button', { name: 'Edit Synthetic unresolved purchase', exact: true }).click();
-    await expect(page.getByRole('dialog').getByLabel('Category', { exact: true })).toHaveValue('Unresolved category');
+    await expectUnresolved(page.getByRole('dialog').getByLabel('Category', { exact: true }));
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     assert.equal(patches(state).length, 0, 'Closed edits remain unsubmitted when a late repair finishes');

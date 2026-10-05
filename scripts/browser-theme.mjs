@@ -1,5 +1,5 @@
 import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 
@@ -96,10 +96,11 @@ try {
   await screenshot('dolphino-assistant-unconfigured');
   await page.keyboard.press('Escape');
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
-  assert(
-    await page.getByRole('button', { name: 'Ask dolphino', exact: true }).evaluate((e) => e === document.activeElement),
+  // The dialog restores focus to its trigger once its close has unmounted the content.
+  await expect(
+    page.getByRole('button', { name: 'Ask dolphino', exact: true }),
     'Assistant restores focus'
-  );
+  ).toBeFocused();
   await page.route('**/api/accounts', (r) =>
     r.fulfill({
       status: 503,
