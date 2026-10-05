@@ -104,7 +104,7 @@ async function fixture(t, host = 'provider.example.com') {
   await sf.init();
   const token = (id = randomUUID()) => Buffer.from(`https://${host}/simplefin/claim/${id}`).toString('base64');
   const connect = async () => {
-    await sf.connect({ token: token(), acknowledgeAccess: true });
+    await sf.connect({ token: token() });
     await sf.discover();
     return (await sf.status()).accounts[0];
   };
@@ -208,14 +208,14 @@ test(
         throw Error(`network error ${f.access}`);
       }
     });
-    await assert.rejects(f.sf.connect({ token: tok, acknowledgeAccess: true }), /Revoke/);
-    await assert.rejects(f.make().connect({ token: tok, acknowledgeAccess: true }), /already_attempted/);
+    await assert.rejects(f.sf.connect({ token: tok }), /Revoke/);
+    await assert.rejects(f.make().connect({ token: tok }), /already_attempted/);
     assert.equal(posted, 1);
     assert.equal((await f.sf.status()).configured, false);
     assert(!JSON.stringify(await f.sf.status()).includes('synthetic-password'));
     f.setHook(undefined);
-    await f.sf.connect({ token: f.token(), acknowledgeAccess: true });
-    await assert.rejects(f.sf.connect({ token: f.token(), acknowledgeAccess: true }), /disconnect/);
+    await f.sf.connect({ token: f.token() });
+    await assert.rejects(f.sf.connect({ token: f.token() }), /disconnect/);
     await f.sf.disconnect({ confirm: true });
     assert.equal((await f.sf.status()).configured, false);
     assert.equal((await f.pool.query("SELECT * FROM encrypted_credentials WHERE provider='simplefin'")).rowCount, 0);
@@ -392,7 +392,7 @@ test(
   }
 );
 test(
-  'SimpleFIN admin-only real HTTP routes enforce origin, strict consent, rate limits and secret masking',
+  'SimpleFIN admin-only real HTTP routes enforce origin, a strict body, rate limits and secret masking',
   { skip: !database },
   async (t) => {
     const f = await fixture(t);
@@ -426,15 +426,9 @@ test(
       assert.equal(response.status, 403);
     }
 
-    assert.equal(
-      (await req('/connect', { token: f.token(), acknowledgeAccess: true }, 'admin', 'https://evil.test')).status,
-      403
-    );
-    assert.equal((await req('/connect', { token: f.token() })).status, 400);
-    const response = await req('/connect', {
-      token: f.token(),
-      acknowledgeAccess: true
-    });
+    assert.equal((await req('/connect', { token: f.token() }, 'admin', 'https://evil.test')).status, 403);
+    assert.equal((await req('/connect', { token: f.token(), acknowledgeAccess: true })).status, 400);
+    const response = await req('/connect', { token: f.token() });
     assert.equal(response.status, 200);
     assert(!(await response.text()).includes('synthetic-password'));
     for (let i = 0; i < 5; i++) {

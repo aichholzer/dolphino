@@ -156,7 +156,7 @@ test(
       [1, 2].map(() =>
         f.request('/connect', {
           method: 'POST',
-          value: { token, acknowledgeAccess: true }
+          value: { token }
         })
       )
     );
@@ -182,7 +182,7 @@ test(
       (
         await f.request('/connect', {
           method: 'POST',
-          value: { token, acknowledgeAccess: true }
+          value: { token }
         })
       ).status,
       409

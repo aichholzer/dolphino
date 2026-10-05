@@ -155,14 +155,12 @@ export function createSimplefinIntegration({
   }
 
   async function connect(input) {
-    const { token, acknowledgeAccess } = z
+    const { token } = z
       .object({
-        token: z.string().min(8).max(12000),
-        acknowledgeAccess: z.literal(true)
+        token: z.string().min(8).max(12000)
       })
       .strict()
       .parse(input);
-    void acknowledgeAccess;
     if (config.mode !== 'live') {
       throw error('simplefin_live_mode_required');
     }

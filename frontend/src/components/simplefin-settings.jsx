@@ -28,7 +28,6 @@ const explain = (message) => explanations[message] || message;
 export function SimplefinSettings({ api, demo, onUpdated }) {
   const [state, setState] = useState(null),
     [token, setToken] = useState(''),
-    [ack, setAck] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
@@ -36,7 +35,7 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
     [enabled, setEnabled] = useState(false),
     [ranges, setRanges] = useState({});
   const draftDirty = !!state && (Number(days) !== state.backfillDays || enabled !== state.enabled);
-  useSettingsDirty(busy || token || ack || draftDirty || Object.values(ranges).some((range) => range.from || range.to));
+  useSettingsDirty(busy || token || draftDirty || Object.values(ranges).some((range) => range.from || range.to));
   const accept = (value, replaceDraft = true) => {
     setState(value);
     if (!replaceDraft) {
@@ -153,10 +152,9 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
                 e.preventDefault();
                 const submitted = token;
                 setToken('');
-                setAck(false);
                 action(
                   '/connect',
-                  { token: submitted, acknowledgeAccess: true },
+                  { token: submitted },
                   'Connection saved and paused. Test it, then choose which new accounts to import.'
                 );
               }}
@@ -179,11 +177,7 @@ export function SimplefinSettings({ api, demo, onUpdated }) {
                 attempted once. If it fails or the outcome is uncertain, revoke that token or app connection at your
                 provider and create a new token.
               </p>
-              <label className="checkbox-label">
-                <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={disabled} />I
-                authorize Dolphino to claim this token and store encrypted read-only access to this provider
-              </label>
-              <Button type="submit" disabled={disabled || !state.encryptionAvailable || !ack || !token}>
+              <Button type="submit" disabled={disabled || !state.encryptionAvailable || !token}>
                 Connect SimpleFIN
               </Button>
             </form>

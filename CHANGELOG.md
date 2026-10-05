@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.1.4 - 2026-10-05
+
+### Removed
+
+- Removed the access acknowledgement checkbox from SimpleFIN setup. Connect SimpleFIN is available as soon as a setup token is entered. The connect endpoint takes `{ token }` only and rejects the old `acknowledgeAccess` field.
+
 ## 0.1.3 - 2026-10-05
 
 ### Fixed

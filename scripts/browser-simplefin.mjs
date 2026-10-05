@@ -274,9 +274,8 @@ try {
   const setupToken = Buffer.from('https://provider.example.com/simplefin/claim/synthetic-browser-token').toString(
     'base64'
   );
-  await section.getByLabel('One-use setup token').fill(setupToken);
   await expect(section.getByRole('button', { name: 'Connect SimpleFIN', exact: true })).toBeDisabled();
-  await section.getByRole('checkbox', { name: /I authorize Dolphino/ }).check();
+  await section.getByLabel('One-use setup token').fill(setupToken);
   await section.getByRole('button', { name: 'Connect SimpleFIN', exact: true }).click();
   await expect(section.getByText('Paused', { exact: true })).toBeVisible();
   assert.equal(claimCount, 1);
@@ -338,7 +337,7 @@ try {
   assert.deepEqual(errors, []);
   await assertPageStorageUnused();
   console.log(
-    'PASS Real HTTP + PostgreSQL + real household session browser: one-use consent, claim, masked credentials, discover, cancel/confirm mapping, enable, actual import, reload, desktop/mobile fit, pause, cancel/confirm local disconnect and retained history. No API mocking or external provider calls.'
+    'PASS Real HTTP + PostgreSQL + real household session browser: one-use claim, masked credentials, discover, cancel/confirm mapping, enable, actual import, reload, desktop/mobile fit, pause, cancel/confirm local disconnect and retained history. No API mocking or external provider calls.'
   );
 } finally {
   await browser?.close();
