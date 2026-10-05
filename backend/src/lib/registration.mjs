@@ -1,7 +1,7 @@
 import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
 import { publicSmtpAddress as publicAddress } from './smtp-network.mjs';
-import { RedbarkClient, configurationFingerprint } from './redbark.mjs';
+import { RedbarkClient, configurationFingerprint, describeRedbarkError } from './redbark.mjs';
 import { REDBARK_SETTINGS_LOCK, redbarkAccountFingerprint } from './redbark-settings.mjs';
 
 const SECRET = 'redbark.webhook.signingSecret';
@@ -125,7 +125,7 @@ export function createRegistration({
       const code = allowed.test(error.code || '') ? error.code : 'registration_failed';
       await db.query(
         "UPDATE webhook_registration SET state='attention',last_error=$1,updated_at=now() WHERE singleton=true",
-        [code]
+        [code === error.code ? describeRedbarkError(error, code) : code]
       );
       throw failure(code, 409);
     } finally {

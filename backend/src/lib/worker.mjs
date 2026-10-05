@@ -6,6 +6,7 @@ import {
   RedbarkClient,
   RedbarkError,
   REDBARK_VERSION,
+  describeRedbarkError,
   configurationFingerprint,
   verifyRedbarkSignature,
   parseThinEvent,
@@ -125,7 +126,7 @@ export function createRedbarkIntegration({
         'UPDATE redbark_state SET fingerprint=$1,tested_at=now(),last_error=$2,next_attempt=NULL WHERE id=1',
         [
           problem ? null : current.redbarkFingerprint,
-          problem ? (problem instanceof RedbarkError ? problem.code : 'connection_test_failed') : null
+          problem ? describeRedbarkError(problem, 'connection_test_failed') : null
         ]
       );
       await db.query('COMMIT');
@@ -376,7 +377,7 @@ export function createRedbarkIntegration({
         if (error.status === 429 || error.status === 503) {
           await db.query(
             "UPDATE redbark_state SET last_error=$1,next_attempt=now()+($2 * interval '1 second') WHERE id=1",
-            [code, Math.max(error.retryAfter || 0, 60)]
+            [describeRedbarkError(error, code), Math.max(error.retryAfter || 0, 60)]
           );
         }
 
@@ -542,7 +543,7 @@ export function createRedbarkIntegration({
         );
         await db.query('UPDATE redbark_state SET last_success=now(),last_error=NULL,next_attempt=NULL WHERE id=1');
       } catch (error) {
-        const code = error instanceof RedbarkError ? error.code : 'sync_failed';
+        const code = describeRedbarkError(error);
         const delay = Math.max(error.retryAfter || 0, Math.min(4 * 3600, 60 * 2 ** Math.min(job.attempts, 8)));
         await db.query(
           "UPDATE redbark_jobs SET attempts=attempts+1,last_error=$2,available_at=now()+($3 * interval '1 second') WHERE id=$1",

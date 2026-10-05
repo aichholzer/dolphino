@@ -26,12 +26,41 @@ const transactionSchema = z
   })
   .passthrough();
 export class RedbarkError extends Error {
-  constructor(code, status = 502, retryAfter = 60) {
+  constructor(code, status = 502, retryAfter = 60, { endpoint, providerCode, providerParam } = {}) {
     super(code);
     this.code = code;
     this.status = status;
     this.retryAfter = retryAfter;
+    this.endpoint = endpoint;
+    this.providerCode = providerCode;
+    this.providerParam = providerParam;
   }
+}
+
+// Only Redbark's machine-readable error code and parameter name are kept. Messages, request IDs,
+// account IDs and response bodies are discarded.
+const providerToken = /^[a-z][a-z0-9_.]{0,63}$/;
+function providerDetail(body) {
+  const error = body?.error;
+  return {
+    providerCode: providerToken.test(error?.code ?? '') ? error.code : undefined,
+    providerParam: providerToken.test(error?.param ?? '') ? error.param : undefined
+  };
+}
+
+const endpointName = (pathname) => {
+  const [resource, , action] = pathname.replace(/^\/v2\//, '').split('/');
+  return resource === 'accounts' && action === 'balance' ? 'balance' : resource;
+};
+
+// Reads as "provider_http_400 on transactions: parameter_invalid (from)".
+export function describeRedbarkError(error, fallback = 'sync_failed') {
+  if (!(error instanceof RedbarkError)) {
+    return fallback;
+  }
+
+  const reason = [error.providerCode, error.providerParam && `(${error.providerParam})`].filter(Boolean).join(' ');
+  return `${error.code}${error.endpoint ? ` on ${error.endpoint}` : ''}${reason ? `: ${reason}` : ''}`;
 }
 
 export function verifyRedbarkSignature(header, rawBody, secret, now = Date.now()) {
@@ -224,10 +253,12 @@ export class RedbarkClient {
       const retry = response.headers.get('retry-after');
       const seconds =
         retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.ceil((Date.parse(retry) - Date.now()) / 1000) : 60;
+      const body = await response.json().catch(() => null);
       throw new RedbarkError(
         `provider_http_${response.status}`,
         response.status,
-        Number.isFinite(seconds) ? Math.max(1, seconds) : 60
+        Number.isFinite(seconds) ? Math.max(1, seconds) : 60,
+        { endpoint: endpointName(url.pathname), ...providerDetail(body) }
       );
     }
 

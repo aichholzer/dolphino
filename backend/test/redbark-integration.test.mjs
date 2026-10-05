@@ -158,7 +158,7 @@ test('mocked live import preserves source evidence and Retry-After gates all job
     const afterFailure = calls;
     await integration.tick();
     assert.equal(calls, afterFailure, 'another queued job cannot evade Retry-After');
-    assert.equal((await integration.status()).lastError, 'provider_http_429');
+    assert.equal((await integration.status()).lastError, 'provider_http_429 on accounts');
     assert.equal((await pool.query("SELECT * FROM redbark_jobs WHERE status='queued'")).rowCount, 2);
   } finally {
     await pool.end();

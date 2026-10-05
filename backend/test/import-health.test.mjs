@@ -105,7 +105,7 @@ test(
       await integration.tick();
       const before = calls.length;
       const retry = await make().retry({ jobId: next.job.id });
-      assert.equal(retry.job.lastError, 'provider_http_429');
+      assert.equal(retry.job.lastError, 'provider_http_429 on accounts');
       assert(new Date(retry.job.availableAt).getTime() > Date.now() + 590000);
       await integration.tick();
       assert.equal(calls.length, before);

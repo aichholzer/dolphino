@@ -2,6 +2,13 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.1 - 2026-10-05
+
+### Changed
+
+- Redbark errors in Settings and Import health name the request that failed and Redbark's own error code and parameter, for example "provider_http_400 on transactions: parameter_invalid (from)". Messages, request IDs, account IDs and response bodies are still discarded.
+- The Redbark guide notes the provider's limit of about seven years of banking history: a 2555-day rolling window was rejected, while 2500 days was accepted.
+
 ## 0.2.0 - 2026-10-05
 
 ### Added

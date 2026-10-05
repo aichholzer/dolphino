@@ -391,7 +391,7 @@ test(
           calls.slice(start).map((u) => u.pathname),
           ['/v2/accounts', '/v2/categories']
         );
-        assert.equal((await integration.status()).lastError, 'provider_http_429');
+        assert.equal((await integration.status()).lastError, 'provider_http_429 on categories');
         let stopped = calls.length;
         await integration.tick();
         assert.equal(calls.length, stopped, 'taxonomy 429 gates all jobs and provider calls');
@@ -403,7 +403,7 @@ test(
           calls.slice(stopped).map((u) => u.pathname),
           ['/v2/accounts', '/v2/categories']
         );
-        assert.equal((await integration.status()).lastError, 'provider_http_503');
+        assert.equal((await integration.status()).lastError, 'provider_http_503 on categories');
         stopped = calls.length;
         await integration.tick();
         assert.equal(calls.length, stopped, 'taxonomy 503 gates all jobs and provider calls');

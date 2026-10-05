@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import {
   RedbarkClient,
+  describeRedbarkError,
   verifyRedbarkSignature,
   parseThinEvent,
   normalizeTransaction,
@@ -96,6 +97,31 @@ test('rate limits retain Retry-After without exposing response bodies', async ()
       })
   });
   await assert.rejects(client.accounts(), (error) => error.retryAfter === 120 && error.message === 'provider_http_429');
+});
+test('provider errors name the endpoint and keep only the machine-readable code and parameter', async () => {
+  const rejected = (status, error) =>
+    new Response(JSON.stringify({ error: { message: 'private bank detail', request_id: 'req_secret', ...error } }), {
+      status
+    });
+  const client = new RedbarkClient({
+    apiKey: 'secret',
+    fetchImpl: async () => rejected(400, { type: 'invalid_request_error', code: 'parameter_invalid', param: 'from' })
+  });
+  await assert.rejects(client.transactions('acct_A', '2019-10-01', '2026-10-05'), (error) => {
+    assert.equal(error.message, 'provider_http_400');
+    assert.equal(describeRedbarkError(error), 'provider_http_400 on transactions: parameter_invalid (from)');
+    return true;
+  });
+  client.fetch = async () => rejected(404, { code: '<b>missing</b>', param: 'account id' });
+  await assert.rejects(client.balance('acct_Private1'), (error) => {
+    const described = describeRedbarkError(error);
+    assert.equal(described, 'provider_http_404 on balance');
+    assert(!/acct_Private1|private bank detail|req_secret|<b>/.test(described));
+    return true;
+  });
+  client.fetch = async () => new Response('not json', { status: 400 });
+  await assert.rejects(client.accounts(), (error) => describeRedbarkError(error) === 'provider_http_400 on accounts');
+  assert.equal(describeRedbarkError(new Error('boom')), 'sync_failed');
 });
 test('amount normalization is exact and fails closed on unsafe money and account mismatch', () => {
   const raw = {

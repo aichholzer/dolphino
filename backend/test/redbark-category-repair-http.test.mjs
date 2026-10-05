@@ -487,7 +487,7 @@ for (const status of [429, 503]) {
       categoryOnly(f.outbound);
       assert.deepEqual(await f.invariants(), before);
       const state = (await f.pool.query('SELECT * FROM redbark_state WHERE id=1')).rows[0];
-      assert.equal(state.last_error, `provider_http_${status}`);
+      assert.equal(state.last_error, `provider_http_${status} on categories`);
       assert(new Date(state.next_attempt).getTime() > Date.now() + 590000);
       const count = f.outbound.length;
       const retry = await f.request();
@@ -593,7 +593,7 @@ test('normal worker repairs historical categories before a subsequent balance fa
     f.outbound.map((entry) => entry.path),
     ['/v2/accounts', '/v2/categories', '/v2/accounts/acct_A/balance']
   );
-  assert.equal((await f.integration.status()).lastError, 'provider_http_429');
+  assert.equal((await f.integration.status()).lastError, 'provider_http_429 on balance');
   assert.equal((await f.pool.query('SELECT * FROM redbark_fetches')).rowCount, 0);
 });
 
