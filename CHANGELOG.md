@@ -2,6 +2,21 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.10 - 2026-10-07
+
+### Added
+
+- "Also suggest categories for older transactions" in AI classification, off by default. It sends unresolved transactions dated before the classification start date, including backfilled history. Settings shows how many there are; each is one provider call. Turning it off again leaves queued older jobs waiting.
+
+### Changed
+
+- Automatic category suggestions cover only transactions dated from the day classification and automatic suggestions were first turned on, in the household time zone. Settings shows that date. Settings saved before this release use the day they were last saved. On-demand suggestions work for any date.
+- The automatic scan reads merchant rules once per scan.
+
+### Removed
+
+- The classification settings "Requests per UTC day" and "Maximum import batch". There is no daily request limit; the worker sends five automatic suggestions every 30 seconds, one at a time.
+
 ## 0.2.9 - 2026-10-07
 
 ### Changed

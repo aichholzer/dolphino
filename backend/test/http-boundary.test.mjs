@@ -61,7 +61,8 @@ async function startFixture(t) {
   const store = {
     mode: 'live',
     pool: { query: async () => ({ rows: [] }) },
-    listAccounts: async () => [{ id: 'private-account', name: 'Private' }]
+    listAccounts: async () => [{ id: 'private-account', name: 'Private' }],
+    automaticClassificationCandidates: async () => []
   };
   const auth = {
     setupStatus: async () => ({ setupRequired: false }),

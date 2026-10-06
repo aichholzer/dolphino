@@ -26,9 +26,7 @@ const baseProvider = {
   model: 'synthetic-model',
   enabled: true,
   autoClassify: false,
-  autoApply: false,
-  dailyRequestLimit: 12,
-  batchSize: 3
+  autoApply: false
 };
 const secrets = {
   redbark: 'synthetic-redbark-api-A',

@@ -39,8 +39,8 @@ const features = {
     enabled: false,
     autoClassify: false,
     autoApply: false,
-    dailyRequestLimit: 20,
-    batchSize: 5
+    includeHistory: false,
+    classifyFrom: ''
   },
   '/api/settings/assistant': {
     model: 'synthetic.model',

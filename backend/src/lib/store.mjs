@@ -110,6 +110,18 @@ const ruleRow = (r) => ({
   priority: r.priority,
   tags: r.tags || []
 });
+// rules are lower-case rule texts; a transaction one of them matches is left to the rule.
+const automaticallyClassifiable = (tx, rules) =>
+  !(
+    tx.manualEntryId ||
+    tx.supersededBy ||
+    tx.status !== 'posted' ||
+    tx.category !== 'Uncategorized' ||
+    tx.manuallyCorrected ||
+    tx.kind === 'transfer' ||
+    (tx.providerCategory && tx.providerCategory !== 'Uncategorized') ||
+    (tx.reviewReason && tx.reviewReason !== 'Category needs review')
+  ) && !rules.some((rule) => tx.description.toLowerCase().includes(rule));
 export class Store {
   constructor(pool, { mode = 'demo', timezone = 'Australia/Brisbane' } = {}) {
     this.pool = pool;
@@ -1328,32 +1340,26 @@ export class Store {
     ).rows.map((r) => r.tag);
   }
   async isAutomaticClassificationEligible(tx, c = this.pool) {
-    if (
-      tx.manualEntryId ||
-      tx.supersededBy ||
-      tx.status !== 'posted' ||
-      tx.category !== 'Uncategorized' ||
-      tx.manuallyCorrected ||
-      tx.kind === 'transfer' ||
-      (tx.providerCategory && tx.providerCategory !== 'Uncategorized') ||
-      (tx.reviewReason && tx.reviewReason !== 'Category needs review')
-    ) {
-      return false;
-    }
-
-    const rows = (await c.query('SELECT contains FROM rules WHERE mode=$1', [this.mode])).rows;
-    return !rows.some((r) => tx.description.toLowerCase().includes(r.contains.toLowerCase()));
+    return automaticallyClassifiable(tx, await this.ruleTexts(c));
   }
-  async automaticClassificationCandidates(c = this.pool) {
-    const candidates = await this.listTransactions({ status: 'posted', category: 'Uncategorized' }, c);
-    const result = [];
-    for (const tx of candidates) {
-      if (await this.isAutomaticClassificationEligible(tx, c)) {
-        result.push(tx);
-      }
+  async ruleTexts(c = this.pool) {
+    return (await c.query('SELECT contains FROM rules WHERE mode=$1', [this.mode])).rows.map((r) =>
+      r.contains.toLowerCase()
+    );
+  }
+  // from and before bound the transaction date: from is inclusive, before is exclusive.
+  async automaticClassificationCandidates(c = this.pool, { from, before } = {}) {
+    const filters = { status: 'posted', category: 'Uncategorized' };
+    if (from) {
+      filters.from = from;
     }
 
-    return result;
+    if (before) {
+      filters.to = new Date(Date.parse(`${before}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+    }
+
+    const [candidates, rules] = await Promise.all([this.listTransactions(filters, c), this.ruleTexts(c)]);
+    return candidates.filter((tx) => automaticallyClassifiable(tx, rules));
   }
   async markAutomaticClassificationReview(id, expectedTx, client) {
     return this.atomic(

@@ -38,7 +38,12 @@ const credentialStore = createSettingsStore({
   appSecret: config.appSecret
 });
 await credentialStore.init();
-const aiSettings = createAiSettings({ pool, settings: credentialStore, appSecret: config.appSecret });
+const aiSettings = createAiSettings({
+  pool,
+  settings: credentialStore,
+  appSecret: config.appSecret,
+  timezone: config.timezone
+});
 await aiSettings.init();
 const settings = { ...credentialStore, ...aiSettings.classification };
 const assistantSettings = aiSettings.assistant;

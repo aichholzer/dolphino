@@ -69,6 +69,7 @@ export function createApp({
     aiSettings,
     route,
     config,
+    store,
     integration,
     settings,
     redbarkSettings,

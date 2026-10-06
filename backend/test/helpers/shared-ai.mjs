@@ -3,9 +3,9 @@ import { createAiSettings } from '../../src/lib/ai-settings.mjs';
 
 // Production-shaped wiring. Legacy vault APIs stay available only to tests that
 // intentionally seed an old installation before migration.
-export function sharedAiSettings({ pool, appSecret, ...options }) {
+export function sharedAiSettings({ pool, appSecret, timezone, now, ...options }) {
   const vault = createSettingsStore({ pool, appSecret, ...options });
-  const aiSettings = createAiSettings({ pool, settings: vault, appSecret });
+  const aiSettings = createAiSettings({ pool, settings: vault, appSecret, timezone, now });
   const settings = { ...vault, ...aiSettings.classification };
   const assistantSettings = aiSettings.assistant;
   const saveAi = async (input) =>

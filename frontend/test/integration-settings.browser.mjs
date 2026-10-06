@@ -107,7 +107,14 @@ async function scenario(name, test) {
     }
   };
   const features = {
-    provider: { model: '', enabled: false, autoClassify: false, autoApply: false, dailyRequestLimit: 20, batchSize: 5 },
+    provider: {
+      model: '',
+      enabled: false,
+      autoClassify: false,
+      autoApply: false,
+      includeHistory: false,
+      classifyFrom: ''
+    },
     assistant: {
       model: '',
       enabled: false,
@@ -516,7 +523,11 @@ try {
       await page
         .getByRole('checkbox', { name: 'Automatically suggest categories for unresolved imports', exact: true })
         .check();
-      await page.getByLabel('Requests per UTC day', { exact: true }).fill('29');
+      for (const label of ['Requests per UTC day', 'Maximum import batch']) {
+        await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+      }
+
+      await page.getByRole('checkbox', { name: 'Also suggest categories for older transactions', exact: true }).check();
       await save('Save classification settings', '/api/settings/provider');
       await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant');
       await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
@@ -532,7 +543,9 @@ try {
 
       await save('Save assistant settings', '/api/settings/assistant');
       assert.equal(features.provider.model, 'synthetic-classifier');
-      assert.equal(features.provider.dailyRequestLimit, 29);
+      assert.equal(features.provider.includeHistory, true);
+      assert.equal(Object.hasOwn(lastWrite('/api/settings/provider'), 'dailyRequestLimit'), false);
+      assert.equal(Object.hasOwn(lastWrite('/api/settings/provider'), 'classifyFrom'), false);
       assert.equal(features.assistant.model, 'synthetic-assistant');
       for (const field of ['dailyRequestsPerUser', 'maxToolCalls', 'maxRounds', 'maxOutputTokens']) {
         assert.equal(Object.hasOwn(lastWrite('/api/settings/assistant'), field), false, field);
@@ -695,14 +708,18 @@ try {
       await configure();
       await expect.poll(() => pending.discovery.length).toBe(1);
       await expect(choices('classification')).toBeDisabled();
-      await page.getByLabel('Requests per UTC day', { exact: true }).fill('37');
+      await page
+        .getByRole('checkbox', { name: 'Automatically apply validated category suggestions', exact: true })
+        .check();
       await nav('Test saved connection').click();
       await expect(nav('Test saved connection')).toBeEnabled();
       release('discovery');
       await ready();
       await choices('classification').selectOption('synthetic.text-v1');
       await expect(choices('classification')).toHaveValue('synthetic.text-v1');
-      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('37');
+      await expect(
+        page.getByRole('checkbox', { name: 'Automatically apply validated category suggestions', exact: true })
+      ).toBeChecked();
       assert.equal(count(), 1);
     }
   );
@@ -740,19 +757,23 @@ try {
       await openAi();
       await configure();
       await ready();
-      await page.getByLabel('Requests per UTC day', { exact: true }).fill('49');
+      const autoApply = page.getByRole('checkbox', {
+        name: 'Automatically apply validated category suggestions',
+        exact: true
+      });
+      await autoApply.check();
       await page.getByLabel('AWS secret access key', { exact: true }).fill('synthetic-rotated-secret');
       await save();
-      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('49');
+      await expect(autoApply).toBeChecked();
       await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeDisabled();
-      assert.equal(features.provider.dailyRequestLimit, 20);
+      assert.equal(features.provider.autoApply, false);
       const reload = section('classification').getByRole('button', { name: 'Reload saved settings', exact: true });
       page.once('dialog', (dialog) => dialog.dismiss());
       await reload.click();
-      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('49');
+      await expect(autoApply).toBeChecked();
       page.once('dialog', (dialog) => dialog.accept());
       await reload.click();
-      await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('20');
+      await expect(autoApply).not.toBeChecked();
       await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeEnabled();
       mode.save = 'success';
     }
@@ -774,10 +795,13 @@ try {
           element.click();
         });
         await expect.poll(() => pending.save.length).toBe(1);
-        const requests = section('classification').getByLabel('Requests per UTC day', { exact: true });
-        await requests.fill('41');
+        const autoApply = section('classification').getByRole('checkbox', {
+          name: 'Automatically apply validated category suggestions',
+          exact: true
+        });
+        await autoApply.check();
         release('save');
-        await expect(requests).toHaveValue('41');
+        await expect(autoApply).toBeChecked();
         await expect(model).toHaveValue('synthetic.text-v1');
         await expect(section('classification').getByText(/Your current changes are retained/)).toBeVisible();
         assert.equal(

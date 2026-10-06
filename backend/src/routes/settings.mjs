@@ -8,6 +8,7 @@ import { discoverSavedBedrockModels } from '../lib/bedrock-models.mjs';
 export function registerSettingsRoutes({
   route,
   config,
+  store,
   integration,
   settings,
   aiSettings,
@@ -130,8 +131,8 @@ export function registerSettingsRoutes({
           configured: false,
           autoClassify: false,
           autoApply: false,
-          dailyRequestLimit: 20,
-          batchSize: 5,
+          includeHistory: false,
+          classifyFrom: '',
           source: 'database'
         }
   }));
@@ -143,11 +144,25 @@ export function registerSettingsRoutes({
     return redbarkSettings.save(await body(req));
   });
 
-  route('get', '/api/settings/provider', () => settings.getPublicProvider());
+  // Older unresolved transactions are the ones the history switch would send, one provider call each.
+  async function withOlderUnresolved(state) {
+    const before =
+      state.classifyFrom ||
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: config.timezone || 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+    const count = store ? (await store.automaticClassificationCandidates(undefined, { before })).length : 0;
+    return { ...state, olderUnresolved: { before, count } };
+  }
+
+  route('get', '/api/settings/provider', async () => withOlderUnresolved(await settings.getPublicProvider()));
 
   route('put', '/api/settings/provider', async (req) => {
     sensitive('save-provider');
-    return shared().classification.saveProvider(await body(req));
+    return withOlderUnresolved(await shared().classification.saveProvider(await body(req)));
   });
 
   route('post', '/api/settings/provider/test-connection', async () => {

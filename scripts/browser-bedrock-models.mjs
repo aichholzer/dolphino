@@ -720,7 +720,7 @@ for (const migration of ['conflict', 'unavailable-profile']) {
       const classification = await read('/api/settings/provider');
       const assistant = await read('/api/settings/assistant');
       assert.equal(classification.model, 'legacy-classifier');
-      assert.equal(classification.dailyRequestLimit, 31);
+      assert.equal(Object.hasOwn(classification, 'dailyRequestLimit'), false);
       assert.equal(assistant.model, 'legacy-assistant');
       assert.equal(Object.hasOwn(assistant, 'dailyRequestsPerUser'), false);
       assert.equal(classification.enabled, false);

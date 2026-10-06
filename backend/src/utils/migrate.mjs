@@ -37,7 +37,7 @@ try {
   await createHouseholdAuth({ pool, config }).init();
   await ensureAccessSchema(pool);
   await createUserManagement({ pool, config, settings }).init();
-  await createAiSettings({ pool, settings, appSecret: config.appSecret }).init();
+  await createAiSettings({ pool, settings, appSecret: config.appSecret, timezone: config.timezone }).init();
   await createAssistantUsage({ pool }).init();
   console.log('Migrations complete');
 } finally {

@@ -7,7 +7,7 @@ Administrator Settings has five sections: **RedBark**, **Members**, **Notificati
 1. Choose OpenAI or Bedrock in the shared connection form. Enter the OpenAI API key, or the Bedrock permanent access key ID, secret access key and supported AWS region. Temporary AWS keys/session tokens are unsupported. A model is not needed to save the connection
 2. Save the connection. Secret inputs clear and show only configured/masked status. Omitted or blank secrets retain the saved ciphertext; an explicit `null` clears the selected credential. No plaintext or last characters are returned
 3. For Bedrock, one read-only catalog automatically loads from the saved connection when AI features opens, after a connection save, on return, reload and restart. It supplies both model dropdowns, grouped by provider. Blank password fields do not block loading. Retry uses the saved credentials; manual IDs remain available when listing is unavailable or incomplete
-4. Select and save each feature's model and controls. Classification has its own enable, automatic-suggestions and automatic-application controls and its request limits. The assistant has its own enable switch and data-sharing acknowledgement. Neither feature enables the other
+4. Select and save each feature's model and controls. Classification has its own enable, automatic-suggestions, older-transactions and automatic-application controls. The assistant has its own enable switch and data-sharing acknowledgement. Neither feature enables the other
 
 Discovery lists regional foundation models and inference profiles; it does not invoke a model, send household data, enable features, verify inference access or accept model terms. OpenAI model IDs remain manual. Connection testing is read-only. Explicit synthetic model tests are separate actions, require cost acknowledgement and can incur a small charge. See [provider contracts and IAM boundaries](providers.md).
 
@@ -18,8 +18,8 @@ A changed shared provider, region or credential **pauses both features**. Switch
 PostgreSQL is the only integration settings source. The canonical documents are:
 
 - `ai.provider`: one provider and optional Bedrock region
-- `ai.classification`: classification model, enablement, automation and limits
-- `ai.assistant`: assistant model, enablement, sharing acknowledgement and limits
+- `ai.classification`: classification model, enablement, automation, older-transactions switch and cutoff date
+- `ai.assistant`: assistant model, enablement and sharing acknowledgement
 - `encrypted_credentials` entries `ai.apiKey`, `ai.accessKeyId` and `ai.secretAccessKey`, bound to their exact setting name and selected provider; only the required provider slots are used
 
 Version 3 authenticated encryption and APP_SECRET requirements are unchanged by this consolidation. The same shared credential decrypts into both runtime projections, but each projection carries its own feature model, controls and revision. There is no credential/model fallback from environment variables or an alternate provider. Missing/wrong APP_SECRET makes required credentials unavailable and both features fail closed; imported finances, authentication, grants and manual work remain usable.
@@ -49,8 +49,8 @@ All settings routes are administrator-only. Writes and external test/discovery a
 - `POST /api/settings/ai/models` accepts only `{ "revision": "<saved discoveryRevision>" }`. Discovery uses saved shared credentials. The retained feature-specific `/models` routes resolve that same shared connection in the production app and share the discovery limiter
 - `POST /api/settings/ai/test-connection` tests the saved shared connection without inference. OpenAI uses its model-list endpoint; Bedrock uses STS identity verification, returning no identity/account identifier
 - `GET /api/settings/provider` and `GET /api/settings/assistant` retain their public feature metadata, including provider/region/masked availability, and expose `aiRevision` for the current shared connection. The assistant response also retains tools, disclosure and read-only metadata
-- `PUT /api/settings/provider` accepts `aiRevision` plus classification-only fields: `model`, `enabled`, `autoClassify`, `autoApply`, `dailyRequestLimit` and `batchSize`
-- `PUT /api/settings/assistant` accepts `aiRevision` plus assistant-only fields: `model`, `enabled`, `dataSharingAcknowledged`, `dailyRequestsPerUser`, `maxToolCalls`, `maxRounds` and `maxOutputTokens`
+- `PUT /api/settings/provider` accepts `aiRevision` plus classification-only fields: `model`, `enabled`, `autoClassify`, `autoApply` and `includeHistory`. The server sets `classifyFrom`; a client that sends it is refused. Responses add `olderUnresolved` with the cutoff and the count of older unresolved transactions
+- `PUT /api/settings/assistant` accepts `aiRevision` plus assistant-only fields: `model`, `enabled` and `dataSharingAcknowledged`
 
 The feature PUT schemas reject provider, region, credential and unknown fields; existing clients must move those changes to the shared route. PUTs should include all intended feature settings because omitted fields use schema defaults. A missing/stale `aiRevision`, unresolved shared migration, unreadable credentials when enabling, or missing model/assistant acknowledgement fails without a partial write. Feature-specific explicit model-test routes remain available and retain their independent cost acknowledgement.
 

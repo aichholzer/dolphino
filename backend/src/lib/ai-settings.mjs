@@ -58,8 +58,9 @@ const classificationSchema = z
     enabled: shape.enabled,
     autoClassify: shape.autoClassify,
     autoApply: shape.autoApply,
-    dailyRequestLimit: shape.dailyRequestLimit,
-    batchSize: shape.batchSize
+    includeHistory: z.boolean().default(false),
+    // Set by the server the first time automatic suggestions are on; never sent by a client.
+    classifyFrom: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).default('')
   })
   .strict();
 const assistantShape = assistantSettingsSchema.shape;
@@ -71,9 +72,10 @@ const assistantSchema = z
   })
   .strict();
 const schemas = { classification: classificationSchema, assistant: assistantSchema };
-// Settings written by earlier versions can still hold these removed assistant limits.
+const inputSchemas = { classification: classificationSchema.omit({ classifyFrom: true }), assistant: assistantSchema };
+// Settings written by earlier versions can still hold these removed limits.
 const retiredFields = {
-  classification: [],
+  classification: ['dailyRequestLimit', 'batchSize'],
   assistant: ['dailyRequestsPerUser', 'maxToolCalls', 'maxRounds', 'maxOutputTokens']
 };
 const withoutRetired = (value, feature) =>
@@ -92,14 +94,30 @@ const sharedValueSchema = z
 
 // One provider/credential identity is shared by both optional features. The old
 // stores are used only to validate an explicit migration, never at runtime.
-export function createAiSettings({ pool, settings, appSecret }) {
+export function createAiSettings({ pool, settings, appSecret, timezone = 'UTC', now = () => new Date() }) {
+  const localDay = (instant) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+      instant
+    );
+  // Automatic suggestions cover transactions dated from this day. Settings saved before the
+  // cutoff existed take the day they were last saved.
+  function classifyFrom(raw, value) {
+    if (value.classifyFrom || !value.enabled || !value.autoClassify) {
+      return value.classifyFrom;
+    }
+
+    const document = raw.documents[namespaces.classification] ?? raw.documents[previousNamespaces.classification];
+    return document?.updatedAt ? localDay(new Date(document.updatedAt)) : '';
+  }
+
   async function read(client = pool) {
     // Metadata and ciphertext are read in the same MVCC snapshot. No second
     // secret read can pair a new credential with an older feature configuration.
     const row = (
       await client.query(
         `SELECT
-      COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('value',value,'revision',updated_at::text))
+      COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('value',value,'revision',updated_at::text,
+        'updatedAt',to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')))
         FROM app_settings WHERE key=ANY($1::text[])), '{}'::jsonb) AS documents,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('setting',setting,'provider',provider,'ciphertext',ciphertext))
         FROM encrypted_credentials WHERE setting=ANY($2::text[])), '[]'::jsonb) AS credentials`,
@@ -340,6 +358,10 @@ export function createAiSettings({ pool, settings, appSecret }) {
       featureDocument?.value ?? raw.documents[previousNamespaces[feature]]?.value,
       feature
     );
+    if (feature === 'classification') {
+      featureSettings.classifyFrom = classifyFrom(raw, featureSettings);
+    }
+
     const validFeature =
       !featureDocument || schemas[feature].safeParse(withoutRetired(featureDocument.value, feature)).success;
     const enabled =
@@ -367,8 +389,8 @@ export function createAiSettings({ pool, settings, appSecret }) {
       llmRevision: hash([discoveryRevision, feature, featureDocument]),
       llmAutoClassify: feature === 'classification' && enabled && featureSettings.autoClassify,
       llmAutoApply: feature === 'classification' && enabled && featureSettings.autoApply,
-      llmDailyRequestLimit: featureSettings.dailyRequestLimit ?? 20,
-      llmBatchSize: featureSettings.batchSize ?? 5
+      llmClassifyFrom: feature === 'classification' ? featureSettings.classifyFrom : '',
+      llmIncludeHistory: feature === 'classification' && featureSettings.includeHistory
     });
     if (feature === 'assistant') {
       Object.assign(config, {
@@ -423,6 +445,10 @@ export function createAiSettings({ pool, settings, appSecret }) {
     for (const feature of Object.keys(namespaces)) {
       const prior = raw.documents[namespaces[feature]]?.value ?? raw.documents[previousNamespaces[feature]]?.value;
       const value = featureValue(prior, feature);
+      if (feature === 'classification') {
+        value.classifyFrom = classifyFrom(raw, value);
+      }
+
       const oldProvider = raw.documents['ai.provider']?.value?.provider ?? prior?.provider;
       if (oldProvider && oldProvider !== provider) {
         value.model = '';
@@ -544,7 +570,7 @@ export function createAiSettings({ pool, settings, appSecret }) {
   }
 
   async function saveFeature(feature, input) {
-    const parsed = schemas[feature].extend({ aiRevision: revisionSchema }).safeParse(input);
+    const parsed = inputSchemas[feature].extend({ aiRevision: revisionSchema }).safeParse(input);
     if (
       !parsed.success ||
       (parsed.data.enabled && (!parsed.data.model || (feature === 'assistant' && !parsed.data.dataSharingAcknowledged)))
@@ -565,6 +591,11 @@ export function createAiSettings({ pool, settings, appSecret }) {
 
       if (value.enabled && (!shared.publicState.configured || !shared.publicState.credentialsAvailable)) {
         throw failure('Save usable shared provider credentials before enabling AI features.');
+      }
+
+      if (feature === 'classification') {
+        value.classifyFrom =
+          snapshot(raw, feature).value.classifyFrom || (value.enabled && value.autoClassify ? localDay(now()) : '');
       }
 
       await settings.setValue(namespaces[feature], value, client);

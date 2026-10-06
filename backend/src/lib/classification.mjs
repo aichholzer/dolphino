@@ -4,6 +4,14 @@ import { disabledProviderConfig } from './settings.mjs';
 
 const error = (message, status) => Object.assign(Error(message), { status, expose: true });
 const maxAttempts = 5;
+const automaticBatch = 5;
+// Automatic work covers transactions dated from the cutoff, or every date once older imports are included.
+// null means no cutoff has been recorded and nothing is in scope.
+const automaticFrom = (config) => (config.llmIncludeHistory ? '' : config.llmClassifyFrom || null);
+const outOfScope = (config, tx) => {
+  const from = automaticFrom(config);
+  return from === null || (from !== '' && tx.date < from);
+};
 
 // Provider work is durable and globally serialized; automatic application is opt-in.
 export function createClassificationIntegration({
@@ -91,6 +99,11 @@ export function createClassificationIntegration({
       }
 
       const current = await input(job.transaction_id, c, config);
+      // Older automatic jobs wait while older imports are excluded.
+      if (job.origin === 'automatic' && outOfScope(config, current.tx)) {
+        return;
+      }
+
       if (
         current.fingerprint !== job.fingerprint ||
         (job.origin === 'automatic' && !(await store.isAutomaticClassificationEligible(current.tx, c)))
@@ -119,19 +132,6 @@ export function createClassificationIntegration({
           "UPDATE classification_jobs SET status='failed',error_code='attempt_limit',updated_at=now() WHERE id=$1",
           [id]
         );
-        return;
-      }
-
-      // Reserve a daily call before network I/O. A crash consumes the reservation.
-      // The global session lock serializes workers across application instances.
-      const reserved = await c.query(
-        `INSERT INTO classification_usage(mode,day,requests)
-        VALUES($1,(now() AT TIME ZONE 'UTC')::date,1)
-        ON CONFLICT(mode,day) DO UPDATE SET requests=classification_usage.requests+1
-        WHERE classification_usage.requests < $2 RETURNING requests`,
-        [config.mode, config.llmDailyRequestLimit ?? 20]
-      );
-      if (!reserved.rowCount) {
         return;
       }
 
@@ -251,10 +251,10 @@ export function createClassificationIntegration({
     }
 
     try {
-      if (config.llmAutoClassify !== false) {
+      if (config.llmAutoClassify !== false && automaticFrom(config) !== null) {
         const c = await pool.connect();
         try {
-          const candidates = await store.automaticClassificationCandidates(c);
+          const candidates = await store.automaticClassificationCandidates(c, { from: automaticFrom(config) });
           let queued = 0;
           for (const tx of candidates) {
             const { fingerprint } = await input(tx.id, c, config);
@@ -263,7 +263,7 @@ export function createClassificationIntegration({
               [config.mode, tx.id, fingerprint]
             );
             queued += inserted.rowCount;
-            if (queued >= (config.llmBatchSize ?? 5)) {
+            if (queued >= automaticBatch) {
               break;
             }
           }
@@ -272,9 +272,13 @@ export function createClassificationIntegration({
         }
       }
 
+      const from = automaticFrom(config);
       const { rows } = await pool.query(
-        "SELECT id FROM classification_jobs WHERE mode=$1 AND status='pending' AND next_attempt_at<=now() AND (origin='manual' OR $3) ORDER BY next_attempt_at,id LIMIT $2",
-        [config.mode, config.llmBatchSize ?? 5, config.llmAutoClassify !== false]
+        `SELECT j.id FROM classification_jobs j LEFT JOIN transactions t ON t.mode=j.mode AND t.id::text=j.transaction_id
+        WHERE j.mode=$1 AND j.status='pending' AND j.next_attempt_at<=now()
+          AND (j.origin='manual' OR ($3 AND $4::boolean AND ($5::date IS NULL OR t.date>=$5::date)))
+        ORDER BY j.next_attempt_at,j.id LIMIT $2`,
+        [config.mode, automaticBatch, config.llmAutoClassify !== false, from !== null, from || null]
       );
       for (const row of rows) {
         await processJob(row.id);

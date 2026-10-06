@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/button';
 import { BedrockModelPicker } from '../../components/bedrock-model-picker';
 import { useBedrockModels } from '../../hooks/use-bedrock-models.mjs';
 import { useSettingsForm } from '../../hooks/use-settings-form.mjs';
+import { formatDay } from '../../lib/dates.mjs';
 import { useSettingsDirty } from './settings-dirty';
 
 const sharedValues = (data = {}) => ({
@@ -21,8 +22,7 @@ const classificationValues = (data = {}) => ({
   enabled: !!data.enabled,
   autoClassify: !!data.autoClassify,
   autoApply: !!data.autoApply,
-  dailyRequestLimit: data.dailyRequestLimit ?? 20,
-  batchSize: data.batchSize ?? 5
+  includeHistory: !!data.includeHistory
 });
 const assistantValues = (data = {}) => ({
   model: data.model || '',
@@ -441,7 +441,25 @@ function AiFeatureSettings({ api, demo, shared, connectionDirty, blocked, discov
                 Automatically suggest categories for unresolved imports
               </label>
               <p className="footnote">
-                Turn automatic suggestions off to keep only on-demand suggestions. Existing automatic jobs pause.
+                {data?.classifyFrom
+                  ? `Automatic suggestions cover transactions dated from ${formatDay(data.classifyFrom)}.`
+                  : 'Automatic suggestions cover transactions dated from the day you turn them on.'}{' '}
+                Turn them off to keep only on-demand suggestions. Existing automatic jobs pause.
+              </p>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={values.includeHistory}
+                  disabled={!values.autoClassify}
+                  onChange={(event) => change('includeHistory', event.target.checked)}
+                />
+                Also suggest categories for older transactions
+              </label>
+              <p className="footnote">
+                Off by default. Each older unresolved transaction is one provider call
+                {data?.olderUnresolved
+                  ? `: ${data.olderUnresolved.count.toLocaleString('en-AU')} ${data.olderUnresolved.count === 1 ? 'is' : 'are'} dated before ${formatDay(data.olderUnresolved.before)}.`
+                  : '.'}
               </p>
               <label className="checkbox-label">
                 <input
@@ -456,27 +474,6 @@ function AiFeatureSettings({ api, demo, shared, connectionDirty, blocked, discov
                 review.
               </p>
             </>
-          )}
-          {!assistant && (
-            <div className="settings-row">
-              {[
-                ['dailyRequestLimit', 'Requests per UTC day', 1, 1000],
-                ['batchSize', 'Maximum import batch', 1, 20]
-              ].map(([key, label, min, max]) => (
-                <label key={key}>
-                  {label}
-                  <input
-                    type="number"
-                    required
-                    step="1"
-                    min={min}
-                    max={max}
-                    value={values[key]}
-                    onChange={(event) => change(key, Number(event.target.value))}
-                  />
-                </label>
-              ))}
-            </div>
           )}
           <p className="footnote">
             {assistant

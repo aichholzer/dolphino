@@ -428,14 +428,16 @@ try {
     .getByRole('checkbox', { name: 'Automatically suggest categories for unresolved imports', exact: true })
     .check();
   await page.getByRole('checkbox', { name: 'Automatically apply validated category suggestions', exact: true }).check();
-  await page.getByLabel('Requests per UTC day', { exact: true }).fill('30');
-  await page.getByLabel('Maximum import batch', { exact: true }).fill('6');
+  await page.getByRole('checkbox', { name: 'Also suggest categories for older transactions', exact: true }).check();
   await save('Save classification settings', '/api/settings/provider');
   const automatic = await api('/api/settings/provider');
   assert.equal(automatic.autoClassify, true);
   assert.equal(automatic.autoApply, true);
-  assert.equal(automatic.dailyRequestLimit, 30);
-  assert.equal(automatic.batchSize, 6);
+  assert.equal(automatic.includeHistory, true);
+  assert.match(automatic.classifyFrom, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(automatic.olderUnresolved.before, automatic.classifyFrom);
+  assert(Number.isInteger(automatic.olderUnresolved.count));
+  assert.equal(Object.hasOwn(automatic, 'dailyRequestLimit'), false);
   await page.getByRole('checkbox', { name: 'Enable AI classification', exact: true }).uncheck();
   await save('Save classification settings', '/api/settings/provider');
   const disabled = await api('/api/settings/provider');
@@ -484,24 +486,28 @@ try {
     assert.equal(state.model, 'synthetic.bedrock-model', 'Credential rotation retains separate model selection');
   }
 
-  assert.equal((await api('/api/settings/provider')).dailyRequestLimit, 30);
+  assert.equal((await api('/api/settings/provider')).includeHistory, true);
   proof(
     'Shared Bedrock keys populate both pickers once, provider changes clear both models, and credential changes pause both while retaining models and limits'
   );
 
   // Dirty feature drafts keep the revision they were edited against. A shared
   // save must never silently rebase and re-enable an old draft.
-  await page.getByLabel('Requests per UTC day', { exact: true }).fill('41');
+  await page.getByRole('checkbox', { name: 'Also suggest categories for older transactions', exact: true }).uncheck();
   await page.getByLabel('AWS region', { exact: true }).selectOption('us-east-1');
   await save('Save AI connection', '/api/settings/ai');
-  await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('41');
+  await expect(
+    page.getByRole('checkbox', { name: 'Also suggest categories for older transactions', exact: true })
+  ).not.toBeChecked();
   await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeDisabled();
   const classificationSection = page
     .locator('.integration-settings')
     .filter({ has: page.getByRole('heading', { name: 'Optional AI classification', exact: true }) });
   page.once('dialog', (dialog) => dialog.accept());
   await classificationSection.getByRole('button', { name: /Reload.*saved/i }).click();
-  await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('30');
+  await expect(
+    page.getByRole('checkbox', { name: 'Also suggest categories for older transactions', exact: true })
+  ).toBeChecked();
   await expect(page.getByRole('button', { name: 'Save classification settings', exact: true })).toBeEnabled();
   proof('Dirty feature draft survives shared changes but cannot save until an explicit saved-state reload');
 

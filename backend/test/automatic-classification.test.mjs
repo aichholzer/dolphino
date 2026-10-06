@@ -25,8 +25,7 @@ async function fixture(run, max = 1) {
     llmAutoClassify: true,
     llmApiKey: 'fictional',
     llmModel: 'small',
-    llmBatchSize: 5,
-    llmDailyRequestLimit: 20
+    llmClassifyFrom: '2026-01-01'
   };
   const account = { id: 'fictional', name: 'Fictional', currency: 'AUD' };
   let sequence = 0;
@@ -191,14 +190,12 @@ test(
 );
 
 test(
-  'automatic jobs enforce shared daily cap, retry invalid output, and serialize provider concurrency',
+  'automatic jobs run five per tick with no daily cap, retry invalid output, and serialize provider concurrency',
   { skip: !database },
   async () =>
     fixture(async ({ pool, store, config, ingest }) => {
-      config.llmDailyRequestLimit = 2;
       config.llmAutoApply = true;
-      config.llmBatchSize = 2;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 7; i++) {
         await ingest();
       }
 
@@ -222,19 +219,90 @@ test(
       const a = make(),
         b = make();
       await a.init();
-      await Promise.all([a.tick(), b.tick()]);
       await a.tick();
-      assert.equal(calls, 2);
-      assert.equal(maximum, 1);
-      assert.equal((await pool.query('SELECT requests FROM classification_usage')).rows[0].requests, 2);
+      assert.equal(calls, 5);
+      await a.tick();
+      assert.equal(calls, 7);
+      assert.equal((await pool.query('SELECT * FROM classification_usage')).rowCount, 0);
       assert((await store.listTransactions()).every((t) => t.category === 'Uncategorized' && t.reviewRequired));
-      assert.equal((await pool.query('SELECT * FROM classification_jobs WHERE attempts>0')).rowCount, 2);
-      // Simulate next UTC day's fresh allowance while retaining durable jobs.
-      await pool.query('UPDATE classification_usage SET day=day-1');
+      assert.equal((await pool.query('SELECT * FROM classification_jobs WHERE attempts>0')).rowCount, 7);
       await pool.query('UPDATE classification_jobs SET next_attempt_at=now()');
-      await a.tick();
-      assert.equal(calls, 4);
+      await Promise.all([a.tick(), b.tick()]);
+      assert.equal(maximum, 1);
     }, 4)
+);
+
+test(
+  'automatic suggestions skip transactions dated before the cutoff until older imports are included',
+  { skip: !database },
+  async () =>
+    fixture(async ({ pool, store, config, ingest }) => {
+      config.llmClassifyFrom = '2026-09-01';
+      let calls = 0,
+        status = 200;
+      const worker = createClassificationIntegration({
+        pool,
+        store,
+        config,
+        getProviderConfig: async () => ({ ...config }),
+        fetchImpl: async () => {
+          calls++;
+          return status === 200 ? reply() : new Response('busy', { status });
+        }
+      });
+      await worker.init();
+      const older = await ingest({ date: '2026-08-31' });
+      const newer = await ingest({ date: '2026-09-01' });
+      await worker.tick();
+      assert.equal(calls, 1);
+      const queued = async () =>
+        (await pool.query('SELECT transaction_id,status FROM classification_jobs ORDER BY id')).rows;
+      assert.deepEqual(await queued(), [{ transaction_id: newer.id, status: 'succeeded' }]);
+      assert.equal((await store.listTransactions()).length, 2);
+
+      // An older job queued while older imports were included waits once they are excluded.
+      config.llmIncludeHistory = true;
+      status = 503;
+      await worker.tick();
+      assert.equal(calls, 2);
+      assert.equal((await queued()).find((job) => job.transaction_id === older.id).status, 'pending');
+      config.llmIncludeHistory = false;
+      status = 200;
+      await pool.query('UPDATE classification_jobs SET next_attempt_at=now()');
+      await worker.tick();
+      assert.equal(calls, 2);
+      config.llmIncludeHistory = true;
+      await worker.tick();
+      assert.equal(calls, 3);
+      assert.equal((await queued()).find((job) => job.transaction_id === older.id).status, 'succeeded');
+    })
+);
+
+test(
+  'without a recorded cutoff nothing is queued automatically and on-demand suggestions still run',
+  { skip: !database },
+  async () =>
+    fixture(async ({ pool, store, config, ingest }) => {
+      config.llmClassifyFrom = '';
+      let calls = 0;
+      const worker = createClassificationIntegration({
+        pool,
+        store,
+        config,
+        getProviderConfig: async () => ({ ...config }),
+        fetchImpl: async () => {
+          calls++;
+          return reply();
+        }
+      });
+      await worker.init();
+      const tx = await ingest({ date: '2020-01-31' });
+      await worker.tick();
+      assert.equal(calls, 0);
+      assert.equal((await pool.query('SELECT * FROM classification_jobs')).rowCount, 0);
+      assert.equal((await worker.suggest(tx.id)).category, 'Groceries');
+      assert.equal(calls, 1);
+    })
 );
 
 test('automatic apply rechecks manual changes during mocked provider request', { skip: !database }, async () =>
@@ -334,7 +402,11 @@ test(
           pool,
           store,
           config,
-          getProviderConfig: settingsStore.getProviderConfig,
+          // The legacy store records no cutoff; this fixture's transactions all fall after this one.
+          getProviderConfig: async (client) => ({
+            ...(await settingsStore.getProviderConfig(client)),
+            llmClassifyFrom: '2026-01-01'
+          }),
           fetchImpl: async () => {
             calls++;
             return reply();

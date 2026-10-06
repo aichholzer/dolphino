@@ -142,9 +142,7 @@ try {
     model: 'synthetic-classification-model',
     enabled: true,
     autoClassify: false,
-    autoApply: false,
-    dailyRequestLimit: 7,
-    batchSize: 3
+    autoApply: false
   });
   await ai.assistant.save({
     aiRevision,
@@ -375,8 +373,8 @@ try {
   assert.equal(restoredClassification.config.llmEnabled, true);
   assert.equal(restoredClassification.config.llmAutoClassify, false);
   assert.equal(restoredClassification.config.llmAutoApply, false);
-  assert.equal(restoredClassification.config.llmDailyRequestLimit, 7);
-  assert.equal(restoredClassification.config.llmBatchSize, 3);
+  assert.equal(restoredClassification.config.llmClassifyFrom, '');
+  assert.equal(restoredClassification.config.llmIncludeHistory, false);
   assert.equal(restoredAssistant.config.llmModel, 'synthetic-assistant-model');
   assert.equal(restoredAssistant.config.assistantEnabled, false);
   assert.equal(restoredAssistant.config.assistantDataSharingAcknowledged, false);

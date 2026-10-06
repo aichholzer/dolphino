@@ -21,9 +21,7 @@ const classificationInput = {
   model: 'synthetic-classifier',
   enabled: true,
   autoClassify: false,
-  autoApply: false,
-  dailyRequestLimit: 12,
-  batchSize: 3
+  autoApply: false
 };
 const assistantInput = {
   model: 'synthetic-assistant',
@@ -310,7 +308,7 @@ dbTest(
     assert.equal(assistant.enabled, false);
     assert.equal(classification.model, classificationInput.model);
     assert.equal(assistant.model, assistantInput.model);
-    assert.equal(classification.dailyRequestLimit, 12);
+    assert.equal(Object.hasOwn(classification, 'dailyRequestLimit'), false);
     assert.equal(Object.hasOwn(assistant, 'dailyRequestsPerUser'), false);
     await f.saveClassification(classificationInput);
     await f.saveAssistant(assistantInput);
@@ -479,7 +477,7 @@ dbTest(
             const result = await f.pool.query(...args);
             if (calls === 1) {
               await f.saveAi({ provider: 'openai', apiKey: 'synthetic-next-key' });
-              await f.saveClassification({ ...classificationInput, model: 'next-classifier', dailyRequestLimit: 19 });
+              await f.saveClassification({ ...classificationInput, model: 'next-classifier' });
               await f.saveAssistant({ ...assistantInput, model: 'next-assistant' });
             }
 
@@ -496,10 +494,47 @@ dbTest(
       const second = await read();
       assert.equal(second.llmApiKey, 'synthetic-next-key');
       assert.equal(second.llmModel, feature === 'classification' ? 'next-classifier' : 'next-assistant');
-      if (feature === 'classification') {
-        assert.equal(second.llmDailyRequestLimit, 19);
-      }
     }
+  }
+);
+
+dbTest(
+  'classification records its cutoff once in the household zone and older settings date it from their last save',
+  async (t) => {
+    const f = await fixture(t);
+    await f.saveAi({ provider: 'openai', apiKey: key });
+    const at = (instant) =>
+      sharedAiSettings({
+        pool: f.pool,
+        appSecret: f.config.appSecret,
+        timezone: 'Australia/Brisbane',
+        now: () => new Date(instant)
+      });
+    const first = at('2026-10-06T22:30:00Z');
+    const save = (shared, input) => shared.saveClassification({ ...classificationInput, ...input });
+    assert.equal((await save(first, { autoClassify: false })).classifyFrom, '');
+    assert.equal((await save(first, { autoClassify: true })).classifyFrom, '2026-10-07');
+    const later = at('2026-12-01T00:00:00Z');
+    assert.equal((await save(later, { autoClassify: true, includeHistory: true })).classifyFrom, '2026-10-07');
+    const runtime = await later.settings.getProviderConfig();
+    assert.equal(runtime.llmClassifyFrom, '2026-10-07');
+    assert.equal(runtime.llmIncludeHistory, true);
+    await assert.rejects(save(later, { classifyFrom: '2020-01-01' }), (error) => error.status === 400);
+
+    // A document from before the cutoff existed, still holding the removed limits.
+    await f.pool.query(
+      `UPDATE app_settings SET value=(value - 'classifyFrom' - 'includeHistory') || '{"dailyRequestLimit":12,"batchSize":3}'::jsonb,
+        updated_at='2026-05-04T15:00:00Z' WHERE key='ai.classification'`
+    );
+    const legacy = await later.settings.getProviderConfig();
+    assert.equal(legacy.llmEnabled, true);
+    assert.equal(legacy.llmClassifyFrom, '2026-05-05');
+    assert.equal(legacy.llmIncludeHistory, false);
+    assert.equal(Object.hasOwn(legacy, 'llmDailyRequestLimit'), false);
+    assert.equal((await save(later, { autoClassify: true })).classifyFrom, '2026-05-05');
+    const stored = (await f.pool.query(`SELECT value FROM app_settings WHERE key='ai.classification'`)).rows[0].value;
+    assert.equal(stored.classifyFrom, '2026-05-05');
+    assert.equal(Object.hasOwn(stored, 'dailyRequestLimit'), false);
   }
 );
 
@@ -613,7 +648,7 @@ dbTest(
       const f = await fixture(t);
       await f.saveAi({ provider: 'openai', apiKey: key });
       const tx = await f.ingest();
-      await f.saveClassification({ ...classificationInput, autoClassify: true, autoApply: true });
+      await f.saveClassification({ ...classificationInput, autoClassify: true, autoApply: true, includeHistory: true });
       let started, release;
       const ready = new Promise((resolve) => {
         started = resolve;
@@ -761,7 +796,7 @@ dbTest('classification keeps the shared credential lock through category, audit 
   const f = await fixture(t);
   const tx = await f.ingest();
   await f.saveAi({ provider: 'openai', apiKey: key });
-  await f.saveClassification({ ...classificationInput, autoClassify: true, autoApply: true });
+  await f.saveClassification({ ...classificationInput, autoClassify: true, autoApply: true, includeHistory: true });
   const barrier = 17092382;
   await f.pool.query(
     `CREATE FUNCTION hold_classification_result() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='succeeded' THEN PERFORM pg_advisory_xact_lock(${barrier}); END IF; RETURN NEW; END $$`
@@ -818,7 +853,7 @@ dbTest('a rejected classification result commit rolls back category, audit and b
   const tx = await f.ingest();
   await f.store.saveBudget({ category: 'Groceries', currency: 'AUD', month: '2026-09', capMinor: '100' });
   await f.saveAi({ provider: 'openai', apiKey: key });
-  await f.saveClassification({ ...classificationInput, autoClassify: true, autoApply: true });
+  await f.saveClassification({ ...classificationInput, autoClassify: true, autoApply: true, includeHistory: true });
   await f.pool.query(
     "CREATE FUNCTION reject_classification_result() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='succeeded' THEN RAISE EXCEPTION 'synthetic result write failure'; END IF; RETURN NEW; END $$"
   );

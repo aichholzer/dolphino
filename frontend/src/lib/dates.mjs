@@ -24,3 +24,15 @@ export function formatStamp(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : formatter().format(date);
 }
+
+// A calendar day such as 2026-10-06 reads 6 Oct 2026; it names no instant, so no zone shifts it.
+const dayFormat = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+export function formatDay(value) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? String(value) : dayFormat.format(date);
+}
