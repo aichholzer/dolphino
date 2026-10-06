@@ -47,7 +47,6 @@ test('ephemeral assistant tool citations and regenerated reports are private eve
   const sent = await assistant.send({
     chatId: chat.id,
     message: 'Report',
-    acknowledgeDataSharing: true,
     getContext
   });
   assert.equal(sent.reply, 'Synthetic answer');
@@ -96,7 +95,6 @@ test('permissions revoked during model wait erase context before any tool or ans
   const response = assistant.send({
     chatId: chat.id,
     message: 'Report',
-    acknowledgeDataSharing: true,
     getContext
   });
   await started;
@@ -110,7 +108,7 @@ test('permissions revoked during model wait erase context before any tool or ans
   assert.equal(invoked, 0);
   assert.equal((await assistant.list({ getContext })).chats.length, 0);
 });
-test('cancel, one active turn, consent, input and unknown tool controls fail closed', async () => {
+test('cancel, one active turn, input and unknown tool controls fail closed', async () => {
   let entered;
   const started = new Promise((r) => (entered = r));
   const { assistant, getContext } = setup({
@@ -120,12 +118,10 @@ test('cancel, one active turn, consent, input and unknown tool controls fail clo
     }
   });
   const chat = await assistant.create({ getContext });
-  await assert.rejects(assistant.send({ chatId: chat.id, message: 'x', getContext }), /Confirm sharing/);
   await assert.rejects(
     assistant.send({
       chatId: chat.id,
       message: 'x'.repeat(4001),
-      acknowledgeDataSharing: true,
       getContext
     }),
     /4000/
@@ -133,7 +129,6 @@ test('cancel, one active turn, consent, input and unknown tool controls fail clo
   const pending = assistant.send({
     chatId: chat.id,
     message: 'x',
-    acknowledgeDataSharing: true,
     getContext
   });
   await started;
@@ -141,7 +136,6 @@ test('cancel, one active turn, consent, input and unknown tool controls fail clo
     assistant.send({
       chatId: chat.id,
       message: 'x',
-      acknowledgeDataSharing: true,
       getContext
     }),
     /already running/
@@ -172,7 +166,6 @@ test('cancel, one active turn, consent, input and unknown tool controls fail clo
     forged.assistant.send({
       chatId: other.id,
       message: 'x',
-      acknowledgeDataSharing: true,
       getContext: forged.getContext
     }),
     /unavailable tool/
@@ -189,7 +182,6 @@ test('provider errors never append partial conversations', async () => {
     assistant.send({
       chatId: c.id,
       message: 'x',
-      acknowledgeDataSharing: true,
       getContext
     }),
     /provider unavailable/
@@ -216,7 +208,6 @@ test('mid-turn provider configuration changes abort without committing history',
   const pending = assistant.send({
     chatId: c.id,
     message: 'question',
-    acknowledgeDataSharing: true,
     getContext
   });
   await ready;
@@ -240,7 +231,6 @@ test('ephemeral chats expire and ten-turn limit is enforced', async () => {
     await assistant.send({
       chatId: c.id,
       message: 'question',
-      acknowledgeDataSharing: true,
       getContext
     });
   }
@@ -249,7 +239,6 @@ test('ephemeral chats expire and ten-turn limit is enforced', async () => {
     assistant.send({
       chatId: c.id,
       message: 'question',
-      acknowledgeDataSharing: true,
       getContext
     }),
     /ten turns/
@@ -270,7 +259,6 @@ test('a model answer without successful source tools is replaced with an honest 
   const result = await assistant.send({
     chatId: c.id,
     message: 'How much?',
-    acknowledgeDataSharing: true,
     getContext
   });
   assert.match(result.reply, /could not verify/);
@@ -295,7 +283,6 @@ test('configuration changes between turns invalidate prior context and global ch
   await assistant.send({
     chatId: c.id,
     message: 'first',
-    acknowledgeDataSharing: true,
     getContext
   });
   model = 'new';
@@ -303,7 +290,6 @@ test('configuration changes between turns invalidate prior context and global ch
     assistant.send({
       chatId: c.id,
       message: 'second',
-      acknowledgeDataSharing: true,
       getContext
     }),
     /configuration changed/
@@ -338,7 +324,6 @@ test('every successful tool citation has an owned source download, not only repo
   const result = await assistant.send({
     chatId: c.id,
     message: 'Accounts',
-    acknowledgeDataSharing: true,
     getContext
   });
   assert.ok(result.citations[0].reportId);
@@ -387,7 +372,6 @@ test('the last round asks for a final answer and never runs another query', asyn
       state.assistant.send({
         chatId: chat.id,
         message: 'Spending',
-        acknowledgeDataSharing: true,
         getContext: state.getContext
       }),
       /instead of finishing/
@@ -414,7 +398,6 @@ test('empty final output after a successful tool is a recoverable error rather t
     state.assistant.send({
       chatId: chat.id,
       message: 'PRIVATE question',
-      acknowledgeDataSharing: true,
       getContext: state.getContext
     }),
     /returned no answer.*Reference:/
@@ -436,7 +419,6 @@ test('tool database failures expose a retry reference and only redacted executio
     state.assistant.send({
       chatId: chat.id,
       message: 'PRIVATE household question',
-      acknowledgeDataSharing: true,
       getContext: state.getContext
     }),
     (error) => {
@@ -483,7 +465,6 @@ test('each question refreshes local today across midnight and pins that clock ac
     await state.assistant.send({
       chatId: chat.id,
       message: 'What happened yesterday?',
-      acknowledgeDataSharing: true,
       getContext: state.getContext
     });
   }

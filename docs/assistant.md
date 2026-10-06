@@ -1,6 +1,6 @@
 # Read-only household assistant
 
-Open the Assistant button to use the right-hand panel. An administrator must first save the shared OpenAI or Bedrock connection in **Settings → AI features**, select the assistant model, acknowledge financial-data sharing, and explicitly enable it. Classification uses that same connection while retaining its own model, enablement and limits; it cannot implicitly enable the assistant. Each user must acknowledge the disclosure before sending a question. Unconfigured service shows a setup message, never simulated answers.
+Open the Assistant button to use the right-hand panel. An administrator must first save the shared OpenAI or Bedrock connection in **Settings → AI features**, select the assistant model, acknowledge financial-data sharing, and explicitly enable it. Classification uses that same connection while retaining its own model, enablement and limits; it cannot implicitly enable the assistant. Unconfigured service shows a setup message, never simulated answers.
 
 The assistant receives no database connection, credentials, SQL executor, arbitrary URL fetcher, or mutation tools. Server-owned read services apply the signed-in user's current grants before retrieving or calculating anything. Administrators have full financial access; members have only explicit account grants and separately granted budget totals. Budget access does not expose underlying transactions. The assistant cannot change finances, settings, membership, send notifications, or browse the web.
 

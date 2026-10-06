@@ -137,12 +137,7 @@ try {
   await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'A little help making sense of it.' }).waitFor();
   await page.getByLabel('Ask a financial question', { exact: true }).fill('Compare my authorized spending');
-  assert(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled());
-  await page
-    .getByRole('checkbox', {
-      name: 'I agree to send authorized financial data to the configured provider.'
-    })
-    .check();
+  assert.equal(await page.locator('.assistant-composer input[type="checkbox"]').count(), 0);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByText('Authorized monthly report', { exact: true }).waitFor();
   assert.equal(await page.locator('.assistant-message img').count(), 0);
@@ -152,7 +147,7 @@ try {
     await page.getByRole('link', { name: 'Download authorized report' }).getAttribute('href'),
     '/api/assistant/reports/report_123'
   );
-  assert(calls.some((c) => c.path.endsWith('/messages') && c.body.acknowledgeDataSharing === true));
+  assert(calls.some((c) => c.path.endsWith('/messages') && Object.keys(c.body).join() === 'message'));
   await page.screenshot({
     path: `${output}/dolphino-assistant-desktop.png`,
     fullPage: false
@@ -201,11 +196,6 @@ try {
   await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'A little help making sense of it.' }).waitFor();
   await page
-    .getByRole('checkbox', {
-      name: 'I agree to send authorized financial data to the configured provider.'
-    })
-    .check();
-  await page
     .getByLabel('Ask a financial question', { exact: true })
     .fill('Using the fictional demo, summarize September spending and provide the source report.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -234,7 +224,7 @@ try {
   assert.deepEqual(errors, []);
   await assertPageStorageUnused();
   console.log(
-    'Assistant browser checks passed: unavailable config, explicit sharing acknowledgment, Markdown/XSS-safe reply, authorized report link, abort/cancel late-result protection, forbidden conversation hides history, responsive mobile focus trap/Escape. All APIs mocked.'
+    'Assistant browser checks passed: unavailable config, no per-message consent, Markdown/XSS-safe reply, authorized report link, abort/cancel late-result protection, forbidden conversation hides history, responsive mobile focus trap/Escape. All APIs mocked.'
   );
 } finally {
   await browser.close();

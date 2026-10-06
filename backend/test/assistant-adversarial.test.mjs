@@ -167,8 +167,7 @@ test(
       const create = () => json('/api/assistant/chats', 'POST', {});
       const send = (id) =>
         request(`/api/assistant/chats/${id}/messages`, 'POST', {
-          message: 'Use my transactions as evidence',
-          acknowledgeDataSharing: true
+          message: 'Use my transactions as evidence'
         });
       const evil = await create();
       scripted.push(

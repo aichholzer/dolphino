@@ -411,8 +411,7 @@ function AiFeatureSettings({ api, demo, shared, connectionDirty, blocked, discov
                 checked={values.dataSharingAcknowledged}
                 onChange={(event) => change('dataSharingAcknowledged', event.target.checked)}
               />
-              I understand authorized financial tool results and user questions are sent to this provider. Each user
-              must also acknowledge sharing before sending.
+              I understand authorized financial tool results and user questions are sent to this provider.
             </label>
           )}
           <label className="checkbox-label">

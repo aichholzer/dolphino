@@ -41,12 +41,8 @@ try {
   await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const question = page.getByLabel('Ask a financial question', { exact: true });
-  const consent = page.getByRole('checkbox', {
-    name: 'I agree to share authorized results with the configured model.'
-  });
   await question.fill(spendingQuestion);
-  await expect(dialog.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-  await consent.check();
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0);
   const sent = page.waitForResponse((response) => response.url().endsWith('/messages'));
   await question.press('Enter');
   const wire = await (await sent).json();
@@ -76,7 +72,6 @@ try {
 
   await dialog.getByRole('button', { name: 'New', exact: true }).click();
   f.scenario('provider-failure');
-  await consent.check();
   await question.fill(spendingQuestion);
   await question.press('Enter');
   await expect(dialog.getByRole('alert')).toContainText('Assistant provider unavailable');

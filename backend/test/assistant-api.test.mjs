@@ -181,8 +181,7 @@ test(
         name,
         id,
         value = {
-          message: 'Summarize authorized finances',
-          acknowledgeDataSharing: true
+          message: 'Summarize authorized finances'
         }
       ) => request(name, `/api/assistant/chats/${id}/messages`, 'POST', value);
       assert.equal((await request('anonymous', '/api/assistant/tools')).status, 401);
@@ -250,12 +249,15 @@ test(
         assert.deepEqual((await json(name, '/api/assistant/chats')).chats, []);
       }
 
-      assert.equal((await send('alice', chat.id, { message: 'No consent' })).status, 400);
+      // The retired per-message consent field is refused.
+      assert.equal(
+        (await send('alice', chat.id, { message: 'Old consent field', acknowledgeDataSharing: true })).status,
+        400
+      );
       assert.equal(
         (
           await send('alice', chat.id, {
-            message: 'x'.repeat(4001),
-            acknowledgeDataSharing: true
+            message: 'x'.repeat(4001)
           })
         ).status,
         400

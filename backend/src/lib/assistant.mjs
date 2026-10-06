@@ -179,11 +179,7 @@ export function createAssistant({
       c.controller?.abort();
       return { cancelled: true };
     },
-    async send({ chatId, message, acknowledgeDataSharing, getContext, signal }) {
-      if (acknowledgeDataSharing !== true) {
-        throw fail('Confirm sharing authorized finance data with the configured model', 400);
-      }
-
+    async send({ chatId, message, getContext, signal }) {
       if (typeof message !== 'string' || !message.trim() || message.length > 4000) {
         throw fail('Message must contain 1–4000 characters', 400);
       }

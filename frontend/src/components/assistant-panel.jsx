@@ -61,7 +61,6 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     [chats, setChats] = useState([]),
     [chat, setChat] = useState(null),
     [question, setQuestion] = useState(''),
-    [ack, setAck] = useState(false),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(false),
     [error, setError] = useState(''),
@@ -75,7 +74,6 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
     request.current?.abort();
     setChat(null);
     setChats([]);
-    setAck(false);
     setStatus(null);
     setOpen(false);
     setQuestion('');
@@ -149,7 +147,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
   }
 
   async function send(text) {
-    if (!text.trim() || busy || !ack) {
+    if (!text.trim() || busy) {
       return;
     }
 
@@ -182,7 +180,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       setQuestion('');
       const r = await api(`/assistant/chats/${encodeURIComponent(current.id)}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ message: text, acknowledgeDataSharing: true }),
+        body: JSON.stringify({ message: text }),
         signal: controller.signal
       });
       if (rev !== generation.current) {
@@ -283,7 +281,6 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               onChange={async (e) => {
                 const rev = ++generation.current;
                 setError('');
-                setAck(false);
                 if (!e.target.value) {
                   setChat(null);
                   return;
@@ -317,7 +314,6 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                 setChat(null);
                 setQuestion('');
                 setLastQuestion('');
-                setAck(false);
                 setError('');
               }}
             >
@@ -374,7 +370,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               <div role="alert" className="alert alert-error">
                 <span>{error}</span>
                 {lastQuestion && usable && !busy && (
-                  <Button variant="outline" disabled={!ack} onClick={() => send(lastQuestion)}>
+                  <Button variant="outline" onClick={() => send(lastQuestion)}>
                     Retry question
                   </Button>
                 )}
@@ -389,15 +385,6 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
               send(question);
             }}
           >
-            {usable && (
-              <label className="checkbox-label assistant-consent">
-                <input type="checkbox" checked={ack} disabled={busy} onChange={(e) => setAck(e.target.checked)} />
-                <span>
-                  {status?.disclosure ||
-                    'I agree to send my questions and authorized financial tool results to the configured AI provider for this conversation.'}
-                </span>
-              </label>
-            )}
             <label className="sr-only" htmlFor="assistant-question">
               Ask a financial question
             </label>
@@ -423,7 +410,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                   Stop response
                 </Button>
               ) : (
-                <Button disabled={!usable || !ack || !question.trim()}>
+                <Button disabled={!usable || !question.trim()}>
                   <Send size={16} />
                   Send
                 </Button>

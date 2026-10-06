@@ -2125,15 +2125,6 @@ label select {
   font-size: 12px;
   color: var(--muted);
 }
-.assistant-consent {
-  font-size: 12px;
-  line-height: 1.5;
-  align-items: flex-start !important;
-}
-.assistant-consent input {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
 .assistant-tool-catalog {
   margin-top: 20px;
   font-size: 12px;
@@ -2167,9 +2158,6 @@ label select {
   }
   .topbar-right {
     gap: 7px;
-  }
-  .assistant-consent {
-    font-size: 12px;
   }
   .assistant-compose-actions small {
     max-width: 160px;
@@ -2804,10 +2792,6 @@ label {
 .assistant-compose-actions small {
   color: var(--muted);
 }
-.assistant-consent {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
 .assistant-composer textarea {
   border-color: var(--line-strong);
 }
@@ -2946,9 +2930,6 @@ label {
   .assistant-trigger {
     font-size: 12px;
     min-height: 34px;
-  }
-  .assistant-consent {
-    font-size: 12px;
   }
   .assistant-compose-actions {
     align-items: flex-start;

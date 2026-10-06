@@ -347,8 +347,7 @@ export async function assistantSpendingFixture(provider = 'openai') {
       async ask(message = spendingQuestion, user = 'viewer') {
         const chat = await f.json(user, '/api/assistant/chats', 'POST', {});
         return f.http(user, `/api/assistant/chats/${chat.id}/messages`, 'POST', {
-          message,
-          acknowledgeDataSharing: true
+          message
         });
       }
     };

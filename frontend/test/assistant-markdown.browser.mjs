@@ -107,7 +107,6 @@ try {
   await page.goto(base);
   await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('checkbox', { name: 'Synthetic sharing consent.' }).check();
   const question = dialog.getByLabel('Ask a financial question', { exact: true });
   const rendered = dialog.locator('.assistant-markdown');
   async function send(content) {

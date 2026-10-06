@@ -315,10 +315,7 @@ test(
     const getContext = async () => ({ user: f.user, fingerprint: 'synthetic-access', finance: {} });
     const chat = await assistant.create({ getContext });
 
-    await assert.rejects(
-      assistant.send({ chatId: chat.id, message: 'Summarize spending', acknowledgeDataSharing: true, getContext }),
-      conflict
-    );
+    await assert.rejects(assistant.send({ chatId: chat.id, message: 'Summarize spending', getContext }), conflict);
     assert.equal(externalCalls, 0);
 
     const originalCredentials = await f.credentials();

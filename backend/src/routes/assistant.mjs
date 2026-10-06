@@ -100,8 +100,7 @@ export function registerAssistantRoutes({ route, store, auth, assistant, assista
     async (req, res) => {
       const input = z
         .object({
-          message: z.string().min(1).max(4000),
-          acknowledgeDataSharing: z.literal(true)
+          message: z.string().min(1).max(4000)
         })
         .strict()
         .parse(await body(req));

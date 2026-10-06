@@ -554,7 +554,7 @@ dbTest(
     const answer = await f.request(`/api/assistant/chats/${chat.json.id}/messages`, {
       method: 'POST',
       who: 'member',
-      value: { message: 'Show my accounts', acknowledgeDataSharing: true }
+      value: { message: 'Show my accounts' }
     });
     assert.equal(answer.status, 200, answer.text);
     assert(f.outbound.some((call) => call.url.endsWith('/chat/completions')));
@@ -596,7 +596,7 @@ dbTest('disabled shared features perform no financial data queries or outbound p
     assert.equal(chat.status, 200);
     const answer = await f.request(`/api/assistant/chats/${chat.json.id}/messages`, {
       method: 'POST',
-      value: { message: 'Read my finances', acknowledgeDataSharing: true }
+      value: { message: 'Read my finances' }
     });
     assert.equal(answer.status, 409);
     assert.deepEqual(financialQueries, []);
@@ -693,7 +693,7 @@ dbTest(
         const before = f.outbound.length;
         const pending = f.request(`/api/assistant/chats/${chat.json.id}/messages`, {
           method: 'POST',
-          value: { message: 'Read my accounts', acknowledgeDataSharing: true }
+          value: { message: 'Read my accounts' }
         });
         await ready;
         await f.saveAi({ provider: 'openai', apiKey: clear ? null : 'synthetic-rotated-key' });
@@ -989,7 +989,7 @@ dbTest(
           const chat = await f.request('/api/assistant/chats', { method: 'POST', value: {} });
           pending = f.request(`/api/assistant/chats/${chat.json.id}/messages`, {
             method: 'POST',
-            value: { message: 'Show my accounts', acknowledgeDataSharing: true }
+            value: { message: 'Show my accounts' }
           });
         }
 

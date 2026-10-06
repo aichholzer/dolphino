@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.8 - 2026-10-07
+
+### Removed
+
+- The data-sharing disclosure and checkbox in the assistant chat pane. The administrator acknowledges data sharing in Settings when enabling the assistant. `POST /api/assistant/chats/:id/messages` takes `{ message }` only and rejects `acknowledgeDataSharing`.
+
 ## 0.2.7 - 2026-10-07
 
 ### Changed
