@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.6 - 2026-10-07
+
+### Changed
+
+- The Bedrock model dropdowns in AI features group models under a heading for each provider, such as Anthropic, Amazon and Meta. The search fields, the model count, manual model ID entry and the selected-model details are gone. A saved model missing from the loaded list stays selected and reads "not in the loaded list".
+
 ## 0.2.5 - 2026-10-06
 
 ### Changed

@@ -266,9 +266,7 @@ export async function listBedrockModels(config, dependencies = {}) {
     const models = normalizeModels(foundations, profiles, config.llmRegion);
     truncated ||= models.length > MAX_MODELS;
     if (truncated) {
-      warnings.push(
-        'The catalog is incomplete because a safety limit or a partial AWS response was reached. Use manual entry for a missing model or profile.'
-      );
+      warnings.push('The catalog is incomplete because a safety limit or a partial AWS response was reached.');
     }
 
     return { region: config.llmRegion, models: models.slice(0, MAX_MODELS), warnings, truncated };

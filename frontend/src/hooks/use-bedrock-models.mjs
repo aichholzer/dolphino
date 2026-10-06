@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const discoveryError =
-  'Unable to load models. Check your saved credentials and region, and IAM permissions for bedrock:ListFoundationModels and bedrock:ListInferenceProfiles. If settings changed, save or refresh them before retrying. You can still enter a model or profile ID manually.';
+  'Unable to load models. Check your saved credentials and region, and IAM permissions for bedrock:ListFoundationModels and bedrock:ListInferenceProfiles. If settings changed, save or refresh them before retrying.';
 
 // A catalog belongs to the server-issued credential/configuration revision, not
 // a particular Save click, form object or unrelated busy/refresh transition.

@@ -390,7 +390,6 @@ function AiFeatureSettings({ api, demo, shared, connectionDirty, blocked, discov
               credentialsDirty={connectionDirty}
               model={values.model}
               onModelChange={(model) => setValues({ ...values, model, enabled: !!model.trim() && values.enabled })}
-              modelLabel={assistant ? 'Assistant model ID' : 'Model or inference profile ID / ARN'}
               purpose={purpose}
               busy={form.busy || testing}
               disabled={disabled}

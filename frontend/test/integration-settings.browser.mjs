@@ -539,8 +539,8 @@ try {
   );
 
   await scenario(
-    'shared-catalog-manual-search-and-feature-saves',
-    async ({ openAi, configure, ready, choices, count, section, save, features }) => {
+    'shared-catalog-provider-groups-and-feature-saves',
+    async ({ openAi, configure, ready, choices, count, section, save, features, nav }) => {
       await openAi();
       await configure();
       await ready();
@@ -548,11 +548,14 @@ try {
       for (const purpose of ['classification', 'assistant']) {
         const key = purpose === 'classification' ? 'provider' : 'assistant';
         const group = section(purpose);
-        const model = group.getByLabel(
-          purpose === 'assistant' ? 'Assistant model ID' : 'Model or inference profile ID / ARN',
-          { exact: true }
+        await expect(group.getByRole('searchbox')).toHaveCount(0);
+        await expect(group.getByRole('textbox')).toHaveCount(0);
+        assert.deepEqual(
+          await choices(purpose)
+            .locator('optgroup')
+            .evaluateAll((groups) => groups.map((item) => item.label)),
+          ['Synthetic provider', 'Unknown provider']
         );
-        await expect(model).toBeHidden();
         const options = await choices(purpose).innerText();
         for (const label of [
           'Foundation model',
@@ -564,17 +567,22 @@ try {
           assert(options.includes(label));
         }
 
-        await group.getByLabel(`Search ${purpose} Bedrock models`, { exact: true }).fill('Household');
         await choices(purpose).selectOption('synthetic-application-profile');
         await save(`Save ${purpose} settings`, `/api/settings/${key}`);
         assert.equal(features[key].model, 'synthetic-application-profile');
         assert.equal(features[key].enabled, false);
-        await group.getByText('Enter a model or inference profile ID manually (optional)', { exact: true }).click();
-        await model.fill('manual-unlisted-profile');
-        await save(`Save ${purpose} settings`, `/api/settings/${key}`);
-        await expect(model).toHaveValue('manual-unlisted-profile');
         assert.equal(count(), 1, 'Model-only saves retain the catalog without refetch');
       }
+
+      // A saved model missing from the catalog stays selected and saves unchanged.
+      features.provider.model = 'saved-unlisted-profile';
+      await nav('Data').click();
+      await nav('AI features').click();
+      await ready();
+      await expect(choices('classification')).toHaveValue('saved-unlisted-profile');
+      assert((await choices('classification').innerText()).includes('saved-unlisted-profile · not in the loaded list'));
+      await save('Save classification settings', '/api/settings/provider');
+      assert.equal(features.provider.model, 'saved-unlisted-profile');
     }
   );
 
@@ -674,22 +682,19 @@ try {
 
   await scenario(
     'pending-catalog-feature-edits-and-connection',
-    async ({ page, openAi, configure, ready, section, count, mode, pending, release, nav }) => {
+    async ({ page, openAi, configure, ready, choices, count, mode, pending, release, nav }) => {
       await openAi();
       mode.discovery = 'deferred';
       await configure();
       await expect.poll(() => pending.discovery.length).toBe(1);
-      await section('classification')
-        .getByText('Enter a model or inference profile ID manually (optional)', { exact: true })
-        .click();
-      const model = page.getByLabel('Model or inference profile ID / ARN', { exact: true });
-      await model.fill('manual-after-discovery-start');
+      await expect(choices('classification')).toBeDisabled();
       await page.getByLabel('Requests per UTC day', { exact: true }).fill('37');
       await nav('Test saved connection').click();
       await expect(nav('Test saved connection')).toBeEnabled();
       release('discovery');
       await ready();
-      await expect(model).toHaveValue('manual-after-discovery-start');
+      await choices('classification').selectOption('synthetic.text-v1');
+      await expect(choices('classification')).toHaveValue('synthetic.text-v1');
       await expect(page.getByLabel('Requests per UTC day', { exact: true })).toHaveValue('37');
       assert.equal(count(), 1);
     }
@@ -749,15 +754,12 @@ try {
   for (const outcome of ['deferred', 'deferred-failure']) {
     await scenario(
       `save-race-${outcome}`,
-      async ({ page, openAi, configure, ready, section, mode, pending, release, nav, calls }) => {
+      async ({ openAi, configure, ready, choices, section, mode, pending, release, nav, calls }) => {
         await openAi();
         await configure();
         await ready();
-        await section('classification')
-          .getByText('Enter a model or inference profile ID manually (optional)', { exact: true })
-          .click();
-        const model = page.getByLabel('Model or inference profile ID / ARN', { exact: true });
-        await model.fill('submitted-model');
+        const model = choices('classification');
+        await model.selectOption('synthetic.text-v1');
         mode.save = outcome;
         const before = calls.filter((call) => call.path === '/api/settings/provider' && call.method === 'PUT').length;
         await nav('Save classification settings').evaluate((element) => {
@@ -765,9 +767,11 @@ try {
           element.click();
         });
         await expect.poll(() => pending.save.length).toBe(1);
-        await model.fill('newer-unsaved-model');
+        const requests = section('classification').getByLabel('Requests per UTC day', { exact: true });
+        await requests.fill('41');
         release('save');
-        await expect(model).toHaveValue('newer-unsaved-model');
+        await expect(requests).toHaveValue('41');
+        await expect(model).toHaveValue('synthetic.text-v1');
         await expect(section('classification').getByText(/Your current changes are retained/)).toBeVisible();
         assert.equal(
           calls.filter((call) => call.path === '/api/settings/provider' && call.method === 'PUT').length,

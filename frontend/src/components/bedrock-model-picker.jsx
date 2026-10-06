@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 
 const kinds = {
@@ -6,6 +5,21 @@ const kinds = {
   'system-profile': 'System inference profile',
   'application-profile': 'Application inference profile'
 };
+const unknownProviders = ['Unknown provider', 'Multiple or unknown providers'];
+
+// One optgroup per provider, alphabetical, unknown providers last; model order within a group is the catalog's.
+function byProvider(models) {
+  const groups = new Map();
+  for (const item of models) {
+    const name = item.provider || 'Unknown provider';
+    groups.set(name, [...(groups.get(name) || []), item]);
+  }
+
+  return [...groups].sort(
+    ([a], [b]) => Number(unknownProviders.includes(a)) - Number(unknownProviders.includes(b)) || a.localeCompare(b)
+  );
+}
+
 export function BedrockModelPicker({
   saved,
   provider,
@@ -14,14 +28,12 @@ export function BedrockModelPicker({
   clearsDirty,
   model,
   onModelChange,
-  modelLabel,
   purpose,
   busy,
   disabled = false,
   demo,
   discovery
 }) {
-  const [search, setSearch] = useState('');
   const dirty = credentialsDirty || clearsDirty || saved?.provider !== provider || saved?.region !== region;
   const credentialsReady =
     saved?.provider === 'bedrock' &&
@@ -32,16 +44,9 @@ export function BedrockModelPicker({
     /^[a-f0-9]{64}$/i.test(saved?.discoveryRevision || '');
   const unavailable = dirty || !credentialsReady || !region || provider !== 'bedrock';
   const blocked = unavailable || busy || disabled || demo;
-  const { key, catalog, loading, error, retry } = discovery;
-  useEffect(() => setSearch(''), [key]);
-  const query = search.trim().toLowerCase();
-  const matches = (catalog?.models || []).filter((item) =>
-    [item.id, item.name, item.provider, kinds[item.kind], item.lifecycle, ...(item.regions || [])]
-      .join(' ')
-      .toLowerCase()
-      .includes(query)
-  );
-  const selected = catalog?.models.find((item) => item.id === model);
+  const { catalog, loading, error, retry } = discovery;
+  const models = catalog?.models || [];
+  const unlisted = !!model && !models.some((item) => item.id === model);
 
   return (
     <div className="bedrock-model-picker">
@@ -75,27 +80,16 @@ export function BedrockModelPicker({
       )}
       {catalog && (
         <>
-          <p role="status" className="footnote">
-            {catalog.models.length} model or inference profile choices returned for {catalog.region}. No model was
-            selected automatically.
-          </p>
           {catalog.truncated && (
-            <p className="setup-note">This list is incomplete. You can enter another model or profile ID manually.</p>
+            <p className="setup-note">This list is incomplete. Reopen AI features to load it again.</p>
           )}
           {(catalog.warnings || []).map((warning, index) => (
             <p className="setup-note" key={index}>
               {warning}
             </p>
           ))}
-          <label>
-            Search {purpose} Bedrock models
-            <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
-          </label>
-          {!matches.length && (
-            <p className="footnote">
-              {catalog.models.length ? 'No models match this search.' : 'No matching models were returned.'} Your
-              current ID is unchanged; manual entry is always available.
-            </p>
+          {!models.length && (
+            <p className="footnote">No matching models were returned. Your saved model is unchanged.</p>
           )}
         </>
       )}
@@ -103,8 +97,8 @@ export function BedrockModelPicker({
         Available {purpose} Bedrock models
         <select
           aria-label={`Available ${purpose} Bedrock models`}
-          value={matches.some((item) => item.id === model) ? model : ''}
-          disabled={!!blocked || !matches.length}
+          value={model}
+          disabled={!!blocked || !models.length}
           onChange={(event) => {
             if (event.target.value) {
               onModelChange(event.target.value);
@@ -120,43 +114,26 @@ export function BedrockModelPicker({
                   ? 'Models could not be loaded'
                   : 'Save credentials and region to load models'}
           </option>
-          {matches.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} · {item.provider || 'Provider unknown'} · {kinds[item.kind] || 'Inference profile'} ·{' '}
-              {item.lifecycle} · Unverified · {item.id}
-            </option>
+          {unlisted && (
+            <optgroup label="Saved model">
+              <option value={model}>{catalog ? `${model} · not in the loaded list` : model}</option>
+            </optgroup>
+          )}
+          {byProvider(models).map(([name, items]) => (
+            <optgroup key={name} label={name}>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {kinds[item.kind] || 'Inference profile'} · {item.lifecycle} · Unverified · {item.id}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>
-      <details>
-        <summary>Enter a model or inference profile ID manually (optional)</summary>
-        <label>
-          {modelLabel}
-          <input
-            maxLength={500}
-            value={model}
-            placeholder="Optional model or inference profile ID / ARN"
-            onChange={(event) => onModelChange(event.target.value)}
-          />
-        </label>
-      </details>
-      {model && <p className="footnote">Selected model or profile: {model}</p>}
-      {selected ? (
-        <p className="footnote">
-          {selected.name} · {kinds[selected.kind] || 'Inference profile'} · {selected.lifecycle} · Access and
-          compatibility unverified.
-          {selected.regions?.length ? ` Model regions: ${selected.regions.join(', ')}.` : ''}
-        </p>
-      ) : (
-        model && (
-          <p className="footnote">Your current or custom ID is preserved even when it is absent from the list.</p>
-        )
-      )}
       <p className="footnote">
         A listing does not confirm account access or Converse compatibility. Classification requires Converse, system
         prompts and JSON output{purpose === 'assistant' ? '; the assistant also requires tool use' : ''}. All choices
-        are unverified. Legacy models may be listed; check their availability before enabling. Manual model and
-        inference profile IDs / ARNs remain supported.
+        are unverified. Legacy models may be listed; check their availability before enabling.
       </p>
     </div>
   );
