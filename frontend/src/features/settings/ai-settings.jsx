@@ -27,11 +27,7 @@ const classificationValues = (data = {}) => ({
 const assistantValues = (data = {}) => ({
   model: data.model || '',
   enabled: !!data.enabled,
-  dataSharingAcknowledged: !!data.dataSharingAcknowledged,
-  dailyRequestsPerUser: data.dailyRequestsPerUser ?? 10,
-  maxToolCalls: data.maxToolCalls ?? 4,
-  maxRounds: data.maxRounds ?? 3,
-  maxOutputTokens: data.maxOutputTokens ?? 1024
+  dataSharingAcknowledged: !!data.dataSharingAcknowledged
 });
 
 function FormMessages({ form }) {
@@ -104,7 +100,7 @@ export function AiSettings({ api, demo, onUpdated }) {
         <h2 id="shared-ai-heading">Shared AI connection</h2>
         <p className="muted">
           Choose your provider and enter credentials once. Classification and the assistant use this connection, with
-          their own models, controls and limits below.
+          their own models and controls below.
         </p>
         <FormMessages form={form} />
         {!shared && !form.error && <p role="status">Loading AI settings…</p>}
@@ -462,37 +458,31 @@ function AiFeatureSettings({ api, demo, shared, connectionDirty, blocked, discov
               </p>
             </>
           )}
-          <div className="settings-row">
-            {(assistant
-              ? [
-                  ['dailyRequestsPerUser', 'Daily requests per user', 1, 100],
-                  ['maxToolCalls', 'Tool calls per answer', 1, 8],
-                  ['maxRounds', 'Model rounds per answer', 1, 4],
-                  ['maxOutputTokens', 'Maximum output tokens', 128, 2048]
-                ]
-              : [
-                  ['dailyRequestLimit', 'Requests per UTC day', 1, 1000],
-                  ['batchSize', 'Maximum import batch', 1, 20]
-                ]
-            ).map(([key, label, min, max]) => (
-              <label key={key}>
-                {label}
-                <input
-                  type="number"
-                  required
-                  step="1"
-                  min={min}
-                  max={max}
-                  value={values[key]}
-                  onChange={(event) => change(key, Number(event.target.value))}
-                />
-              </label>
-            ))}
-          </div>
+          {!assistant && (
+            <div className="settings-row">
+              {[
+                ['dailyRequestLimit', 'Requests per UTC day', 1, 1000],
+                ['batchSize', 'Maximum import batch', 1, 20]
+              ].map(([key, label, min, max]) => (
+                <label key={key}>
+                  {label}
+                  <input
+                    type="number"
+                    required
+                    step="1"
+                    min={min}
+                    max={max}
+                    value={values[key]}
+                    onChange={(event) => change(key, Number(event.target.value))}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
           <p className="footnote">
             {assistant
               ? 'Provider inference may incur charges. Read-only tools respect the signed-in user’s account and budget permissions. Chats expire after 30 minutes or a server restart.'
-              : 'Provider inference may incur charges. Classification and assistant limits are independent.'}
+              : 'Provider inference may incur charges.'}
           </p>
           {data?.disabledReason && <p className="footnote">{data.disabledReason}</p>}
           <Button disabled={form.busy || testing}>

@@ -94,7 +94,6 @@ const assistant = createAssistant({
     timezone: config.timezone,
     currency: config.currency
   }),
-  reserveRequest: assistantUsage.reserveRequest,
   sendTurn: sendAssistantTurn,
   onDiagnostic: (event) => console.warn(JSON.stringify(event)),
   invokeTool: invokeFinanceTool,

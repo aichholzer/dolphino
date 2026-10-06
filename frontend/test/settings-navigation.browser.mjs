@@ -46,10 +46,6 @@ const features = {
     model: 'synthetic.model',
     enabled: false,
     dataSharingAcknowledged: false,
-    dailyRequestsPerUser: 10,
-    maxToolCalls: 4,
-    maxRounds: 3,
-    maxOutputTokens: 1024,
     tools: []
   }
 };

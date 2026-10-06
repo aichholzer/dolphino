@@ -176,10 +176,6 @@ await page.context().route('**/*', async (route) => {
       model: 'synthetic-assistant-model',
       enabled: false,
       dataSharingAcknowledged: false,
-      dailyRequestsPerUser: 10,
-      maxToolCalls: 4,
-      maxRounds: 3,
-      maxOutputTokens: 1024,
       configured: false,
       credentials: {},
       tools: [{ name: 'account_balances', description: 'Read authorized balances' }]

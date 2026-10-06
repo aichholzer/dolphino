@@ -10,7 +10,6 @@ import { createHouseholdAuth } from '../src/lib/household-auth.mjs';
 import { createApp } from '../src/app.mjs';
 import { createClassificationIntegration } from '../src/lib/classification.mjs';
 import { createAssistant } from '../src/lib/assistant.mjs';
-import { createAssistantUsage } from '../src/lib/assistant-usage.mjs';
 import { sendAssistantTurn } from '../src/lib/assistant-provider.mjs';
 import { FINANCE_TOOLS, invokeFinanceTool } from '../src/lib/assistant-tools.mjs';
 import { validateAndSetGrants } from '../src/lib/access.mjs';
@@ -29,11 +28,7 @@ const classificationInput = {
 const assistantInput = {
   model: 'synthetic-assistant',
   enabled: true,
-  dataSharingAcknowledged: true,
-  dailyRequestsPerUser: 7,
-  maxToolCalls: 3,
-  maxRounds: 2,
-  maxOutputTokens: 512
+  dataSharingAcknowledged: true
 };
 const conflict = (error) => error.status === 409;
 const responseText = (text) =>
@@ -134,11 +129,8 @@ async function fixture(t, { legacy = false } = {}) {
     fetchImpl
   });
   await classification.init();
-  const usage = createAssistantUsage({ pool });
-  await usage.init();
   const assistant = createAssistant({
     getProviderConfig: shared.assistantSettings.getRuntimeConfig,
-    reserveRequest: usage.reserveRequest,
     sendTurn: (input) => sendAssistantTurn(input, { fetchImpl }),
     invokeTool: invokeFinanceTool,
     tools: FINANCE_TOOLS
@@ -319,7 +311,7 @@ dbTest(
     assert.equal(classification.model, classificationInput.model);
     assert.equal(assistant.model, assistantInput.model);
     assert.equal(classification.dailyRequestLimit, 12);
-    assert.equal(assistant.dailyRequestsPerUser, 7);
+    assert.equal(Object.hasOwn(assistant, 'dailyRequestsPerUser'), false);
     await f.saveClassification(classificationInput);
     await f.saveAssistant(assistantInput);
     const restarted = sharedAiSettings({ pool: f.pool, appSecret: f.config.appSecret });
@@ -488,7 +480,7 @@ dbTest(
             if (calls === 1) {
               await f.saveAi({ provider: 'openai', apiKey: 'synthetic-next-key' });
               await f.saveClassification({ ...classificationInput, model: 'next-classifier', dailyRequestLimit: 19 });
-              await f.saveAssistant({ ...assistantInput, model: 'next-assistant', dailyRequestsPerUser: 9 });
+              await f.saveAssistant({ ...assistantInput, model: 'next-assistant' });
             }
 
             return result;
@@ -504,13 +496,37 @@ dbTest(
       const second = await read();
       assert.equal(second.llmApiKey, 'synthetic-next-key');
       assert.equal(second.llmModel, feature === 'classification' ? 'next-classifier' : 'next-assistant');
-      assert.equal(
-        feature === 'classification' ? second.llmDailyRequestLimit : second.assistantDailyRequestLimit,
-        feature === 'classification' ? 19 : 9
-      );
+      if (feature === 'classification') {
+        assert.equal(second.llmDailyRequestLimit, 19);
+      }
     }
   }
 );
+
+dbTest('assistant settings saved with the removed limit fields stay enabled and save again', async (t) => {
+  const f = await fixture(t);
+  await f.saveAi({ provider: 'openai', apiKey: key });
+  await f.saveAssistant(assistantInput);
+  await f.pool.query(
+    `UPDATE app_settings SET value = value || '{"dailyRequestsPerUser":7,"maxToolCalls":3,"maxRounds":2,"maxOutputTokens":512}'::jsonb WHERE key='ai.assistant'`
+  );
+  const runtime = await f.assistantSettings.getRuntimeConfig();
+  assert.equal(runtime.assistantEnabled, true);
+  assert.equal(runtime.llmModel, assistantInput.model);
+  for (const field of [
+    'assistantDailyRequestLimit',
+    'assistantMaxToolCalls',
+    'assistantMaxRounds',
+    'assistantMaxOutputTokens'
+  ]) {
+    assert.equal(Object.hasOwn(runtime, field), false, field);
+  }
+
+  await f.saveAssistant({ ...assistantInput, model: 'next-assistant' });
+  const stored = (await f.pool.query(`SELECT value FROM app_settings WHERE key='ai.assistant'`)).rows[0].value;
+  assert.equal(stored.model, 'next-assistant');
+  assert.equal(Object.hasOwn(stored, 'dailyRequestsPerUser'), false);
+});
 
 dbTest(
   'one saved key powers actual classification and assistant requests while grants and chats remain user-scoped',

@@ -128,7 +128,6 @@ test(
           assistantEnabled: true,
           timezone: config.timezone
         }),
-        reserveRequest: async () => {},
         tools: FINANCE_TOOLS,
         invokeTool: invokeFinanceTool,
         sendTurn: async (input) => {

@@ -8,14 +8,18 @@ const fingerprintConfig = (value) => createHash('sha256').update(JSON.stringify(
 const NO_EVIDENCE =
   'I could not verify an answer from your authorized financial records. Ask a specific question about accounts, transactions, spending, budgets or data quality so I can check the available sources.';
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value), 'utf8');
+
+// Loop bounds per answer. The last round asks the model to answer from what it already has.
+export const MAX_ROUNDS = 8,
+  MAX_TOOL_CALLS = 24;
+
 export function createAssistant({
   getProviderConfig,
-  reserveRequest,
   sendTurn,
   invokeTool,
   tools,
   now = Date.now,
-  timeoutMs = 60000,
+  timeoutMs = 180000,
   maxChats = 100,
   maxMemoryBytes = 32 * 1024 * 1024,
   maxActive = 4,
@@ -206,7 +210,7 @@ export function createAssistant({
         abort();
       }
 
-      const timer = setTimeout(abort, Math.min(60000, Math.max(1, timeoutMs)));
+      const timer = setTimeout(abort, Math.min(180000, Math.max(1, timeoutMs)));
       const history = [...c.context, { role: 'user', content: message.trim() }],
         citations = [],
         newReports = [];
@@ -263,19 +267,10 @@ export function createAssistant({
       }
 
       try {
-        for (let round = 0; round < 4; round++) {
-          const ctx = await guard(),
-            config = await bounded(getProviderConfig());
-          const roundLimit = Math.min(4, config.assistantMaxRounds || 4);
+        for (let round = 0; round < MAX_ROUNDS; round++) {
+          await guard();
+          const config = await bounded(getProviderConfig());
           provider = ['openai', 'bedrock'].includes(config.llmProvider) ? config.llmProvider : 'unknown';
-          const toolLimit = Math.min(8, config.assistantMaxToolCalls || 8);
-          if (round >= roundLimit) {
-            throw fail(
-              'The model did not finish within the configured response limit. Retry or choose an explicit category and month.',
-              409
-            );
-          }
-
           if (config.assistantEnabled !== true || config.assistantDataSharingAcknowledged === false) {
             throw fail('Finance assistant is disabled', 409);
           }
@@ -288,21 +283,14 @@ export function createAssistant({
             throw fail('Conversation context is full; start a new conversation', 409);
           }
 
-          await bounded(
-            reserveRequest({
-              userId: ctx.user.id,
-              limit: config.assistantDailyRequestLimit || 20
-            })
-          );
-          await guard();
-          const finalAnswer = round === roundLimit - 1 || calls >= toolLimit;
+          const finalAnswer = round === MAX_ROUNDS - 1 || calls >= MAX_TOOL_CALLS;
           const calendar = assistantCalendar(questionTime, config.timezone || 'Australia/Brisbane');
           rounds++;
           phase = 'provider';
           const response = await bounded(
             sendTurn({
               config,
-              system: `${SYSTEM}\nServer calendar and household currency: ${JSON.stringify({ ...calendar, currency: config.currency || null })}\nThis is model round ${round + 1} of ${roundLimit}; at most ${toolLimit - calls} more tool calls are permitted.${finalAnswer ? ' This is the final answer round. Do not request more tools. Answer from successful results already supplied, or clearly explain what remains unknown and ask for the missing category/date. Never invent a financial answer.' : ''}`,
+              system: `${SYSTEM}\nServer calendar and household currency: ${JSON.stringify({ ...calendar, currency: config.currency || null })}\nThis is model round ${round + 1} of ${MAX_ROUNDS}; at most ${MAX_TOOL_CALLS - calls} more tool calls are permitted.${finalAnswer ? ' This is the final answer round. Do not request more tools. Answer from successful results already supplied, or clearly explain what remains unknown and ask for the missing category/date. Never invent a financial answer.' : ''}`,
               messages: history,
               tools,
               finalAnswer,
@@ -372,7 +360,7 @@ export function createAssistant({
 
           for (const call of response.toolCalls) {
             await guard();
-            if (++calls > toolLimit) {
+            if (++calls > MAX_TOOL_CALLS) {
               throw fail('Tool limit reached; narrow your question', 409);
             }
 
@@ -465,10 +453,7 @@ export function createAssistant({
           }
         }
 
-        throw fail(
-          'The model did not finish within the configured response limit. Retry with a category and calendar month.',
-          409
-        );
+        throw fail('The model did not finish its answer. Retry with a category and calendar month.', 409);
       } catch (error) {
         // Only bounded execution metadata is logged. No prompts, tool arguments/results,
         // provider messages, credentials, account/category names or financial values.

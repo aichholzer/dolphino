@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assistantCalendar } from '../src/lib/assistant-context.mjs';
+import { MAX_ROUNDS } from '../src/lib/assistant.mjs';
 import { assistantSpendingFixture, spendingQuestion, aggregateQuery } from './helpers/assistant-spending-fixture.mjs';
 import { readTestPostgresConfig } from './helpers/postgres.mjs';
 
@@ -115,8 +116,8 @@ for (const provider of ['openai', 'bedrock']) {
           f.executed.map((call) => call.name),
           ['finance_categories', 'finance_aggregate']
         );
-        assert.equal(f.calls[2].finalAnswer, true);
-        assert.match(f.calls[2].system, /final answer round/);
+        assert.equal(f.calls[2].finalAnswer, false);
+        assert.match(f.calls[2].system, new RegExp(`model round 3 of ${MAX_ROUNDS}`));
         const source = result.citations.find((c) => c.tool === 'finance_aggregate');
         const report = await f.json('viewer', `/api/assistant/reports/${source.reportId}`);
         assert.equal(report.data.totals.expensesMinor, '2300');
@@ -186,8 +187,9 @@ for (const provider of ['openai', 'bedrock']) {
         response = await f.ask();
         assert.equal(response.status, 409);
         assert.match((await response.json()).error, /instead of finishing.*Reference:/);
-        assert.equal(f.calls.length, 3);
-        assert.equal(f.executed.length, 2, 'final round never executes an unanswerable extra query');
+        assert.equal(f.calls.length, MAX_ROUNDS);
+        assert.equal(f.calls.at(-1).finalAnswer, true);
+        assert.equal(f.executed.length, MAX_ROUNDS - 1, 'final round never executes an unanswerable extra query');
         f.scenario('provider-failure');
         response = await f.ask();
         assert.equal(response.status, 502);

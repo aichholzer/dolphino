@@ -112,10 +112,6 @@ async function scenario(name, test) {
       model: '',
       enabled: false,
       dataSharingAcknowledged: false,
-      dailyRequestsPerUser: 10,
-      maxToolCalls: 4,
-      maxRounds: 3,
-      maxOutputTokens: 1024,
       disclosure:
         'When enabled, questions and authorized financial data may be sent to the selected AI provider. The assistant is read-only.'
     }
@@ -525,12 +521,23 @@ try {
       await page.getByLabel('Assistant model ID', { exact: true }).fill('synthetic-assistant');
       await page.getByRole('checkbox', { name: /I understand authorized financial tool results/ }).check();
       await page.getByRole('checkbox', { name: 'Enable the household assistant', exact: true }).check();
-      await page.getByLabel('Daily requests per user', { exact: true }).fill('17');
+      for (const label of [
+        'Daily requests per user',
+        'Tool calls per answer',
+        'Model rounds per answer',
+        'Maximum output tokens'
+      ]) {
+        await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+      }
+
       await save('Save assistant settings', '/api/settings/assistant');
       assert.equal(features.provider.model, 'synthetic-classifier');
       assert.equal(features.provider.dailyRequestLimit, 29);
       assert.equal(features.assistant.model, 'synthetic-assistant');
-      assert.equal(features.assistant.dailyRequestsPerUser, 17);
+      for (const field of ['dailyRequestsPerUser', 'maxToolCalls', 'maxRounds', 'maxOutputTokens']) {
+        assert.equal(Object.hasOwn(lastWrite('/api/settings/assistant'), field), false, field);
+      }
+
       assert.equal(lastWrite('/api/settings/provider').aiRevision, shared.discoveryRevision);
       assert.equal(lastWrite('/api/settings/assistant').aiRevision, shared.discoveryRevision);
       await nav('Test saved connection').click();

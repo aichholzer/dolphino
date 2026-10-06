@@ -722,7 +722,7 @@ for (const migration of ['conflict', 'unavailable-profile']) {
       assert.equal(classification.model, 'legacy-classifier');
       assert.equal(classification.dailyRequestLimit, 31);
       assert.equal(assistant.model, 'legacy-assistant');
-      assert.equal(assistant.dailyRequestsPerUser, 13);
+      assert.equal(Object.hasOwn(assistant, 'dailyRequestsPerUser'), false);
       assert.equal(classification.enabled, false);
       assert.equal(assistant.enabled, false);
       assert.equal(modelsRequests().length, 1);

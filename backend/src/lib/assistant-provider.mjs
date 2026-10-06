@@ -304,12 +304,13 @@ export async function sendAssistantTurn(
     }
   }
 
-  const maxTokens = config.assistantMaxOutputTokens ?? 1024;
-  if (!Number.isInteger(maxTokens) || maxTokens < 128 || maxTokens > 2048) {
+  // Answers use the model's own maximum length. Only the synthetic provider test sets a cap.
+  const maxTokens = config.assistantMaxOutputTokens;
+  if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens < 1)) {
     throw failure('Invalid assistant output limit', 400);
   }
 
-  const deadline = AbortSignal.timeout(15000);
+  const deadline = AbortSignal.timeout(60000);
   const abortSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
   if (abortSignal.aborted) {
     throw failure('Assistant request cancelled', 409);
@@ -335,7 +336,7 @@ export async function sendAssistantTurn(
           store: false,
           parallel_tool_calls: false,
           ...(finalAnswer ? { tool_choice: 'none' } : {}),
-          max_output_tokens: maxTokens,
+          ...(maxTokens ? { max_output_tokens: maxTokens } : {}),
           include: ['reasoning.encrypted_content'],
           tools: tools.map((tool) => ({
             type: 'function',
@@ -433,7 +434,7 @@ export async function sendAssistantTurn(
           modelId: config.llmModel,
           system: [{ text: system }],
           messages: input,
-          inferenceConfig: { maxTokens },
+          ...(maxTokens ? { inferenceConfig: { maxTokens } } : {}),
           ...(tools.length
             ? {
                 toolConfig: {

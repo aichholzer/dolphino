@@ -112,7 +112,6 @@ test(
           assistantEnabled: true,
           timezone: config.timezone
         }),
-        reserveRequest: async () => {},
         tools: FINANCE_TOOLS,
         sendTurn: async (input) => {
           seen.push(structuredClone(input.messages));

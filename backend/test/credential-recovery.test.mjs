@@ -308,7 +308,6 @@ test(
 
     const assistant = createAssistant({
       getProviderConfig: assistantSettings.getRuntimeConfig,
-      reserveRequest: unexpected,
       sendTurn: unexpected,
       invokeTool: unexpected,
       tools: []

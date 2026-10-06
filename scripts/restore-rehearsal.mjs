@@ -150,11 +150,7 @@ try {
     aiRevision,
     model: 'synthetic-assistant-model',
     enabled: false,
-    dataSharingAcknowledged: false,
-    dailyRequestsPerUser: 3,
-    maxToolCalls: 2,
-    maxRounds: 2,
-    maxOutputTokens: 512
+    dataSharingAcknowledged: false
   });
   const beforeAiPublic = await ai.getPublic();
   const beforeClassification = await ai.classification.getProviderSnapshot();
@@ -384,10 +380,6 @@ try {
   assert.equal(restoredAssistant.config.llmModel, 'synthetic-assistant-model');
   assert.equal(restoredAssistant.config.assistantEnabled, false);
   assert.equal(restoredAssistant.config.assistantDataSharingAcknowledged, false);
-  assert.equal(restoredAssistant.config.assistantDailyRequestLimit, 3);
-  assert.equal(restoredAssistant.config.assistantMaxToolCalls, 2);
-  assert.equal(restoredAssistant.config.assistantMaxRounds, 2);
-  assert.equal(restoredAssistant.config.assistantMaxOutputTokens, 512);
   assert.ok(
     !JSON.stringify([restoredClassification.publicState, restoredAssistant.publicState]).includes('synthetic-shared-ai')
   );

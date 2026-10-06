@@ -60,10 +60,6 @@ export async function assistantSpendingFixture(provider = 'openai') {
       const runtime = {
         assistantEnabled: true,
         assistantDataSharingAcknowledged: true,
-        assistantMaxRounds: 3,
-        assistantMaxToolCalls: 4,
-        assistantMaxOutputTokens: 1024,
-        assistantDailyRequestLimit: 100,
         timezone: config.timezone,
         currency: config.currency,
         llmProvider: provider,
@@ -172,7 +168,6 @@ export async function assistantSpendingFixture(provider = 'openai') {
       assistant = createAssistant({
         getProviderConfig: async () => runtime,
         now: () => Date.parse('2026-10-01T00:30:00Z'),
-        reserveRequest: async () => {},
         tools: FINANCE_TOOLS,
         invokeTool: async (...args) => {
           executed.push({ name: args[0], args: structuredClone(args[1]) });
@@ -185,7 +180,7 @@ export async function assistantSpendingFixture(provider = 'openai') {
             fetchImpl: async (_url, options) => {
               const wire = JSON.parse(options.body);
               assert.equal(wire.store, false);
-              assert.equal(wire.max_output_tokens, 1024);
+              assert.equal(Object.hasOwn(wire, 'max_output_tokens'), false);
               assert.equal(wire.tool_choice, input.finalAnswer ? 'none' : undefined);
               for (const entry of input.messages.filter((entry) => entry.role === 'tool')) {
                 assert.ok(
@@ -218,7 +213,7 @@ export async function assistantSpendingFixture(provider = 'openai') {
             bedrockClient: {
               async send(command) {
                 assert.ok(command.input.toolConfig.tools.some((t) => t.toolSpec.name === 'finance_categories'));
-                assert.equal(command.input.inferenceConfig.maxTokens, 1024);
+                assert.equal(Object.hasOwn(command.input, 'inferenceConfig'), false);
                 for (const entry of input.messages.filter((entry) => entry.role === 'tool')) {
                   assert.ok(
                     command.input.messages.some((message) =>

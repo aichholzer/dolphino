@@ -112,7 +112,7 @@ test('Responses native call IDs, JSON arguments and all reasoning items survive 
         const body = JSON.parse(options.body);
         assert.equal(body.store, false);
         assert.equal(body.parallel_tool_calls, false);
-        assert.equal(body.max_output_tokens, 1024);
+        assert.equal(Object.hasOwn(body, 'max_output_tokens'), false);
         assert.deepEqual(body.include, ['reasoning.encrypted_content']);
         assert.equal(body.tools[0].type, 'function');
         return Response.json({ status: 'completed', output });
@@ -469,13 +469,13 @@ test('OpenAI enables strict native finance tools after recursive schema checks a
   await sendAssistantTurn(
     {
       ...request,
-      config: { ...openai, assistantMaxOutputTokens: 2048 },
+      config: { ...openai, assistantMaxOutputTokens: 4096 },
       tools: FINANCE_TOOLS
     },
     {
       fetchImpl: async (_url, { body }) => {
         const payload = JSON.parse(body);
-        assert.equal(payload.max_output_tokens, 2048);
+        assert.equal(payload.max_output_tokens, 4096);
         assert(payload.tools.every((tool) => tool.strict === true));
         return Response.json({ status: 'completed', output: [] });
       }
@@ -484,7 +484,7 @@ test('OpenAI enables strict native finance tools after recursive schema checks a
   await assert.rejects(
     sendAssistantTurn({
       ...request,
-      config: { ...openai, assistantMaxOutputTokens: 2049 }
+      config: { ...openai, assistantMaxOutputTokens: 0 }
     }),
     /output limit/
   );

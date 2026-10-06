@@ -2,6 +2,16 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.7 - 2026-10-07
+
+### Changed
+
+- An assistant answer may take up to eight model rounds and 24 tool calls; the last round asks the model to answer from the results it already has. A provider call may take 60 seconds and a whole answer three minutes, up from 15 and 60 seconds.
+
+### Removed
+
+- The assistant settings for daily requests per user, tool calls per answer, model rounds per answer and maximum output tokens. There is no daily request allowance, and answers use the model's own maximum length. Settings saved by earlier versions still load, and the removed fields disappear on the next save.
+
 ## 0.2.6 - 2026-10-07
 
 ### Changed

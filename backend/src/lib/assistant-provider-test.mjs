@@ -21,7 +21,7 @@ export async function testAssistantModel(config, dependencies = {}) {
   const input = {
     config: {
       ...config,
-      assistantMaxOutputTokens: Math.min(config.assistantMaxOutputTokens || 256, 256)
+      assistantMaxOutputTokens: 256
     },
     system:
       'This is an explicitly requested synthetic compatibility test. Call synthetic_budget_summary exactly once with empty arguments, then respond with the returned fictional amount. Never call another tool.',

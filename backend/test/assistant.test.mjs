@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAssistant } from '../src/lib/assistant.mjs';
+import { MAX_ROUNDS, MAX_TOOL_CALLS, createAssistant } from '../src/lib/assistant.mjs';
 const tools = [{ name: 'finance_report', parameters: {} }];
 function setup(overrides = {}) {
   let context = {
@@ -12,7 +12,6 @@ function setup(overrides = {}) {
   const getContext = async () => context;
   const assistant = createAssistant({
     getProviderConfig: async () => ({ assistantEnabled: true }),
-    reserveRequest: async () => {},
     tools,
     invokeTool: async (_name, args, { getFinance }) => ({
       data: { allowed: (await getFinance()).allowed },
@@ -179,13 +178,10 @@ test('cancel, one active turn, consent, input and unknown tool controls fail clo
     /unavailable tool/
   );
 });
-test('quota and bounded model errors never append partial conversations', async () => {
+test('provider errors never append partial conversations', async () => {
   const { assistant, getContext } = setup({
-    reserveRequest: async () => {
-      throw Object.assign(Error('quota exceeded'), { status: 429 });
-    },
     sendTurn: () => {
-      throw Error('must not send');
+      throw Object.assign(Error('provider unavailable'), { status: 502 });
     }
   });
   const c = await assistant.create({ getContext });
@@ -196,7 +192,7 @@ test('quota and bounded model errors never append partial conversations', async 
       acknowledgeDataSharing: true,
       getContext
     }),
-    /quota/
+    /provider unavailable/
   );
   assert.equal((await assistant.get({ chatId: c.id, getContext })).messages.length, 0);
 });
@@ -357,35 +353,31 @@ test('every successful tool citation has an owned source download, not only repo
   );
 });
 
-test('final answer round honors configured request/tool ceilings without executing another query', async () => {
-  for (const limits of [
-    { rounds: 1, tools: 4 },
-    { rounds: 3, tools: 1 }
-  ]) {
-    let requests = 0,
+test('the last round asks for a final answer and never runs another query', async () => {
+  // One tool per round reaches the round bound; four per round reach the tool bound first.
+  for (const perRound of [1, 4]) {
+    let rounds = 0,
       executed = 0;
     const state = setup({
-      getProviderConfig: async () => ({
-        assistantEnabled: true,
-        assistantMaxRounds: limits.rounds,
-        assistantMaxToolCalls: limits.tools
-      }),
-      reserveRequest: async () => {
-        requests++;
-      },
       invokeTool: async () => {
         executed++;
         return { data: {}, provenance: {} };
       },
       sendTurn: async (input) => {
-        if ((requests === 1 && limits.rounds === 1) || requests === 2) {
-          assert.equal(input.finalAnswer, true);
+        rounds++;
+        const final = rounds === MAX_ROUNDS || (rounds - 1) * perRound >= MAX_TOOL_CALLS;
+        assert.equal(input.finalAnswer, final);
+        if (final) {
           assert.match(input.system, /Do not request more tools/);
         }
 
         return {
           text: '',
-          toolCalls: [{ id: `tool-${requests}`, name: 'finance_report', arguments: {} }],
+          toolCalls: Array.from({ length: perRound }, (_, index) => ({
+            id: `tool-${rounds}-${index}`,
+            name: 'finance_report',
+            arguments: {}
+          })),
           continuation: []
         };
       }
@@ -400,8 +392,9 @@ test('final answer round honors configured request/tool ceilings without executi
       }),
       /instead of finishing/
     );
-    assert.equal(requests, limits.rounds === 1 ? 1 : 2);
-    assert.equal(executed, limits.rounds === 1 ? 0 : 1);
+    const expected = perRound === 1 ? MAX_ROUNDS - 1 : MAX_TOOL_CALLS;
+    assert.equal(executed, expected);
+    assert.equal(rounds, expected / perRound + 1);
     assert.deepEqual((await state.assistant.get({ chatId: chat.id, getContext: state.getContext })).messages, []);
   }
 });

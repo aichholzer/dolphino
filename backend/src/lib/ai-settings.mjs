@@ -67,14 +67,19 @@ const assistantSchema = z
   .object({
     model: shape.model.default(''),
     enabled: assistantShape.enabled,
-    dataSharingAcknowledged: assistantShape.dataSharingAcknowledged,
-    dailyRequestsPerUser: assistantShape.dailyRequestsPerUser,
-    maxToolCalls: assistantShape.maxToolCalls,
-    maxRounds: assistantShape.maxRounds,
-    maxOutputTokens: assistantShape.maxOutputTokens
+    dataSharingAcknowledged: assistantShape.dataSharingAcknowledged
   })
   .strict();
 const schemas = { classification: classificationSchema, assistant: assistantSchema };
+// Settings written by earlier versions can still hold these removed assistant limits.
+const retiredFields = {
+  classification: [],
+  assistant: ['dailyRequestsPerUser', 'maxToolCalls', 'maxRounds', 'maxOutputTokens']
+};
+const withoutRetired = (value, feature) =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter(([field]) => !retiredFields[feature].includes(field)))
+    : value;
 const defaults = Object.fromEntries(Object.entries(schemas).map(([name, schema]) => [name, schema.parse({})]));
 const sharedValueSchema = z
   .object({ provider: shape.provider, region: shape.region })
@@ -335,7 +340,8 @@ export function createAiSettings({ pool, settings, appSecret }) {
       featureDocument?.value ?? raw.documents[previousNamespaces[feature]]?.value,
       feature
     );
-    const validFeature = !featureDocument || schemas[feature].safeParse(featureDocument.value).success;
+    const validFeature =
+      !featureDocument || schemas[feature].safeParse(withoutRetired(featureDocument.value, feature)).success;
     const enabled =
       usable &&
       validFeature &&
@@ -367,11 +373,7 @@ export function createAiSettings({ pool, settings, appSecret }) {
     if (feature === 'assistant') {
       Object.assign(config, {
         assistantEnabled: enabled,
-        assistantDataSharingAcknowledged: featureSettings.dataSharingAcknowledged,
-        assistantDailyRequestLimit: featureSettings.dailyRequestsPerUser,
-        assistantMaxToolCalls: featureSettings.maxToolCalls,
-        assistantMaxRounds: featureSettings.maxRounds,
-        assistantMaxOutputTokens: featureSettings.maxOutputTokens
+        assistantDataSharingAcknowledged: featureSettings.dataSharingAcknowledged
       });
     }
 
