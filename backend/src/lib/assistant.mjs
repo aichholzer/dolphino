@@ -193,8 +193,8 @@ export function createAssistant({
         throw fail('A response is already running', 429);
       }
 
-      if (c.messages.filter((m) => m.role === 'user').length >= 10) {
-        throw fail('Start a new conversation after ten turns', 409);
+      if (c.messages.filter((m) => m.role === 'user').length >= 25) {
+        throw fail('Start a new conversation after 25 questions', 409);
       }
 
       const controller = new AbortController();

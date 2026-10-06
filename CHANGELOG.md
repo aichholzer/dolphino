@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.9 - 2026-10-07
+
+### Changed
+
+- An assistant conversation accepts 25 questions before asking for a new one, up from ten.
+
 ## 0.2.8 - 2026-10-07
 
 ### Removed

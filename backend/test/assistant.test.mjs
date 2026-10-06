@@ -216,7 +216,7 @@ test('mid-turn provider configuration changes abort without committing history',
   await assert.rejects(pending, /configuration changed/);
   await assert.rejects(assistant.get({ chatId: c.id, getContext }), /not found/);
 });
-test('ephemeral chats expire and ten-turn limit is enforced', async () => {
+test('ephemeral chats expire and the 25-question limit is enforced', async () => {
   let clock = 1000;
   const { assistant, getContext } = setup({
     now: () => clock,
@@ -227,7 +227,7 @@ test('ephemeral chats expire and ten-turn limit is enforced', async () => {
     })
   });
   const c = await assistant.create({ getContext });
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 25; i++) {
     await assistant.send({
       chatId: c.id,
       message: 'question',
@@ -241,7 +241,7 @@ test('ephemeral chats expire and ten-turn limit is enforced', async () => {
       message: 'question',
       getContext
     }),
-    /ten turns/
+    /25 questions/
   );
   clock += 1800001;
   await assert.rejects(assistant.get({ chatId: c.id, getContext }), /not found/);

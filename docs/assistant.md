@@ -26,7 +26,7 @@ A category aggregate accepts an exact stable key, display name or an unambiguous
 
 ## Privacy, limits and operations
 
-Chats are private to their owner, including against other administrators through the app. They are held only in this server process for 30 minutes and disappear on restart; ten turns per chat and ten chats per user. Permission revisions invalidate old context even when the same grants are later restored. Shared connection or assistant configuration changes invalidate older context and require a new conversation. Do not run multiple app replicas without sticky sessions; conversation persistence is deliberately outside this MVP.
+Chats are private to their owner, including against other administrators through the app. They are held only in this server process for 30 minutes and disappear on restart; 25 questions per chat and ten chats per user. Permission revisions invalidate old context even when the same grants are later restored. Shared connection or assistant configuration changes invalidate older context and require a new conversation. Do not run multiple app replicas without sticky sessions; conversation persistence is deliberately outside this MVP.
 
 Retrieved authorized financial data and the user's question are sent to the chosen provider. OpenAI uses Responses with `store:false`, which is not a zero-retention guarantee. Bedrock retention depends on the model/region and AWS logging configuration. No silent provider fallback is used. See [provider contracts and privacy](providers.md).
 
