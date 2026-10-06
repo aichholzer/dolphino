@@ -8,5 +8,6 @@ export default defineConfig({
     port: 5173,
     proxy: { '/api': { target: 'http://127.0.0.1:3001', changeOrigin: true } }
   },
-  build: { outDir: 'dist' }
+  // The CSP refuses data: fonts; every font subset ships as its own file.
+  build: { outDir: 'dist', assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined) }
 });

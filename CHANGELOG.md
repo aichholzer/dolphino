@@ -2,6 +2,14 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.5 - 2026-10-06
+
+### Changed
+
+- Interface text is set in Hanken Grotesk, and page, sign-in and assistant headings in Faustina. Both come from Google Fonts and are served by the app itself. Every screen had used the platform font, SF Pro on macOS and Segoe UI on Windows, with Georgia headings.
+- Page headings track at -0.6px. Faustina is narrower than Georgia, and the old -1.1px closed the space after a comma.
+- The fictional demo screenshots show the new type.
+
 ## 0.2.4 - 2026-10-06
 
 ### Fixed

@@ -4,7 +4,7 @@ The canonical repository is `https://github.com/aichholzer/dolphino`. Product UI
 
 ## Artwork
 
-`frontend/public/dolphino.svg` is the editable dolphin silhouette used by the application; `dolphino-mono.svg` is the one-color alternative. Both use SVG geometry with accessible title/description and no embedded raster image, font or external resource. Source copies are under `artifacts/`; the lowercase wordmark remains separate UI text using the system font stack. The dedicated `npm run test:browser:brand` command checks icon sizes and desktop/mobile placement; consult the dated verification records for actual executed results.
+`frontend/public/dolphino.svg` is the editable dolphin silhouette used by the application; `dolphino-mono.svg` is the one-color alternative. Both use SVG geometry with accessible title/description and no embedded raster image, font or external resource. Source copies are under `artifacts/`; the lowercase wordmark remains separate UI text set in the interface face, Hanken Grotesk. The dedicated `npm run test:browser:brand` command checks icon sizes and desktop/mobile placement; consult the dated verification records for actual executed results.
 
 ## Current reference policy
 

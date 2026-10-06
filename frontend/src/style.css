@@ -42,13 +42,10 @@
   --ocean-selected: #dcecf1;
   --ocean-selected-line: #8fbfcf;
 
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  --font-ui: 'Hanken Grotesk Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Faustina Variable', Georgia, 'Times New Roman', serif;
+
+  font-family: var(--font-ui);
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
@@ -2245,10 +2242,10 @@ h3 {
   color: var(--ink);
 }
 h1 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-weight: 400;
   font-size: 34px;
-  letter-spacing: -1.1px;
+  letter-spacing: -0.6px;
   line-height: 1.2;
 }
 h2 {
@@ -2741,7 +2738,7 @@ label {
   color: var(--ocean-deep);
 }
 .login-card h1 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 31px;
   line-height: 1.25;
 }
@@ -2783,7 +2780,7 @@ label {
 }
 .assistant-empty h3 {
   color: var(--ink);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 24px;
   font-weight: 400;
   line-height: 1.3;
