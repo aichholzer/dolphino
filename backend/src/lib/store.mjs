@@ -1229,7 +1229,7 @@ export class Store {
         before || null,
         saved.rows[0]
       ]);
-      await this.reclassify(c);
+      await this.reclassify(c, [before?.contains, rule.contains]);
       return ruleRow(saved.rows[0]);
     });
   }
@@ -1252,20 +1252,52 @@ export class Store {
   }
   async deleteRule(id) {
     return this.atomic(async (c) => {
-      await c.query('DELETE FROM rules WHERE mode=$1 AND id=$2', [this.mode, id]);
-      await this.reclassify(c);
+      const deleted = (await c.query('DELETE FROM rules WHERE mode=$1 AND id=$2 RETURNING contains', [this.mode, id]))
+        .rows[0];
+      if (deleted) {
+        await this.reclassify(c, [deleted.contains]);
+      }
+
       return { ok: true };
     });
   }
-  async reclassify(c) {
+  // A rule only changes transactions whose description contains its text, so a changed rule
+  // revisits the rows matching its old or new text. Other rows keep the classification they have.
+  async reclassify(c, texts) {
+    const needles = [...new Set(texts.filter(Boolean).map((text) => text.toLowerCase()))];
+    if (!needles.length) {
+      return;
+    }
+
     const rules = (await c.query('SELECT * FROM rules WHERE mode=$1', [this.mode])).rows.map(ruleRow);
-    for (const row of (
+    const rows = (
       await c.query(
         'SELECT * FROM transactions WHERE mode=$1 AND manual_entry_id IS NULL AND account_id IN (SELECT id FROM accounts WHERE mode=$1 AND deleted_at IS NULL)',
         [this.mode]
       )
-    ).rows) {
-      const result = await this.ruleClassification(c, row, rules);
+    ).rows.filter((row) => needles.some((needle) => row.description.toLowerCase().includes(needle)));
+    if (!rows.length) {
+      return;
+    }
+
+    const kinds = new Map(
+      (
+        await c.query(
+          "SELECT DISTINCT ON (transaction_id) transaction_id::text AS id, payload->>'kind' AS kind FROM provider_observations WHERE transaction_id=ANY($1::uuid[]) ORDER BY transaction_id, fetched_at DESC, id DESC",
+          [rows.map((row) => row.id)]
+        )
+      ).rows.map((row) => [row.id, row.kind ?? undefined])
+    );
+    for (const row of rows) {
+      const result = classify(
+        {
+          description: row.description,
+          amountMinor: String(row.amount_minor),
+          category: row.provider_category,
+          kind: kinds.get(String(row.id))
+        },
+        rules
+      );
       await c.query(
         "UPDATE transactions SET classification_category=$2,kind=$3,ai_category=CASE WHEN $2 <> 'Uncategorized' OR kind <> $3 THEN NULL ELSE ai_category END,review_reason=CASE WHEN $4 THEN NULL ELSE review_reason END WHERE id=$1",
         [

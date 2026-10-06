@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.4 - 2026-10-06
+
+### Fixed
+
+- Saving or deleting a rule revisits only the transactions whose description matches the rule's old or new text. With 20,000 imported transactions a save took 82.8 seconds inside one database transaction; it now takes under half a second. The latest provider kind for those rows is read in one query.
+
 ## 0.2.3 - 2026-10-05
 
 ### Fixed
