@@ -24,6 +24,8 @@ npm run check:theme
 
 `npm run check` runs lint, the format check, the tests and the build in one command. `backend/test/security-adversarial.test.mjs` renders hostile content in Chromium; set `CHROMIUM_PATH` when Chromium is not at `/usr/bin/chromium`.
 
+`backend/test/server-startup.test.mjs` and `backend/test/maintenance-scripts.test.mjs` run `backend/src/server.mjs` and the two operator scripts as child processes against the test database, each pinned to its own schema through `PGOPTIONS`. Their coverage counts toward the report.
+
 The React hooks are tested in Node. `frontend/test/*-hooks.test.mjs` import `react-harness.mjs` first: it installs a jsdom window as the browser globals, compiles extensionless `.jsx` imports with esbuild, and fails the file on any React or jsdom console error, such as an update outside `act()`. Load React DOM and the code under test with `await import()` after the harness.
 
 ## Browser checks

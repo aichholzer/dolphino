@@ -2,6 +2,13 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.16 - 2026-10-07
+
+### Added
+
+- Tests that start `backend/src/server.mjs` in demo and live mode against PostgreSQL: health, session, HSTS, the first-administrator bootstrap, refusal of a database bound to the other mode, invalid settings, and clean exit on SIGTERM and SIGINT.
+- End-to-end tests for `scripts/recover-user.mjs` and `scripts/rotate-settings-key.mjs`: a single-use reset link for an active user only, generic errors otherwise, and key rotation that re-encrypts every credential, refuses a weak or wrong key, and prints no secret.
+
 ## 0.2.15 - 2026-10-07
 
 ### Added
