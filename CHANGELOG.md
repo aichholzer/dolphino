@@ -2,6 +2,16 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.15 - 2026-10-07
+
+### Added
+
+- Tests for the seven React hooks and the date and label helpers. The hooks render in Node against jsdom through `frontend/test/react-harness.mjs`, which compiles `.jsx` imports with esbuild and fails a test file on any React or jsdom console error. `jsdom` and `esbuild` are new development dependencies.
+
+### Fixed
+
+- A calendar day that does not exist, such as 2026-02-30, is shown as given. It was rolled over and shown as 2 Mar 2026.
+
 ## 0.2.14 - 2026-10-07
 
 ### Added

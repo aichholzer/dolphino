@@ -34,5 +34,8 @@ const dayFormat = new Intl.DateTimeFormat('en-AU', {
 });
 export function formatDay(value) {
   const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? String(value) : dayFormat.format(date);
+  // Date rolls 2026-02-30 over to 2 March. Anything but a real calendar day prints as given.
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value
+    ? String(value)
+    : dayFormat.format(date);
 }

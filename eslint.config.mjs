@@ -62,6 +62,13 @@ export default [
     }
   },
   {
+    // Hook tests run React in Node against a jsdom window installed as browser globals.
+    files: ['frontend/test/react-harness.mjs', 'frontend/test/*-hooks.test.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser }
+    }
+  },
+  {
     // ESLint 10 tracks JSX references natively, including component imports.
     files: ['**/*.jsx'],
     languageOptions: {

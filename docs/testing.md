@@ -24,6 +24,8 @@ npm run check:theme
 
 `npm run check` runs lint, the format check, the tests and the build in one command. `backend/test/security-adversarial.test.mjs` renders hostile content in Chromium; set `CHROMIUM_PATH` when Chromium is not at `/usr/bin/chromium`.
 
+The React hooks are tested in Node. `frontend/test/*-hooks.test.mjs` import `react-harness.mjs` first: it installs a jsdom window as the browser globals, compiles extensionless `.jsx` imports with esbuild, and fails the file on any React or jsdom console error, such as an update outside `act()`. Load React DOM and the code under test with `await import()` after the harness.
+
 ## Browser checks
 
 Run `npm run build` first. Each `npm run test:browser:*` script drives Chromium against the compiled frontend and honours `CHROMIUM_PATH`.
