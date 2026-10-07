@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
-import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
+import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
 // Run after npm run build, against the disposable app served by with-demo.sh.
 // Static assets are the real compiled frontend; every API is a synthetic fixture.
@@ -10,10 +10,10 @@ import { installBrowserStorageGuard } from '../frontend/test/browser-storage-gua
 const base = process.env.DOLPHINO_TEST_URL || 'http://127.0.0.1:3001';
 assert(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Use a local test application');
 const output = resolve(process.env.DOLPHINO_SCREENSHOT_DIR || '/tmp/dolphino-category-repair-evidence');
-const repo = resolve(new URL('..', import.meta.url).pathname);
+const repo = resolve(new URL('../..', import.meta.url).pathname);
 assert(!output.startsWith(repo + '/'), 'Keep synthetic screenshot evidence outside the repository');
 const build = /src="\/assets\/([^"]+)"/.exec(
-  await readFile(new URL('../frontend/dist/index.html', import.meta.url), 'utf8')
+  await readFile(new URL('../dist/index.html', import.meta.url), 'utf8')
 )?.[1];
 assert(build, 'Build the frontend before running this compiled-UI regression');
 await mkdir(output, { recursive: true });

@@ -66,7 +66,7 @@ Run `npm run lint:fix` to apply safe ESLint fixes, then `npm run format` to form
 
 The service is an MVP for a trusted household homelab. Put live mode behind HTTPS and maintain tested encrypted backups. No production deployment, real financial connection, external account creation, or external permission change is needed to try the demo.
 
-Browser checks against the running demo: `node scripts/browser-check.mjs` (set `CHROMIUM_PATH` if Chromium is elsewhere). See [testing](docs/testing.md) for the test database, browser suites and restore rehearsal.
+Browser checks against the running demo: `node frontend/test/demo.browser.mjs` (set `CHROMIUM_PATH` if Chromium is elsewhere). See [testing](docs/testing.md) for the test database, browser suites and restore rehearsal.
 
 See [automatic classification policy](docs/classification.md).
 

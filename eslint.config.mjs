@@ -56,7 +56,7 @@ export default [
   },
   {
     // These Node-based browser checks also execute callbacks in the page.
-    files: ['scripts/browser-*.mjs', 'frontend/test/**/*.browser.mjs', 'frontend/test/browser-storage-guard.mjs'],
+    files: ['frontend/test/**/*.browser.mjs', 'frontend/test/browser-storage-guard.mjs'],
     languageOptions: {
       globals: globals.browser
     }

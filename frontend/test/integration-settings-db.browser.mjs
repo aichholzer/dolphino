@@ -1,26 +1,26 @@
-import { readTestPostgresConfig } from '../backend/test/helpers/postgres.mjs';
-import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
+import { readTestPostgresConfig } from '../../backend/test/helpers/postgres.mjs';
+import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from '@aws-sdk/client-bedrock';
-import { Store } from '../backend/src/lib/store.mjs';
-import { createApp } from '../backend/src/app.mjs';
-import { ensureDeploymentMode } from '../backend/src/lib/deployment-mode.mjs';
-import { createHouseholdAuth } from '../backend/src/lib/household-auth.mjs';
-import { ensureAccessSchema, validateAndSetGrants } from '../backend/src/lib/access.mjs';
-import { createSettingsStore } from '../backend/src/lib/settings.mjs';
-import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
-import { createRedbarkIntegration } from '../backend/src/lib/worker.mjs';
-import { createRegistration } from '../backend/src/lib/registration.mjs';
-import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
-import { createAiSettings } from '../backend/src/lib/ai-settings.mjs';
-import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
-import { createTelegramPairing } from '../backend/src/lib/telegram.mjs';
-import { createImportHealth } from '../backend/src/lib/import-health.mjs';
-import { createUserManagement } from '../backend/src/lib/users.mjs';
+import { Store } from '../../backend/src/lib/store.mjs';
+import { createApp } from '../../backend/src/app.mjs';
+import { ensureDeploymentMode } from '../../backend/src/lib/deployment-mode.mjs';
+import { createHouseholdAuth } from '../../backend/src/lib/household-auth.mjs';
+import { ensureAccessSchema, validateAndSetGrants } from '../../backend/src/lib/access.mjs';
+import { createSettingsStore } from '../../backend/src/lib/settings.mjs';
+import { createRedbarkSettings } from '../../backend/src/lib/redbark-settings.mjs';
+import { createRedbarkIntegration } from '../../backend/src/lib/worker.mjs';
+import { createRegistration } from '../../backend/src/lib/registration.mjs';
+import { createClassificationIntegration } from '../../backend/src/lib/classification.mjs';
+import { createAiSettings } from '../../backend/src/lib/ai-settings.mjs';
+import { createNotificationIntegration } from '../../backend/src/lib/notifications.mjs';
+import { createTelegramPairing } from '../../backend/src/lib/telegram.mjs';
+import { createImportHealth } from '../../backend/src/lib/import-health.mjs';
+import { createUserManagement } from '../../backend/src/lib/users.mjs';
 
 // Real compiled frontend + HTTP createApp + isolated PostgreSQL schema. Only
 // outbound provider transports are injected. No /api response is intercepted.

@@ -29,7 +29,7 @@ npm run check:theme
 Run `npm run build` first. Each `npm run test:browser:*` script drives Chromium against the compiled frontend and honours `CHROMIUM_PATH`.
 
 - Most start their own server, with synthetic fixtures or the test database.
-- `test:browser`, `test:browser:theme`, `test:browser:auth` and `scripts/browser-category-repair.mjs` drive the running fictional demo at `http://localhost:3001`. Set `DOLPHINO_TEST_URL` for another address.
+- `test:browser`, `test:browser:theme`, `test:browser:auth` and `frontend/test/category-repair.browser.mjs` drive the running fictional demo at `http://localhost:3001`. Set `DOLPHINO_TEST_URL` for another address.
 - `test:browser:integration-settings`, `test:browser:bedrock-models` and `test:browser:simplefin` need the test database.
 - Scripts that save screenshots write to the git-ignored `artifacts/` folder, or to `DOLPHINO_SCREENSHOT_DIR` when set.
 
@@ -39,4 +39,4 @@ Two tests stop and restart PostgreSQL to prove that work fails closed and resume
 
 ## Restore rehearsal
 
-`node scripts/restore-rehearsal.mjs` seeds a fictional ledger, backs it up with `scripts/backup.sh`, restores it into a fresh database with `scripts/restore.sh`, and compares every table and both financial reports. It needs `pg_dump`, `pg_restore` and `psql` on `PATH` and a role with `CREATEDB`. It reads the `PG*` variables, or `REHEARSAL_ADMIN_URL` for a separate administrative connection, and refuses any host other than the local machine. Its databases and dump are removed afterwards.
+`node backend/test/restore-rehearsal.mjs` seeds a fictional ledger, backs it up with `scripts/backup.sh`, restores it into a fresh database with `scripts/restore.sh`, and compares every table and both financial reports. It needs `pg_dump`, `pg_restore` and `psql` on `PATH` and a role with `CREATEDB`. It reads the `PG*` variables, or `REHEARSAL_ADMIN_URL` for a separate administrative connection, and refuses any host other than the local machine. Its databases and dump are removed afterwards.

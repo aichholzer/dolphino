@@ -1,27 +1,27 @@
-import { readTestPostgresConfig, testPostgresEnv } from '../backend/test/helpers/postgres.mjs';
-import { createSimplefinIntegration } from '../backend/src/lib/simplefin.mjs';
+import { readTestPostgresConfig, testPostgresEnv } from './helpers/postgres.mjs';
+import { createSimplefinIntegration } from '../src/lib/simplefin.mjs';
 // Destructive only to new, randomly named databases created by this script.
 // Never accepts an existing source or target database name.
 import pg from 'pg';
-import { ensureDeploymentMode } from '../backend/src/lib/deployment-mode.mjs';
+import { ensureDeploymentMode } from '../src/lib/deployment-mode.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createHouseholdAuth, hashHouseholdPassword } from '../backend/src/lib/household-auth.mjs';
-import { createUserManagement } from '../backend/src/lib/users.mjs';
-import { ensureAccessSchema } from '../backend/src/lib/access.mjs';
-import { createAiSettings } from '../backend/src/lib/ai-settings.mjs';
-import { createAssistantUsage } from '../backend/src/lib/assistant-usage.mjs';
-import { createSettingsStore } from '../backend/src/lib/settings.mjs';
-import { createNotificationIntegration } from '../backend/src/lib/notifications.mjs';
-import { createRegistration } from '../backend/src/lib/registration.mjs';
-import { createRedbarkSettings } from '../backend/src/lib/redbark-settings.mjs';
-import { Store } from '../backend/src/lib/store.mjs';
-import { ensureRedbarkSchema } from '../backend/src/lib/worker.mjs';
-import { createClassificationIntegration } from '../backend/src/lib/classification.mjs';
+import { createHouseholdAuth, hashHouseholdPassword } from '../src/lib/household-auth.mjs';
+import { createUserManagement } from '../src/lib/users.mjs';
+import { ensureAccessSchema } from '../src/lib/access.mjs';
+import { createAiSettings } from '../src/lib/ai-settings.mjs';
+import { createAssistantUsage } from '../src/lib/assistant-usage.mjs';
+import { createSettingsStore } from '../src/lib/settings.mjs';
+import { createNotificationIntegration } from '../src/lib/notifications.mjs';
+import { createRegistration } from '../src/lib/registration.mjs';
+import { createRedbarkSettings } from '../src/lib/redbark-settings.mjs';
+import { Store } from '../src/lib/store.mjs';
+import { ensureRedbarkSchema } from '../src/lib/worker.mjs';
+import { createClassificationIntegration } from '../src/lib/classification.mjs';
 
 // Prefer standard PG* inputs. The legacy rehearsal-only override remains useful
 // when a test runner has separate application and administrative databases.

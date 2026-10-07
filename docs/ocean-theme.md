@@ -19,10 +19,10 @@ The same tokens cover transactions, accounts, budgets, review, rules, settings, 
 
 ## Checks
 
-- `node scripts/check-theme.mjs`: verifies token resolution, absence of the prior purple theme, original SVG geometry, WCAG AA normal-text contrast pairs and 3:1 focus contrast
+- `node frontend/test/check-theme.mjs`: verifies token resolution, absence of the prior purple theme, original SVG geometry, WCAG AA normal-text contrast pairs and 3:1 focus contrast
 - Text contrast checks: primary at least 11.52:1; secondary 7.32:1; muted on canvas at least 5.18:1; muted on sea glass 4.84:1; navigation at least 5:1; semantic text pairs at least 5.08:1
-- `node scripts/browser-theme.mjs`: exercises the real fictional-demo application at 1440px, 390px and 320px; captures all seven screens, assistant unavailable/disabled state, API loading/error/retry, empty period, and synthetic login/initial setup. Verifies no page errors or viewport overflow, full-document sidebar height and sticky navigation on the long Settings page, assistant dismissal/focus restoration, and mobile table keyboard scrolling
-- `node scripts/browser-assistant.mjs`: separately exercises and captures fictional mocked assistant conversations, report sources, cancellation, focus trapping and Escape
-- `node scripts/browser-brand.mjs`: verifies the SVG at 16, 24, 48, 96 and 160 pixels and the unchanged monochrome version
+- `node frontend/test/theme.browser.mjs`: exercises the real fictional-demo application at 1440px, 390px and 320px; captures all seven screens, assistant unavailable/disabled state, API loading/error/retry, empty period, and synthetic login/initial setup. Verifies no page errors or viewport overflow, full-document sidebar height and sticky navigation on the long Settings page, assistant dismissal/focus restoration, and mobile table keyboard scrolling
+- `node frontend/test/assistant.browser.mjs`: separately exercises and captures fictional mocked assistant conversations, report sources, cancellation, focus trapping and Escape
+- `node frontend/test/brand.browser.mjs`: verifies the SVG at 16, 24, 48, 96 and 160 pixels and the unchanged monochrome version
 
 Screenshot fixtures and credentials are fictional. Browser checks honour `CHROMIUM_PATH`; see [testing](testing.md).

@@ -1,12 +1,12 @@
-import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
+import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import { chromium, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { createCompiledServer } from '../frontend/test/compiled-server.mjs';
+import { createCompiledServer } from './compiled-server.mjs';
 
 // Serve only the local production build. Every API below is synthetic; this
 // suite must never depend on a running installation or contact an integration.
-const server = await createCompiledServer({ root: fileURLToPath(new URL('../frontend', import.meta.url)) });
+const server = await createCompiledServer({ root: fileURLToPath(new URL('..', import.meta.url)) });
 await server.listen();
 const base = `http://127.0.0.1:${server.httpServer.address().port}`;
 const browser = await chromium.launch({

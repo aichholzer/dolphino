@@ -63,5 +63,5 @@ Synthetic-only tests live in:
 - `backend/test/simplefin-client.test.mjs`: public-network restrictions, pinned DNS/TLS host, redirect rejection, time/body limits, one-time claim behavior, protocol parsing and exact money
 - `backend/test/simplefin-integration.test.mjs`: real PostgreSQL, immutable original-source provenance with recursive credential redaction, ledger corrections, durable retry/restart, source conflicts, stale-result fencing and boundary/account identities
 - `backend/test/simplefin-independent-adversarial.test.mjs`: independent real PostgreSQL sessions/HTTP authorization matrix, concurrent claims, replay/readback and hostile provider errors
-- `scripts/browser-simplefin.mjs`: actual compiled frontend, backend HTTP, household session and PostgreSQL with only outbound provider transport mocked
-- `scripts/restore-rehearsal.mjs`: full backup/restore comparisons, including SimpleFIN credential/source/job/evidence state
+- `frontend/test/simplefin.browser.mjs`: actual compiled frontend, backend HTTP, household session and PostgreSQL with only outbound provider transport mocked
+- `backend/test/restore-rehearsal.mjs`: full backup/restore comparisons, including SimpleFIN credential/source/job/evidence state

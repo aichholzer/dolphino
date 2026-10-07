@@ -1,10 +1,10 @@
-import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
+import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { mkdir } from 'node:fs/promises';
-import { createCompiledServer } from '../frontend/test/compiled-server.mjs';
-const server = await createCompiledServer({ root: fileURLToPath(new URL('../frontend', import.meta.url)) });
+import { createCompiledServer } from './compiled-server.mjs';
+const server = await createCompiledServer({ root: fileURLToPath(new URL('..', import.meta.url)) });
 await server.listen();
 const base = `http://127.0.0.1:${server.httpServer.address().port}`;
 const output = process.env.DOLPHINO_SCREENSHOT_DIR || 'artifacts';

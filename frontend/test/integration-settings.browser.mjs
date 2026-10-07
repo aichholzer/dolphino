@@ -5,8 +5,8 @@ import { createCompiledServer } from './compiled-server.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 
-// Focused UI race and error fixtures. The companion browser-bedrock-models.mjs
-// and browser-integration-settings.mjs run the same production UI over real
+// Focused UI race and error fixtures. The companion bedrock-models.browser.mjs
+// and integration-settings-db.browser.mjs run the same production UI over real
 // authenticated HTTP/PostgreSQL, with only outbound provider transports injected.
 const server = await createCompiledServer({ root: fileURLToPath(new URL('..', import.meta.url)) });
 await server.listen();

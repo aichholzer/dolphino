@@ -1,4 +1,4 @@
-import { installBrowserStorageGuard } from '../frontend/test/browser-storage-guard.mjs';
+import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';

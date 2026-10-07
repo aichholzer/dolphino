@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.13 - 2026-10-07
+
+### Changed
+
+- The browser checks, the theme check and the restore rehearsal moved from `scripts/` to `frontend/test/` and `backend/test/`. `scripts/` holds only the operator tools, and the Docker image no longer ships test code. The npm script names are unchanged.
+
 ## 0.2.12 - 2026-10-07
 
 ### Removed
