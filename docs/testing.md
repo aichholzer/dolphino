@@ -22,7 +22,7 @@ npm run build
 npm run check:theme
 ```
 
-`npm run check` runs lint, the format check, the tests and the build in one command. `backend/test/security-adversarial.test.mjs` renders hostile content in Chromium; set `CHROMIUM_PATH` when Chromium is not at `/usr/bin/chromium`.
+`npm run check` runs lint, the format check, the build and the tests in one command. `backend/test/security-adversarial.test.mjs` checks the headers on the built `index.html` and renders hostile content in Chromium. Build before `npm test`, and set `CHROMIUM_PATH` when Chromium is not at `/usr/bin/chromium`.
 
 `backend/test/server-startup.test.mjs` and `backend/test/maintenance-scripts.test.mjs` run `backend/src/server.mjs` and the two operator scripts as child processes against the test database, each pinned to its own schema through `PGOPTIONS`. Their coverage counts toward the report.
 
@@ -43,7 +43,7 @@ Browser checks launch Chromium through `frontend/test/browser.mjs`. Import `chro
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request: `npm ci`, lint, the format check, `npm run coverage` and `npm run coverage:browser` against a PostgreSQL 17 service container and the runner's Google Chrome. The coverage summary goes to the job summary, and the HTML report is uploaded as the `coverage` artifact.
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request: `npm ci`, lint, the format check, the build, `npm run coverage` and `npm run coverage:browser` against a PostgreSQL 17 service container and the runner's Google Chrome. The coverage summary goes to the job summary, and the HTML report is uploaded as the `coverage` artifact.
 
 ## Coverage
 

@@ -2,6 +2,13 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.19 - 2026-10-08
+
+### Fixed
+
+- `npm run check` and CI build the frontend before the tests. The security test reads the headers of the built `index.html` and failed with 503 on a fresh clone.
+- The database connection-loss tests attach their rejection checks before killing the connection. A fast kill rejected the query first, and Node reported the rejection as unhandled.
+
 ## 0.2.18 - 2026-10-07
 
 ### Added

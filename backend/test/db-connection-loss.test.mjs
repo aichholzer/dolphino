@@ -36,9 +36,10 @@ test(
       const client = await pool.connect();
       const marker = `lost_${randomUUID().replaceAll('-', '')}`;
       const closed = new Promise((resolve) => client.once('end', resolve));
-      const pending = client.query(`SELECT pg_sleep(10) AS ${marker}`);
+      // Assert before terminating: the query can reject while terminate() is still polling.
+      const rejected = assert.rejects(client.query(`SELECT pg_sleep(10) AS ${marker}`), /terminat/i);
       await terminate(admin, marker);
-      await assert.rejects(pending, /terminat/i);
+      await rejected;
       // The unhandled 'error' that used to exit Node is emitted when the socket closes.
       await closed;
       client.release(true);
@@ -63,12 +64,15 @@ test(
       const store = new Store(pool, { mode: 'live' });
       await store.migrate();
       const marker = `atomic_${randomUUID().replaceAll('-', '')}`;
-      const pending = store.atomic((c) => c.query(`SELECT pg_sleep(10) AS ${marker}`), { refresh: false });
+      const rejected = assert.rejects(
+        store.atomic((c) => c.query(`SELECT pg_sleep(10) AS ${marker}`), { refresh: false }),
+        (error) => {
+          assert.match(error.message, /terminat/i, 'the lost connection is reported, not the failed ROLLBACK');
+          return true;
+        }
+      );
       await terminate(admin, marker);
-      await assert.rejects(pending, (error) => {
-        assert.match(error.message, /terminat/i, 'the lost connection is reported, not the failed ROLLBACK');
-        return true;
-      });
+      await rejected;
       assert.equal((await store.atomic((c) => c.query('SELECT 1 AS ok'), { refresh: false })).rows[0].ok, 1);
       assert.equal(pool.totalCount - pool.idleCount, 0, 'no client stays checked out');
     } finally {

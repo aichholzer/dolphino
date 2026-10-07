@@ -49,6 +49,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
+      - run: npm run build
       - name: Unit tests with coverage
         run: npm run coverage
       - name: Browser checks with coverage, then the production build

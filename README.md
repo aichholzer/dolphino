@@ -47,7 +47,7 @@ For frontend work, set `APP_ORIGIN=http://localhost:5173`, start the backend as 
 npm run check
 ```
 
-That runs lint, the format check, the tests and the build. Tests that need PostgreSQL skip until you point them at a disposable database. [Testing](docs/testing.md) explains how to set one up, run the browser checks and measure coverage. [Architecture](docs/architecture.md) covers the code layout and conventions.
+That runs lint, the format check, the build and the tests. Tests that need PostgreSQL skip until you point them at a disposable database. [Testing](docs/testing.md) explains how to set one up, run the browser checks and measure coverage. [Architecture](docs/architecture.md) covers the code layout and conventions.
 
 ## Security
 

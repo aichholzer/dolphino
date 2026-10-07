@@ -11,7 +11,7 @@
     "test": "node --test --test-concurrency=1 backend/test/*.test.mjs frontend/test/*.test.mjs",
     "build": "npm run build --workspace frontend",
     "seed": "node backend/src/utils/seed.mjs",
-    "check": "npm run lint && npm run format:check && npm test && npm run build",
+    "check": "npm run lint && npm run format:check && npm run build && npm test",
     "migrate": "node backend/src/utils/migrate.mjs",
     "lint": "eslint . --max-warnings=0",
     "test:browser": "node frontend/test/demo.browser.mjs",
