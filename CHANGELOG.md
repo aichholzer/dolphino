@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.18 - 2026-10-07
+
+### Added
+
+- GitHub Actions CI on every push to `main` and every pull request: lint, the format check, the unit suite and every browser check under coverage against PostgreSQL 17, and the production build. The coverage summary goes to the job summary and the HTML report to the `coverage` artifact. Actions are pinned to commit SHAs and the workflow token is read-only.
+
 ## 0.2.17 - 2026-10-07
 
 ### Added

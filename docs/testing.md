@@ -41,6 +41,10 @@ Run `npm run build` first. Each `npm run test:browser:*` script drives Chromium 
 
 Browser checks launch Chromium through `frontend/test/browser.mjs`. Import `chromium` from there in new checks.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request: `npm ci`, lint, the format check, `npm run coverage` and `npm run coverage:browser` against a PostgreSQL 17 service container and the runner's Google Chrome. The coverage summary goes to the job summary, and the HTML report is uploaded as the `coverage` artifact.
+
 ## Coverage
 
 ```sh
