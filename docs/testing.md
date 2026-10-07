@@ -31,7 +31,7 @@ Run `npm run build` first. Each `npm run test:browser:*` script drives Chromium 
 - Most start their own server, with synthetic fixtures or the test database.
 - `test:browser`, `test:browser:theme`, `test:browser:auth` and `scripts/browser-category-repair.mjs` drive the running fictional demo at `http://localhost:3001`. Set `DOLPHINO_TEST_URL` for another address.
 - `test:browser:integration-settings`, `test:browser:bedrock-models` and `test:browser:simplefin` need the test database.
-- Scripts that save screenshots write to `artifacts/`, or to `DOLPHINO_SCREENSHOT_DIR` when set.
+- Scripts that save screenshots write to the git-ignored `artifacts/` folder, or to `DOLPHINO_SCREENSHOT_DIR` when set.
 
 ## Database outage tests
 

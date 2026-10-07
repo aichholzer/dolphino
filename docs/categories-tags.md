@@ -79,5 +79,3 @@ npm run check:theme
 The two database outage tests stay opt-in; see [testing](testing.md#database-outage-tests).
 
 `backend/test/rule-tags-http.test.mjs` covers role/Origin/schema boundaries, read-only preview snapshots, first-match precedence, literal wildcard characters, concurrency, repeated imports/migrations, explicit removal/re-add, capacity, mode isolation and pending-link decisions. `frontend/test/rules-search.browser.mjs` exercises real authorized sessions against compiled assets, both row entry points, shared dropdowns, preview gating, cancellation/history guards, additive tags, global search from every page, stale-scope clearing, refresh/back/forward, mobile layout and revoked grants. The workspace and Review runners serve production bundles, compile their isolated test harnesses and reject development-source requests.
-
-Screenshots from the synthetic fixtures: [Categories on mobile](../artifacts/categories-settings-mobile.png), [filtered transactions on desktop](../artifacts/categories-transactions-desktop.png), [rule preview](../artifacts/rule-preview-desktop.png) and [permanent search on mobile](../artifacts/rules-global-search-mobile.png).

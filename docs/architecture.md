@@ -10,7 +10,7 @@ All repository plain JavaScript uses the explicit `.mjs` extension, including fr
 
 ## Identity and naming
 
-`frontend/public/dolphino.svg` is the editable dolphin silhouette; `dolphino-mono.svg` is the one-colour alternative. Both are SVG geometry with an accessible title and description, and embed no raster image, font or external resource. Source copies live in `artifacts/`. The lowercase wordmark is separate UI text set in the interface face, Hanken Grotesk. `npm run test:browser:brand` checks the icon sizes and placement.
+`frontend/public/dolphino.svg` is the editable dolphin silhouette; `dolphino-mono.svg` is the one-colour alternative. Both are SVG geometry with an accessible title and description, and embed no raster image, font or external resource. The lowercase wordmark is separate UI text set in the interface face, Hanken Grotesk. `npm run test:browser:brand` checks the icon sizes and placement.
 
 - Environment variables use the `DOLPHINO_*` prefix, and the session cookie is `dolphino_session`.
 - Credential encryption uses a Dolphino-specific version 3 HKDF/AAD domain. Older envelopes stay stored but unreadable; there is no compatibility decryptor.

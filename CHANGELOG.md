@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.12 - 2026-10-07
+
+### Removed
+
+- The `artifacts/` folder of screenshots and logo copies. Browser checks still write their screenshots there, and Git ignores it. The logo lives in `frontend/public/`.
+
 ## 0.2.11 - 2026-10-07
 
 ### Added

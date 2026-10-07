@@ -65,7 +65,6 @@ for (const name of ['ocean', 'sky', 'sea', 'coral', 'sun', 'tide']) {
 }
 
 const asset = await readFile('frontend/public/dolphino.svg', 'utf8');
-assert.equal(asset, await readFile('artifacts/dolphino-logo.svg', 'utf8'));
 // Original dolphin outline and detail are intentionally unchanged.
 assert(
   asset.includes(

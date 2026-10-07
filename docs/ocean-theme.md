@@ -19,7 +19,7 @@ The same tokens cover transactions, accounts, budgets, review, rules, settings, 
 
 ## Checks
 
-- `node scripts/check-theme.mjs`: verifies token resolution, absence of the prior purple theme, original SVG geometry, exact published/source SVG equality, WCAG AA normal-text contrast pairs and 3:1 focus contrast
+- `node scripts/check-theme.mjs`: verifies token resolution, absence of the prior purple theme, original SVG geometry, WCAG AA normal-text contrast pairs and 3:1 focus contrast
 - Text contrast checks: primary at least 11.52:1; secondary 7.32:1; muted on canvas at least 5.18:1; muted on sea glass 4.84:1; navigation at least 5:1; semantic text pairs at least 5.08:1
 - `node scripts/browser-theme.mjs`: exercises the real fictional-demo application at 1440px, 390px and 320px; captures all seven screens, assistant unavailable/disabled state, API loading/error/retry, empty period, and synthetic login/initial setup. Verifies no page errors or viewport overflow, full-document sidebar height and sticky navigation on the long Settings page, assistant dismissal/focus restoration, and mobile table keyboard scrolling
 - `node scripts/browser-assistant.mjs`: separately exercises and captures fictional mocked assistant conversations, report sources, cancellation, focus trapping and Escape
