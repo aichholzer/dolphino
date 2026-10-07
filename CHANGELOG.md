@@ -2,6 +2,21 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.11 - 2026-10-07
+
+### Added
+
+- dolphino is released under the MIT licence (`LICENSE.md`). `SECURITY.md` describes how to report a vulnerability privately.
+- `docs/testing.md` covers the test database, the checks, the browser suites, the database outage tests and the restore rehearsal.
+
+### Changed
+
+- `docs/security-assessment.md` is the security model: threat model, role matrix, fixed findings, attack cases with their tests, and residual risk.
+
+### Removed
+
+- Dated verification records and review logs from `docs/`. The topic guides keep how to run each test suite.
+
 ## 0.2.10 - 2026-10-07
 
 ### Added

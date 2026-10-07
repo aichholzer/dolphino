@@ -1,6 +1,6 @@
 {
   "name": "@dolphino/frontend",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,5 +27,6 @@
     "@vitejs/plugin-react": "^4.3.4",
     "tailwindcss": "^4.1.13",
     "vite": "^6.0.7"
-  }
+  },
+  "license": "MIT"
 }

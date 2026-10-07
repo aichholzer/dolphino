@@ -27,7 +27,7 @@ import { createUserManagement } from '../backend/src/lib/users.mjs';
 const database = readTestPostgresConfig();
 assert(
   database,
-  'Set PGHOST, PGDATABASE, PGUSER (or TEST_DATABASE_URL) for a disposable PostgreSQL database; see docs/verification.md.'
+  'Set PGHOST, PGDATABASE, PGUSER (or TEST_DATABASE_URL) for a disposable PostgreSQL database; see docs/testing.md.'
 );
 const owner = new pg.Pool(database);
 const schema = `browser_settings_${randomUUID().replaceAll('-', '')}`;

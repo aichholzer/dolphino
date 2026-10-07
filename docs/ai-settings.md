@@ -54,6 +54,6 @@ All settings routes are administrator-only. Writes and external test/discovery a
 
 The feature PUT schemas reject provider, region, credential and unknown fields; existing clients must move those changes to the shared route. PUTs should include all intended feature settings because omitted fields use schema defaults. A missing/stale `aiRevision`, unresolved shared migration, unreadable credentials when enabling, or missing model/assistant acknowledgement fails without a partial write. Feature-specific explicit model-test routes remain available and retain their independent cost acknowledgement.
 
-## Backup and verification
+## Backup
 
-Back up the entire PostgreSQL database and keep APP_SECRET separately. The restore rehearsal seeds one shared encrypted credential plus distinct feature configurations, then constructs the actual restored shared service and checks both runtime/public snapshots. It also checks missing/wrong-key fail-closed behavior, quota persistence, exact table rows and financial reports. See [restore evidence](restore-evidence.md) and [shared-settings verification](shared-ai-settings-verification.md).
+Back up the entire PostgreSQL database and keep APP_SECRET separately. The [restore rehearsal](testing.md#restore-rehearsal) seeds one shared encrypted credential plus distinct feature configurations, restores them and checks both runtime and public snapshots, fail-closed behaviour with a missing or wrong key, every table row and the financial reports.

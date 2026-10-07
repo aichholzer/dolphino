@@ -10,7 +10,7 @@ import { configurationFingerprint } from '../src/lib/redbark.mjs';
 import { createSettingsStore } from '../src/lib/settings.mjs';
 
 test('webhook callback accepts only public HTTPS origins, never arbitrary fetch paths', () => {
-  assert.equal(callbackUrl('https://finance.stefan.com'), 'https://finance.stefan.com/api/webhooks/redbark');
+  assert.equal(callbackUrl('https://finance.example.com'), 'https://finance.example.com/api/webhooks/redbark');
   for (const bad of [
     'http://finance.com',
     'https://127.0.0.1',
@@ -125,7 +125,7 @@ test(
       };
       const registration = createRegistration(args);
       await registration.init();
-      const input = { publicBaseUrl: 'https://finance.stefan.com' };
+      const input = { publicBaseUrl: 'https://finance.example.com' };
       await Promise.all([registration.register(input), registration.register(input)]);
       assert.equal(creates, 1);
       assert.equal(rotations, 0);

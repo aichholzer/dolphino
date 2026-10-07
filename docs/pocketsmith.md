@@ -39,7 +39,7 @@ Retries use exponential backoff and honor valid `Retry-After` seconds or dates a
 
 Frozen and soft-deleted accounts continue importing when enabled. Frozen balances stay outside account totals; soft-deleted history stays outside ordinary reports and budgets. Missing upstream accounts keep their local history and previous freshness. Local permanent deletion removes account-scoped PocketSmith evidence and cursors and retains the shared hashed-identity tombstone, preventing discovery or in-flight work from recreating that account. Disconnecting locally retains financial history; revoke the developer key at PocketSmith to revoke access.
 
-## Verification
+## Tests
 
 Use a disposable PostgreSQL database through `TEST_DATABASE_URL`:
 

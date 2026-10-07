@@ -66,17 +66,17 @@ Run `npm run lint:fix` to apply safe ESLint fixes, then `npm run format` to form
 
 The service is an MVP for a trusted household homelab. Put live mode behind HTTPS and maintain tested encrypted backups. No production deployment, real financial connection, external account creation, or external permission change is needed to try the demo.
 
-Browser checks against the running demo: `node scripts/browser-check.mjs` (set `CHROMIUM_PATH` if Chromium is elsewhere). See [verification evidence](docs/verification.md).
+Browser checks against the running demo: `node scripts/browser-check.mjs` (set `CHROMIUM_PATH` if Chromium is elsewhere). See [testing](docs/testing.md) for the test database, browser suites and restore rehearsal.
 
-Follow-up evidence: [independent review](docs/review.md), [backup/restore rehearsal](docs/restore-evidence.md), and [automatic classification policy](docs/classification.md).
+See [automatic classification policy](docs/classification.md).
 
-See [enhancements and verified boundaries](docs/enhancements.md), [encrypted settings](docs/settings-security.md), [provider configuration](docs/providers.md), [Telegram/SMTP notifications](docs/notifications.md), and [import health](docs/import-health.md).
+See [encrypted settings](docs/settings-security.md), [provider configuration](docs/providers.md), [Telegram/SMTP notifications](docs/notifications.md), and [import health](docs/import-health.md).
 
 For new live installs and upgrades from the shared-password version, complete [restricted first-administrator setup](docs/household-auth.md) before allowing household access. Public first-visitor signup is disabled.
 
 See [assistant setup, tool catalog and limits](docs/assistant.md).
 
-The [isolated security assessment](docs/security-assessment.md) documents tested attacks, fixed findings and remaining deployment limits. This is not a security certification.
+The [security model](docs/security-assessment.md) documents the threat model, tested attacks, fixed findings and remaining deployment limits. It is not a security certification. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 Upgrading an existing installation? Read [upgrade boundaries, credential recovery and volume preservation](docs/upgrading.md) before changing directories or Compose configuration. Keep APP_SECRET and your existing database/volume.
 
@@ -88,7 +88,7 @@ An administrator can connect a compatible public-HTTPS SimpleFIN v1 provider fro
 
 Use a personal developer key to read your own PocketSmith account into a self-hosted installation. Select native transaction accounts in **Settings → Bank feeds**; imports are disabled until explicitly enabled. See [setup, authentication scope, exact amounts and lifecycle behavior](docs/pocketsmith.md).
 
-Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 prior SQL migrations are retained; migration 014 adds the category catalog, transaction tags and search indexes; migration 015 adds additive rule tags and explicit tag preferences. See [code organization and maintenance](docs/architecture.md) for boundaries and [module cleanup verification](docs/module-cleanup-verification.md) for that historical milestone and [shared-settings verification](docs/shared-ai-settings-verification.md) for the current change.
+Plain JavaScript uses `.mjs`; JSX stays `.jsx`. The backend source root contains only `app.mjs` and `server.mjs`; reusable services live in `lib/`, maintenance/demo entrypoints in `utils/`, with `http/` and `routes/` retaining their responsibilities. All 13 prior SQL migrations are retained; migration 014 adds the category catalog, transaction tags and search indexes; migration 015 adds additive rule tags and explicit tag preferences. See [code organization and maintenance](docs/architecture.md) for boundaries.
 
 ### Categories, tags and transaction search
 
@@ -100,4 +100,8 @@ Administrators can create rules from Transactions or Review, preview their scope
 The permanent header search opens Transactions across all accessible imported history; URL criteria survive refresh and back/forward.
 Search includes descriptions, correction notes, category names and tags across the full server-side selection;
 category/tag filters combine with the existing date, account, status and type filters and apply to exports.
-See [category behavior, upgrade requirements and verification](docs/categories-tags.md).
+See [category behavior, upgrade requirements and tests](docs/categories-tags.md).
+
+## License
+
+dolphino is released under the [MIT License](LICENSE.md).

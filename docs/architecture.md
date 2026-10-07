@@ -8,6 +8,15 @@ Dolphino remains a plain-JavaScript Rayo API, a React frontend and a PostgreSQL-
 
 All repository plain JavaScript uses the explicit `.mjs` extension, including frontend helpers, shared code, tests, scripts and configuration; files containing JSX stay `.jsx`. Keep relative import extensions explicit and update package scripts, Docker paths and browser/test entrypoints when moving a module. Do not add duplicate wrapper modules solely to preserve retired paths.
 
+## Identity and naming
+
+`frontend/public/dolphino.svg` is the editable dolphin silhouette; `dolphino-mono.svg` is the one-colour alternative. Both are SVG geometry with an accessible title and description, and embed no raster image, font or external resource. Source copies live in `artifacts/`. The lowercase wordmark is separate UI text set in the interface face, Hanken Grotesk. `npm run test:browser:brand` checks the icon sizes and placement.
+
+- Environment variables use the `DOLPHINO_*` prefix, and the session cookie is `dolphino_session`.
+- Credential encryption uses a Dolphino-specific version 3 HKDF/AAD domain. Older envelopes stay stored but unreadable; there is no compatibility decryptor.
+- Worker advisory locks and SMTP Message-ID namespaces use current identifiers. Stop every old app and worker process before an upgrade.
+- Database, role and volume names belong to the operator. Keep the existing values; never create new storage to match a name.
+
 ## Backend
 
 `backend/src/` contains only the HTTP and process composition roots, `app.mjs` and `server.mjs`. Reusable non-HTTP services belong in `backend/src/lib/`. Operational/demo entrypoints belong in `backend/src/utils/`: `migrate.mjs`, `seed.mjs` and `demo.mjs`. The 13 substantive SQL files in `backend/migrations/` remain the schema history; they are not a squash/reset target.
@@ -65,4 +74,4 @@ npm run format:check
 npm run check
 ```
 
-`npm run check` runs lint, formatting verification, tests and the frontend build. PostgreSQL-dependent checks require a disposable test database; database outage tests additionally require the explicit isolated-server opt-in documented in the verification record. Build the current frontend before browser checks. Never use a live household database for seeds, destructive outage tests or restore rehearsals.
+`npm run check` runs lint, formatting verification, tests and the frontend build. PostgreSQL-dependent checks require a disposable test database; database outage tests additionally require the isolated-server opt-in described in [testing](testing.md). Build the current frontend before browser checks. Never use a live household database for seeds, destructive outage tests or restore rehearsals.

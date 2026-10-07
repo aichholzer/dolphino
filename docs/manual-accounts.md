@@ -38,6 +38,6 @@ Permanent deletion removes selected account rows, transactions, overrides, tags/
 
 Minimal local/source identity tombstones, scrubbed SimpleFIN identity reservations, deletion counts and lifecycle events remain. Financial response bodies in request receipts are erased, while request IDs and fingerprints remain to reject delayed retries of deleted writes. Polls cannot recreate a tombstoned local account ID; SimpleFIN discovery also checks its hashed source identity. Source identifiers are retained solely to prevent recreation. A provider that changes both its account/source identity can appear as a new account; this mechanism does not infer that it is the deleted account. No external deletion, bank operation or disconnection is performed. Previously exported files and independent backups are unaffected; this is not a backup erasure feature. Permanent deletion cannot be restored through the UI.
 
-## Verification
+## Tests
 
 Use disposable PostgreSQL only. `TEST_DATABASE_URL=... npm test` includes the manual ledger HTTP/authorization/lifecycle suite and the upgrade test. `npm run build` followed by `TEST_DATABASE_URL=... node frontend/test/manual-accounts.browser.mjs` runs the compiled React application against actual local Rayo/SQL endpoints. Only disconnected integration status panels are browser fixtures; financial APIs are real. Browser storage and external calls are rejected by the browser harness.

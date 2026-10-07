@@ -60,7 +60,7 @@ Migration `014_categories_tags.sql` is additive and idempotent. It creates categ
 
 Migration `015_rule_tags.sql` adds rule tag arrays and explicit transaction tag preferences. Its one-time data marker records pre-existing tags as manual choices; subsequent startup migrations must not promote generated tags into manual choices. It changes no money, historical category keys, budgets, overrides or import evidence. The normal `npm start` / Compose startup applies both migrations through `Store.migrate()`; `npm run migrate` also applies them. For migration 014, a DBA can preinstall `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;` in the existing application database if the application role lacks database CREATE permission. Do not reset the database.
 
-## Verification
+## Tests
 
 The disposable PostgreSQL 17 fixture uses synthetic data, real database sessions, actual Rayo HTTP and the production Vite build. No worker or financial/LLM network integration starts. Browser tests reject external requests and instrument localStorage, sessionStorage, IndexedDB, Cache Storage and service-worker registration.
 
@@ -76,18 +76,8 @@ npm run check:theme
 
 `backend/test/categories-tags-http.test.mjs` verifies role/Origin/schema rejection, concurrent creation, mode isolation, private vocabulary, multiple tag validation, unchanged totals/evidence/overrides, historical budgets and rollover after rename/archive, migration reruns, pagination beyond 50 rows, literal escaping, filtered exports, assistant filters, grant revocation and atomic pending tag merging. `frontend/test/categories-tags.browser.mjs` exercises the compiled app with admin/editor/viewer sessions, refresh, navigation, repeated mutations, contextual review actions, category choices, archived history, exact budget saving, escaped HTML, mobile management and storage/network guards.
 
-The existing database shutdown tests also passed with their explicit isolated-server flags using a wrapper that stops/starts only the disposable test container. Those two tests remain opt-in during ordinary `npm test`; no production database is stopped.
+The two database outage tests stay opt-in; see [testing](testing.md#database-outage-tests).
 
-Verified on 2026-10-02, based on `main` at `9b2380baca52532502753bca18720b06fb97ce40`:
+`backend/test/rule-tags-http.test.mjs` covers role/Origin/schema boundaries, read-only preview snapshots, first-match precedence, literal wildcard characters, concurrency, repeated imports/migrations, explicit removal/re-add, capacity, mode isolation and pending-link decisions. `frontend/test/rules-search.browser.mjs` exercises real authorized sessions against compiled assets, both row entry points, shared dropdowns, preview gating, cancellation/history guards, additive tags, global search from every page, stale-scope clearing, refresh/back/forward, mobile layout and revoked grants. The workspace and Review runners serve production bundles, compile their isolated test harnesses and reject development-source requests.
 
-- `npm run check` with PostgreSQL 17: lint, formatting, 287 passing tests, two opt-in shutdown tests skipped, production build passed.
-- Both skipped shutdown/recovery tests were then run explicitly against the disposable container: 2 passed, 0 skipped.
-- Category/tag HTTP suite after the final transfer-catalog privacy check: 9 passed, 0 skipped; lint and formatting rechecked.
-- `npm run test:browser:categories`: compiled admin/editor/viewer flows passed against real HTTP/PostgreSQL.
-- `npm run test:browser:workspace`, `node frontend/test/reviews.browser.mjs` and `npm run check:theme`: passed.
-
-Synthetic screenshots: [Categories on mobile](../artifacts/categories-settings-mobile.png) and [filtered transactions on desktop](../artifacts/categories-transactions-desktop.png).
-
-The rule/search follow-up adds real PostgreSQL/HTTP tests in `backend/test/rule-tags-http.test.mjs` for role/Origin/schema boundaries, read-only preview snapshots, first-match precedence, literal wildcard characters, concurrency, repeated imports/migrations, explicit removal/re-add, capacity, mode isolation and pending-link decisions. `frontend/test/rules-search.browser.mjs` exercises real authorized sessions against compiled assets, both row entry points, shared dropdowns, preview gating, cancellation/history guards, additive tags, global search from every page, stale-scope clearing, refresh/back/forward, mobile layout and revoked grants. The workspace and Review runners now also serve production bundles and compile their isolated test harnesses; they reject development-source requests.
-
-Follow-up UI evidence: [rule preview](../artifacts/rule-preview-desktop.png) and [permanent search on mobile](../artifacts/rules-global-search-mobile.png).
+Screenshots from the synthetic fixtures: [Categories on mobile](../artifacts/categories-settings-mobile.png), [filtered transactions on desktop](../artifacts/categories-transactions-desktop.png), [rule preview](../artifacts/rule-preview-desktop.png) and [permanent search on mobile](../artifacts/rules-global-search-mobile.png).

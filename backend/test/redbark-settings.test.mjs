@@ -252,7 +252,7 @@ test(
       id: 'ed_shared',
       status: 'enabled',
       webhook_endpoint: {
-        url: 'https://finance.stefan.com/api/webhooks/redbark'
+        url: 'https://finance.example.com/api/webhooks/redbark'
       }
     };
     const registration = createRegistration({
@@ -289,7 +289,7 @@ test(
     await redbark.save({ apiKey: 'fictional-A' });
     await integration.testConnection();
     await registration.register({
-      publicBaseUrl: 'https://finance.stefan.com',
+      publicBaseUrl: 'https://finance.example.com',
       recoverSigningSecret: true
     });
     await registration.test();
@@ -299,11 +299,11 @@ test(
     await assert.rejects(registration.test(), /registration_required/);
     assert.equal(pings, 1);
     await assert.rejects(
-      registration.register({ publicBaseUrl: 'https://finance.stefan.com' }),
+      registration.register({ publicBaseUrl: 'https://finance.example.com' }),
       /signing_secret_recovery_required/
     );
     await registration.register({
-      publicBaseUrl: 'https://finance.stefan.com',
+      publicBaseUrl: 'https://finance.example.com',
       recoverSigningSecret: true
     });
     assert.equal(rotations, 2);

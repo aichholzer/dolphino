@@ -38,4 +38,4 @@ Provider/execution errors have a reference ID. Server diagnostics record only th
 
 Stop aborts subsequent work and requests cancellation from the provider best-effort; it cannot guarantee no inference cost. Responses are delivered as a complete reply with a busy state, not token streaming. Provider errors stop the turn without automatic retries. Model compatibility requires the administrator's explicit synthetic tool-use test; it may incur a small inference charge. Basic credential tests do not invoke a model. Bedrock access must already be authorized; dolphino does not subscribe to models or accept terms.
 
-No live provider calls were made during development. Provider contracts, permission changes, forged tools, report ownership, cancellation and UI flows are covered with mocks and fictional data.
+Tests cover provider contracts, permission changes, forged tools, report ownership, cancellation and UI flows with mocks and fictional data.

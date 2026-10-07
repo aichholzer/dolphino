@@ -154,7 +154,7 @@ Restore into a **new empty database**, with the app stopped or pointed elsewhere
 PGHOST=your-db PGUSER=dolphino PGDATABASE=dolphino_restore DOLPHINO_RESTORE_CONFIRM=dolphino_restore scripts/restore.sh backups/dolphino.dump
 ```
 
-For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's explicit `PGDATABASE`/connection settings and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process. A disposable loopback-only rehearsal script and the successful test evidence are documented in [restore evidence](restore-evidence.md).
+For bundled PostgreSQL, create an empty restore target with `createdb`, then pipe the backup into `pg_restore --single-transaction --exit-on-error --no-owner --no-acl` inside the database container. Do not overwrite a working database as your first restore test. Inspect restored counts, balances, dashboard totals, corrections and rules, then deliberately change the app's explicit `PGDATABASE`/connection settings and restart. A restore may contain pending durable jobs: validate integration configuration before enabling external network access. Regularly rehearse this process. A disposable loopback-only [restore rehearsal](testing.md#restore-rehearsal) exercises the same scripts.
 
 ## Policies and limits
 
