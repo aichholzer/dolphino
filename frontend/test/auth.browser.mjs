@@ -1,5 +1,5 @@
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
-import { chromium } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',

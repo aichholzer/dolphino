@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createCompiledServer } from './compiled-server.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 
 // Focused UI race and error fixtures. The companion bedrock-models.browser.mjs
 // and integration-settings-db.browser.mjs run the same production UI over real

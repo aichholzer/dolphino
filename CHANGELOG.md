@@ -2,6 +2,23 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.17 - 2026-10-07
+
+### Added
+
+- `npm run coverage` and `npm run coverage:browser` measure coverage with c8 across the unit suite and every browser check, including the servers and scripts those start. Chromium coverage maps back to `frontend/src` through a coverage build, `vite build --mode coverage`. The report lists every file in `backend/src`, `frontend/src` and `scripts`, loaded or not. `c8` is a new development dependency.
+- `npm run test:browser:all` runs every browser check in turn, with a freshly seeded demo on its own schema for the checks that need one.
+
+### Changed
+
+- Tailwind reads only `frontend/index.html` and `frontend/src`. Tests, docs and build settings no longer add utilities to the production CSS, and five unused ones are gone.
+- Browser checks launch Chromium through `frontend/test/browser.mjs`.
+- The Docker build context leaves out `coverage/` and `artifacts/`.
+
+### Fixed
+
+- The enhancements browser check waits for the three-month dashboard request. It raced the request and failed against a slower bundle.
+
 ## 0.2.16 - 2026-10-07
 
 ### Added

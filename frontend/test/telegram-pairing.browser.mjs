@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import { telegramFixture, syntheticTelegramToken } from '../../backend/test/helpers/telegram-fixture.mjs';
 import { verifyTelegramPrivateGroup } from '../../backend/src/lib/telegram.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';

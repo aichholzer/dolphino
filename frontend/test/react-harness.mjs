@@ -5,7 +5,7 @@ import { transformSync } from 'esbuild';
 import { JSDOM } from 'jsdom';
 
 // Hooks run in Node against a jsdom window. Source modules import JSX files without
-// an extension, as Vite allows, so this resolves and compiles them the same way.
+// an extension, as Vite allows. The hooks below resolve and compile them the same way.
 // Import this module first, then load React DOM and the code under test dynamically.
 const source = new URL('../src/', import.meta.url).href;
 registerHooks({

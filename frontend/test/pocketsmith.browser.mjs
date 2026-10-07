@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import { pocketSmithFixture, testPocketSmithKey } from '../../backend/test/helpers/pocketsmith-fixture.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 

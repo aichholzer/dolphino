@@ -32,6 +32,8 @@ export async function createCompiledServer(options) {
       await build({
         root,
         configFile: options.configFile,
+        // Under c8, harness bundles carry source maps like the coverage build of the app.
+        ...(process.env.NODE_V8_COVERAGE ? { mode: 'coverage' } : {}),
         logLevel: 'error',
         build: { outDir: output, emptyOutDir: true, rollupOptions: { input } }
       });

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import { categoryFixture } from '../../backend/test/helpers/category-fixture.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 

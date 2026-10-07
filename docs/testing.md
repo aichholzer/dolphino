@@ -37,6 +37,25 @@ Run `npm run build` first. Each `npm run test:browser:*` script drives Chromium 
 - `test:browser:integration-settings`, `test:browser:bedrock-models` and `test:browser:simplefin` need the test database.
 - Scripts that save screenshots write to the git-ignored `artifacts/` folder, or to `DOLPHINO_SCREENSHOT_DIR` when set.
 
+`npm run test:browser:all` runs every check in turn. It seeds a fictional demo on its own schema of the test database, starts a demo server on a free port for the demo checks, and prints each failing script's output. Pass names to run a subset: `node frontend/test/browser-suite.mjs auth theme`.
+
+Browser checks launch Chromium through `frontend/test/browser.mjs`. Import `chromium` from there in new checks.
+
+## Coverage
+
+```sh
+npm run coverage
+npm run coverage:browser
+```
+
+`npm run coverage` runs the unit suite under [c8](https://github.com/bcoe/c8). `npm run coverage:browser` builds the frontend with `vite build --mode coverage`, runs every browser check under c8, adds their results to the same report, and rebuilds the production bundle. Run it after `npm run coverage` for the combined figures.
+
+Both need the test database, and the browser run needs Chromium. Reports land in the git-ignored `coverage/` folder: a text table, `coverage/index.html` and `coverage/lcov.info`. `.c8rc.json` reports every file in `backend/src`, `frontend/src` and `scripts`, including files no test loads.
+
+- Child processes inherit `NODE_V8_COVERAGE`. The servers and scripts the tests start count toward the report.
+- In the browser, `frontend/test/browser.mjs` records Chromium's JS coverage per page. The coverage build is unminified and carries inline source maps with absolute paths, which map each bundle back to `frontend/src`.
+- Tailwind reads only `frontend/index.html` and `frontend/src`. The coverage settings, tests and docs never change the production CSS.
+
 ## Database outage tests
 
 Two tests stop and restart PostgreSQL to prove that work fails closed and resumes after recovery. They are skipped unless `DOLPHINO_DB_SHUTDOWN_TEST=1`. They also require a test-owned server: `DOLPHINO_TEST_PG_ISOLATED=1`, `DOLPHINO_TEST_PG_CTL` (the `pg_ctl` binary), `DOLPHINO_TEST_PG_DATA_DIR` and `PGPORT`.

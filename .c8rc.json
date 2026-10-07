@@ -1,0 +1,11 @@
+{
+  "all": true,
+  "src": ["backend/src", "frontend/src", "scripts"],
+  "include": ["backend/src/**", "frontend/src/**", "scripts/**"],
+  "exclude": ["**/node_modules/**"],
+  "extension": [".js", ".mjs", ".jsx"],
+  "excludeAfterRemap": true,
+  "reporter": ["text", "text-summary", "html", "lcov", "json-summary"],
+  "reportsDirectory": "coverage",
+  "tempDirectory": "coverage/v8"
+}

@@ -1,5 +1,6 @@
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createCompiledServer } from './compiled-server.mjs';
@@ -296,7 +297,8 @@ try {
   await page.goto(base);
   await page.getByLabel('Overview period').selectOption('3');
   await page.getByText('Partial month', { exact: true }).waitFor();
-  assert(calls.some((c) => c.path === '/api/dashboard' && c.query.includes('months=3')));
+  // The fixture shows Partial month for every period. Wait for the request itself.
+  await expect.poll(() => calls.some((c) => c.path === '/api/dashboard' && c.query.includes('months=3'))).toBe(true);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Edit account Everyday account', exact: true }).click();
   await page.getByLabel('Account label', { exact: true }).fill('Household');

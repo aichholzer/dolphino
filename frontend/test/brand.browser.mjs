@@ -1,4 +1,4 @@
-import { chromium } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({

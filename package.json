@@ -38,7 +38,10 @@
     "test:browser:review-queue": "node frontend/test/review-queue.browser.mjs",
     "test:browser:header-overview": "node frontend/test/header-overview.browser.mjs",
     "test:browser:manual": "node frontend/test/manual-accounts.browser.mjs",
-    "test:browser:pocketsmith": "node frontend/test/pocketsmith.browser.mjs"
+    "test:browser:pocketsmith": "node frontend/test/pocketsmith.browser.mjs",
+    "coverage": "c8 npm test",
+    "coverage:browser": "npm run build:coverage --workspace frontend && c8 --clean=false node frontend/test/browser-suite.mjs && npm run build",
+    "test:browser:all": "node frontend/test/browser-suite.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",
@@ -54,6 +57,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "c8": "^12.0.0",
     "esbuild": "^0.25.12",
     "eslint": "^10.11.0",
     "globals": "^17.13.0",

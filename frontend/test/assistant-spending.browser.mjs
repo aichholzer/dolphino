@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import {
   assistantSpendingFixture,
   spendingQuestion,

@@ -11,3 +11,5 @@ backups
 playwright-report
 test-results
 *.log
+coverage
+artifacts

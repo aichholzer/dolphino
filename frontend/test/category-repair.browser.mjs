@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
 // Run after npm run build, against the disposable app served by with-demo.sh.

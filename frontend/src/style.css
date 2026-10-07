@@ -1,4 +1,7 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
+/* Utilities come from the app markup only; docs, tests and build config never add CSS. */
+@source '../index.html';
+@source './';
 :root {
   /* Ocean palette: dark text on quiet pastel surfaces, with semantic colors. */
   --ink: #173847;

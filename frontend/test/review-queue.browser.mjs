@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { chromium } from './browser.mjs';
 import { createCompiledServer as createServer } from './compiled-server.mjs';
 import { installBrowserStorageGuard } from './browser-storage-guard.mjs';
 
