@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.14 - 2026-10-07
+
+### Added
+
+- HTTP tests for every user-management action: listing, grant options, invitations, resend, revoke, role and access changes, disabling and password resets. They cover sign-in and administrator checks, the Origin check, strict request bodies, the demo-mode refusal and the per-action limit of five a minute, plus the single-use links in the mailed invitations and resets.
+
 ## 0.2.13 - 2026-10-07
 
 ### Changed
