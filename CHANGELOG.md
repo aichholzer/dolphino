@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.23 - 2026-10-08
+
+### Added
+
+- A coverage floor. `npm run coverage:check` fails below 90% of lines, statements and functions, or 88% of branches, across the combined unit and browser report. CI runs it after the browser checks. The report stood at 94.4%, 94.4%, 92.3% and 90.1% when it was set.
+
 ## 0.2.22 - 2026-10-08
 
 ### Added

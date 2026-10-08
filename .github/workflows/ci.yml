@@ -54,6 +54,8 @@ jobs:
         run: npm run coverage
       - name: Browser checks with coverage, then the production build
         run: npm run coverage:browser
+      - name: Coverage floor
+        run: npm run coverage:check
       - name: Coverage summary
         if: ${{ !cancelled() }}
         run: |

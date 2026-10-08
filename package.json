@@ -42,7 +42,8 @@
     "coverage": "c8 npm test",
     "coverage:browser": "npm run build:coverage --workspace frontend && c8 --clean=false node frontend/test/browser-suite.mjs && npm run build",
     "test:browser:all": "node frontend/test/browser-suite.mjs",
-    "test:browser:members": "node frontend/test/members.browser.mjs"
+    "test:browser:members": "node frontend/test/members.browser.mjs",
+    "coverage:check": "c8 report --reporter=text-summary --check-coverage --lines 90 --statements 90 --functions 90 --branches 88"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1143.0",

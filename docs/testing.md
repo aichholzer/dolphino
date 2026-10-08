@@ -43,7 +43,7 @@ Browser checks launch Chromium through `frontend/test/browser.mjs`. Import `chro
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request: `npm ci`, lint, the format check, the build, `npm run coverage` and `npm run coverage:browser` against a PostgreSQL 17 service container and the runner's Google Chrome. The coverage summary goes to the job summary, and the HTML report is uploaded as the `coverage` artifact.
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request: `npm ci`, lint, the format check, the build, `npm run coverage`, `npm run coverage:browser` and `npm run coverage:check` against a PostgreSQL 17 service container and the runner's Google Chrome. The coverage summary goes to the job summary, and the HTML report is uploaded as the `coverage` artifact.
 
 ## Coverage
 
@@ -52,7 +52,7 @@ npm run coverage
 npm run coverage:browser
 ```
 
-`npm run coverage` runs the unit suite under [c8](https://github.com/bcoe/c8). `npm run coverage:browser` builds the frontend with `vite build --mode coverage`, runs every browser check under c8, adds their results to the same report, and rebuilds the production bundle. Run it after `npm run coverage` for the combined figures.
+`npm run coverage` runs the unit suite under [c8](https://github.com/bcoe/c8). `npm run coverage:browser` builds the frontend with `vite build --mode coverage`, runs every browser check under c8, adds their results to the same report, and rebuilds the production bundle. Run it after `npm run coverage` for the combined figures. `npm run coverage:check` then fails below 90% of lines, statements and functions, or 88% of branches. CI runs it after both.
 
 Both need the test database, and the browser run needs Chromium. Reports land in the git-ignored `coverage/` folder: a text table, `coverage/index.html` and `coverage/lcov.info`. `.c8rc.json` reports every file in `backend/src`, `frontend/src` and `scripts`, including files no test loads.
 
