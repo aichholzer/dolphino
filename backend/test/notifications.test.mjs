@@ -213,7 +213,7 @@ test(
         enabled: true,
         chatId: '-123',
         tokenHash: createHash('sha256').update('12345:synthetic-token-not-real').digest('hex'),
-        enabledAt: new Date().toISOString()
+        enabledAt: (await pool.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString()
       });
       let telegramSends = 0;
       let limited = false;

@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.20 - 2026-10-08
+
+### Fixed
+
+- Notification delivery runs on the database clock. The audience confirmation and the email and Telegram enable times are stamped by PostgreSQL, and the Telegram limit of one message per chat every 3.1 seconds is measured there. They were stamped by the app and compared with event times from the database. With the app clock ahead, an alert raised just after enabling was cancelled; behind, one raised just before confirmation could be sent, and the Telegram limit drifted. This was the cause of the intermittent outbox test failure.
+
 ## 0.2.19 - 2026-10-08
 
 ### Fixed

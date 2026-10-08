@@ -150,16 +150,15 @@ export function createNotificationIntegration({
     try {
       await c.query('BEGIN');
       await c.query('SELECT pg_advisory_xact_lock(17092382)');
+      // Delivery compares these stamps with each event's created_at. Both come from the database clock.
+      const stamp = (await c.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString();
       const priorAudience = (await settings.getValue('notifications.audience', c)) || { confirmed: false };
       const audience =
         parsed.data.audienceConfirmed === undefined
           ? priorAudience
           : {
               confirmed: parsed.data.audienceConfirmed,
-              confirmedAt:
-                priorAudience.confirmed === parsed.data.audienceConfirmed
-                  ? priorAudience.confirmedAt
-                  : new Date().toISOString()
+              confirmedAt: priorAudience.confirmed === parsed.data.audienceConfirmed ? priorAudience.confirmedAt : stamp
             };
       if (parsed.data.audienceConfirmed !== undefined) {
         await settings.setValue('notifications.audience', audience, c);
@@ -203,7 +202,7 @@ export function createNotificationIntegration({
               previous.from === v.from &&
               JSON.stringify(previous.recipients) === JSON.stringify([...new Set(v.recipients)])
                 ? previous.enabledAt
-                : new Date().toISOString()
+                : stamp
           },
           c
         );
@@ -234,7 +233,7 @@ export function createNotificationIntegration({
           {
             ...previous,
             enabled,
-            enabledAt: previous.enabled === enabled ? previous.enabledAt : new Date().toISOString()
+            enabledAt: previous.enabled === enabled ? previous.enabledAt : stamp
           },
           c
         );
@@ -359,17 +358,16 @@ export function createNotificationIntegration({
         }
 
         if (job.channel === 'telegram') {
-          const recent = (
-            await lock.query(
-              "SELECT max(updated_at) last FROM notification_outbox WHERE channel='telegram' AND recipient=$1 AND attempts>0",
-              [job.recipient]
-            )
-          ).rows[0].last;
-          if (recent && Date.now() - new Date(recent).getTime() < 3100) {
-            await lock.query('UPDATE notification_outbox SET next_attempt_at=$2 WHERE id=$1', [
-              job.id,
-              new Date(new Date(recent).getTime() + 3100)
-            ]);
+          // One message per chat every 3.1 seconds, measured on the database clock.
+          const { until } =
+            (
+              await lock.query(
+                "SELECT max(updated_at)+interval '3100 milliseconds' AS until FROM notification_outbox WHERE channel='telegram' AND recipient=$1 AND attempts>0 HAVING max(updated_at)+interval '3100 milliseconds'>clock_timestamp()",
+                [job.recipient]
+              )
+            ).rows[0] || {};
+          if (until) {
+            await lock.query('UPDATE notification_outbox SET next_attempt_at=$2 WHERE id=$1', [job.id, until]);
             continue;
           }
         }

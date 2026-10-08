@@ -310,7 +310,8 @@ export function createTelegramPairing({ pool, settings, fetchImpl, now = Date.no
           chatId: state.candidate.chatId,
           chatTitle: state.candidate.title,
           enabled: true,
-          enabledAt: new Date(now()).toISOString(),
+          // Delivery compares this with event created_at, on the database clock.
+          enabledAt: (await db.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString(),
           tokenHash: state.tokenHash
         };
         await settings.setValue(DESTINATION, destination, db);
