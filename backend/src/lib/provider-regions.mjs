@@ -1,5 +1,5 @@
 // Conservative runtime endpoint catalogue, not a guarantee that every model is available.
-// Refresh procedure and official source are documented in docs/providers.md.
+// Source: the bedrock-runtime column of https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.html
 export const BEDROCK_REGIONS = [
   ['us-west-1', 'US West (N. California)'],
   ['ca-west-1', 'Canada West (Calgary)'],

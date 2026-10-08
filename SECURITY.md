@@ -14,6 +14,12 @@ Include the affected version or commit, the steps to reproduce and the impact yo
 
 In scope: the code in this repository, including the Docker image and Compose files it ships.
 
-Out of scope: installations you do not operate, and the external services dolphino connects to (Redbark, PocketSmith, SimpleFIN, OpenAI, Amazon Bedrock, Telegram and SMTP providers). Report problems in those services to their operators.
+Out of scope: installations you do not operate, and the external services Dolphino connects to (Redbark, PocketSmith, SimpleFIN, OpenAI, Amazon Bedrock, Telegram and SMTP providers). Report problems in those services to their operators.
 
-The [security model](docs/security-assessment.md) describes the threat model, the role boundaries and the known residual risks.
+## How Dolphino protects your data
+
+- Passwords are hashed with scrypt and a per-user salt. Sessions last twelve hours, and only a hash of each session token is stored.
+- Saved credentials are encrypted with AES-256-GCM under a key derived from `APP_SECRET`. The API never returns them.
+- Administrators see everything. Members see only the accounts and budgets they are granted, and every request is checked against the current grants.
+- Requests that change data must come from the exact `APP_ORIGIN`.
+- Nothing leaves the installation unless an administrator enables it: bank feeds, notifications and AI features are all off by default.

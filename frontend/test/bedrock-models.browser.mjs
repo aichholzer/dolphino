@@ -38,7 +38,7 @@ async function runScenario(name, test) {
   const database = readTestPostgresConfig();
   assert(
     database,
-    'Set PGHOST, PGDATABASE, PGUSER (or TEST_DATABASE_URL) for a disposable PostgreSQL database; see docs/testing.md.'
+    'Set PGHOST, PGDATABASE, PGUSER (or TEST_DATABASE_URL) for a disposable PostgreSQL database; see docs/development.md.'
   );
   const owner = new pg.Pool(database);
   const schema = `browser_settings_${randomUUID().replaceAll('-', '')}`;

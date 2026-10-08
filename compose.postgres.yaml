@@ -1,4 +1,4 @@
-# Explicit bundled PostgreSQL only. See docs/upgrading.md before upgrading.
+# Explicit bundled PostgreSQL only. See docs/deployment.md.
 # Required external volume name prevents a renamed checkout/project from silently
 # creating an empty database. Create it yourself for a NEW installation only.
 services:

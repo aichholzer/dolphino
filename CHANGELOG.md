@@ -11,6 +11,7 @@ All notable changes to dolphino are recorded here. The format follows [Keep a Ch
 ### Changed
 
 - The key rotation script is `scripts/rotate-secrets.mjs`.
+- The documentation is five short guides: deployment, bank feeds, notifications, AI features and development. Notes on how and why features were built are gone, and `SECURITY.md` summarises how data is protected.
 
 ## 0.2.23 - 2026-10-08
 
