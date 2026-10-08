@@ -105,6 +105,37 @@ try {
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(wallet.locator('.account-balance')).toHaveText('$80.00');
+  // Splits: the first takes the whole amount, later ones start at zero, and any can be removed.
+  await wallet.getByRole('button', { name: 'Add entry', exact: true }).click();
+  await dialog.getByLabel('Date', { exact: true }).fill('2026-09-15');
+  await dialog.getByLabel('Amount (negative for expenses)').fill('-30.00');
+  await dialog.getByLabel('Description', { exact: true }).fill('Market and train');
+  await dialog.getByLabel('Category', { exact: true }).selectOption('Groceries');
+  for (let i = 0; i < 3; i++) {
+    await dialog.getByRole('button', { name: 'Add split', exact: true }).click();
+  }
+
+  await expect(dialog.getByLabel('Split 1 amount')).toHaveValue('-30.00');
+  await expect(dialog.getByLabel('Split 2 amount')).toHaveValue('0');
+  await dialog.getByRole('button', { name: 'Remove split 3', exact: true }).click();
+  await expect(dialog.getByLabel('Split 3 amount')).toHaveCount(0);
+  await dialog.getByLabel('Split 1 amount').fill('-20.00');
+  await dialog.getByLabel('Split 2 amount').fill('-10.00');
+  await dialog.getByLabel('Split 2 category').selectOption('Travel');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(wallet.locator('.account-balance')).toHaveText('$50.00');
+  assert.deepEqual(
+    (
+      await f.pool.query(
+        "SELECT s->>'category' AS category, s->>'amountMinor' AS amount FROM transactions t JOIN transaction_overrides o ON o.transaction_id=t.id, jsonb_array_elements(o.splits) s WHERE t.description='Market and train' ORDER BY 1"
+      )
+    ).rows,
+    [
+      { category: 'Groceries', amount: '-2000' },
+      { category: 'Travel', amount: '-1000' }
+    ]
+  );
   await wallet.getByRole('button', { name: 'View transactions for Cash wallet' }).click();
   await page.getByRole('button', { name: 'Edit Conference taxi', exact: true }).click();
   await dialog.getByLabel('Amount (negative for expenses)').fill('-15.00');
@@ -136,6 +167,16 @@ try {
   await expect(dialog).toBeHidden();
   await expect(wallet).toHaveCount(0);
   await page.goto(f.url + '/#settings/data');
+  // The transfer links Cash wallet to Savings jar, which is still active, so purging is refused.
+  await page.getByLabel('Cash wallet · manual · frozen', { exact: true }).check();
+  await page.getByRole('button', { name: 'Preview permanent deletion', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Linked accounts must also be soft-deleted and explicitly selected: Savings jar.'
+  );
+  await expect(page.getByRole('button', { name: 'Permanently delete selected accounts' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Cancel deletion', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Permanent local deletion' })).toHaveCount(0);
+  await expect(page.getByLabel('Cash wallet · manual · frozen', { exact: true })).not.toBeChecked();
   await page.getByRole('button', { name: 'Restore Cash wallet', exact: true }).click();
   await expect(page.getByText('Account and historical totals restored.')).toBeVisible();
   await expect(
@@ -210,7 +251,7 @@ try {
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
   console.log(
-    'PASS compiled manual accounts browser: create, tagged expense, transfer, adjustment, edit, void/audit, freeze, delete/restore, draft guard, responsive, no persistent storage, no external calls'
+    'PASS compiled manual accounts browser: create, tagged expense, splits, transfer, adjustment, edit, void/audit, freeze, delete/restore, linked purge refusal, draft guard, responsive, no persistent storage, no external calls'
   );
 } finally {
   await context.close();

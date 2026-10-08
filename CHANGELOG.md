@@ -2,6 +2,13 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.22 - 2026-10-08
+
+### Added
+
+- A browser check for Settings > Members against the real backend: invitations with account and budget access, a duplicate refused, resend and revoke, saving grants, granting and revoking administrator, disabling and enabling, password reset emails, and the unsaved-draft guard.
+- The manual accounts check covers split rows and the refusal to purge an account still linked by a transfer to an active one.
+
 ## 0.2.21 - 2026-10-08
 
 ### Fixed

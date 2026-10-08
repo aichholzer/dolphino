@@ -34,7 +34,7 @@ Run `npm run build` first. Each `npm run test:browser:*` script drives Chromium 
 
 - Most start their own server, with synthetic fixtures or the test database.
 - `test:browser`, `test:browser:theme`, `test:browser:auth` and `frontend/test/category-repair.browser.mjs` drive the running fictional demo at `http://localhost:3001`. Set `DOLPHINO_TEST_URL` for another address.
-- `test:browser:integration-settings`, `test:browser:bedrock-models` and `test:browser:simplefin` need the test database.
+- `test:browser:integration-settings`, `test:browser:bedrock-models`, `test:browser:simplefin`, `test:browser:members` and `test:browser:manual` need the test database.
 - Scripts that save screenshots write to the git-ignored `artifacts/` folder, or to `DOLPHINO_SCREENSHOT_DIR` when set.
 
 `npm run test:browser:all` runs every check in turn. It seeds a fictional demo on its own schema of the test database, starts a demo server on a free port for the demo checks, and prints each failing script's output. Pass names to run a subset: `node frontend/test/browser-suite.mjs auth theme`.
