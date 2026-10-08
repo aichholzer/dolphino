@@ -17,6 +17,7 @@ A clean and simple, self-hosted finance app for your household.<br />
 - Monthly budgets with rollover and overspend alerts, in the app, by email or on Telegram.
 - Optional AI, through OpenAI or Amazon Bedrock: category suggestions for new transactions, and an assistant that answers questions about your finances.
 - Household members with their own sign-in and access to the accounts and budgets you choose.
+- Backend powered by [Rayo](https://github.com/GetRayo/rayo.js).
 
 > Amounts are exact integers in minor units. Totals never drift. Not by one cent.
 
