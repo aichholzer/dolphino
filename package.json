@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "test:browser:enhancements": "node frontend/test/enhancements.browser.mjs",
     "test:browser:auth": "node frontend/test/auth.browser.mjs",
+    "recover-user": "node scripts/recover-user.mjs",
     "test:browser:assistant": "node frontend/test/assistant.browser.mjs",
     "test:browser:assistant-markdown": "node frontend/test/assistant-markdown.browser.mjs",
     "test:browser:assistant-spending": "node frontend/test/assistant-spending.browser.mjs",

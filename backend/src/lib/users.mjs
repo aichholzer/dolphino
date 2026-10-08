@@ -61,7 +61,10 @@ export function createUserManagement({ pool, config, settings, sendMail = sendSm
     return user;
   }
 
-  async function prepare(c, { email, role, purpose, userId, actorId, grants = { accounts: [], budgets: [] } }) {
+  async function prepare(
+    c,
+    { email, role, purpose, userId, actorId, operator = false, grants = { accounts: [], budgets: [] } }
+  ) {
     grants =
       role === 'admin'
         ? { accounts: [], budgets: [] }
@@ -82,14 +85,18 @@ export function createUserManagement({ pool, config, settings, sendMail = sendSm
           userId || null,
           sha(token),
           new Date(now() + (purpose === 'invite' ? 7 * 86400000 : 3600000)),
-          'sending',
+          operator ? 'operator' : 'sending',
           JSON.stringify(grants)
         ]
       )
     ).rows[0];
     await appendHouseholdAudit(c, {
       actorUserId: actorId || null,
-      action: purpose === 'invite' ? 'invitation_created' : 'password_reset_requested',
+      action: operator
+        ? 'recovery_link_created'
+        : purpose === 'invite'
+          ? 'invitation_created'
+          : 'password_reset_requested',
       targetUserId: userId || null
     });
     return {
@@ -362,6 +369,26 @@ export function createUserManagement({ pool, config, settings, sendMail = sendSm
           targetUserId: userId
         });
         return { ok: true };
+      });
+    },
+    async createRecoveryLink({ email }) {
+      email = emailSchema.parse(email);
+      return tx(async (c) => {
+        const user = (await c.query('SELECT * FROM household_users WHERE email=$1 AND disabled=false', [email]))
+          .rows[0];
+        if (!user) {
+          throw fail('Active user not found');
+        }
+
+        return (
+          await prepare(c, {
+            email,
+            role: user.role,
+            purpose: 'reset',
+            userId: user.id,
+            operator: true
+          })
+        ).link;
       });
     }
   };

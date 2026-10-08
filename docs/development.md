@@ -9,7 +9,7 @@ Dolphino is plain JavaScript: a [Rayo](https://github.com/GetRayo/rayo.js) API i
 - `backend/migrations/` holds the SQL migrations. Add new files; never edit old ones.
 - `frontend/src/features/` holds the pages and their editors, `components/` the shared UI, `hooks/` and `lib/` the data fetching and helpers.
 - `shared/money.mjs` holds exact money arithmetic. Amounts are integer minor units, kept as strings or `BigInt`, never floating point.
-- `scripts/rotate-secrets.mjs` is the operator's key rotation tool.
+- `scripts/` holds the operator tools: `rotate-secrets.mjs` re-encrypts saved credentials under a new key, and `recover-user.mjs` prints a password reset link when every administrator is locked out.
 
 Every API route goes through the registrar in `backend/src/http/router.mjs`, which requires an administrator unless the route declares `access: 'public'`, `'member'` or `'financial'`. When you add or change an endpoint, update `backend/test/fixtures/route-contract.json`.
 

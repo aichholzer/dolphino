@@ -6,11 +6,11 @@ All notable changes to dolphino are recorded here. The format follows [Keep a Ch
 
 ### Removed
 
-- `scripts/backup.sh`, `scripts/restore.sh` and `scripts/recover-user.mjs`, with the restore rehearsal and their tests. Back up with `pg_dump` and restore with `pg_restore`, as the deployment guide shows. The operator recovery link that `recover-user.mjs` created is gone from the user service as well.
+- `scripts/backup.sh` and `scripts/restore.sh`, with the restore rehearsal and their tests. Back up with `pg_dump` and restore with `pg_restore`, as the deployment guide shows.
 
 ### Changed
 
-- The key rotation script is `scripts/rotate-secrets.mjs`.
+- The key rotation script is `scripts/rotate-secrets.mjs`. `scripts/recover-user.mjs` explains at the top what it is for and who should be able to run it.
 - The documentation is five short guides: deployment, bank feeds, notifications, AI features and development. Notes on how and why features were built are gone, and `SECURITY.md` summarises how data is protected.
 
 ## 0.2.23 - 2026-10-08

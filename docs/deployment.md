@@ -132,6 +132,16 @@ docker compose run --rm -e NEW_APP_SECRET_FILE=/run/secrets/app_secret_new app n
 
 The script reads the current key from `APP_SECRET_FILE` and changes nothing if any credential cannot be read. When it succeeds, point `APP_SECRET_FILE` at the new file and start the app. Keep the old key with backups taken before the rotation.
 
+## Locked out
+
+If no administrator can sign in, or email is not set up for password resets, print a one-hour, single-use reset link for an existing active account:
+
+```sh
+docker compose exec app node scripts/recover-user.mjs --email you@example.com
+```
+
+It needs live mode and the HTTPS `APP_ORIGIN`. Open the link privately and choose a new password. Anyone who can run the script with your database settings can take over any account: keep the checkout, `.env` and `secrets/` readable only by you.
+
 ## Demo mode
 
 `DOLPHINO_MODE=demo` serves fictional data with no sign-in and no external connections. Use a separate database, load the fixtures after the first start and keep it off public networks:
