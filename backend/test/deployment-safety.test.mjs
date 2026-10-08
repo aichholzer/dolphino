@@ -4,8 +4,6 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { readConfig } from '../src/lib/config.mjs';
 import { householdSessionToken } from '../src/lib/household-auth.mjs';
 
@@ -80,34 +78,5 @@ test('session cookies accept only one valid canonical token', () => {
     `dolphino_session=${token}%00`
   ]) {
     assert.equal(householdSessionToken(request(cookie)), null);
-  }
-});
-
-test('restore requires an exact explicit target confirmation before invoking PostgreSQL', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'dolphino-restore-guard-'));
-  writeFileSync(join(directory, 'pg_restore'), "#!/bin/sh\nprintf 'synthetic-client-only\\n'\n", { mode: 0o700 });
-  const script = fileURLToPath(new URL('../../scripts/restore.sh', import.meta.url));
-  const run = (confirmation) =>
-    spawnSync('/bin/sh', [script, 'synthetic-backup.dump'], {
-      encoding: 'utf8',
-      env: {
-        PATH: directory,
-        PGDATABASE: 'synthetic_restore',
-        ...(confirmation === undefined ? {} : { DOLPHINO_RESTORE_CONFIRM: confirmation })
-      }
-    });
-  try {
-    for (const confirmation of [undefined, '', 'another_target']) {
-      const result = run(confirmation);
-      assert.notEqual(result.status, 0);
-      assert(!result.stdout.includes('synthetic-client-only'));
-      assert.match(result.stderr, /DOLPHINO_RESTORE_CONFIRM/);
-    }
-
-    const result = run('synthetic_restore');
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /synthetic-client-only/);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
   }
 });

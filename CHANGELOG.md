@@ -2,6 +2,16 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.24 - 2026-10-08
+
+### Removed
+
+- `scripts/backup.sh`, `scripts/restore.sh` and `scripts/recover-user.mjs`, with the restore rehearsal and their tests. Back up with `pg_dump` and restore with `pg_restore`, as the deployment guide shows. The operator recovery link that `recover-user.mjs` created is gone from the user service as well.
+
+### Changed
+
+- The key rotation script is `scripts/rotate-secrets.mjs`.
+
 ## 0.2.23 - 2026-10-08
 
 ### Added

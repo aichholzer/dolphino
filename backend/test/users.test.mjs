@@ -181,14 +181,6 @@ test(
       assert.ok(!failed.lastError.includes('secret'));
       failMail = false;
       assert.equal((await users.resend({ actorId, invitationId: failed.id })).deliveryState, 'sent');
-      const link = await users.createRecoveryLink({
-        email: 'admin@example.test'
-      });
-      assert.ok(link.startsWith('https://dolphino.example.test/reset-password#token='));
-      await users.activate({
-        token: link.split('#token=')[1],
-        password: 'synthetic recovery password'
-      });
       const list = await users.list({ actorId });
       assert.ok(!JSON.stringify(list).includes('password_hash'));
       assert.ok(!JSON.stringify(list).includes('token_hash'));
