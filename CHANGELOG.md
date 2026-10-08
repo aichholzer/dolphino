@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.21 - 2026-10-08
+
+### Fixed
+
+- Browser coverage keeps every page load. Chromium drops a document's coverage when the page loads another one, and `frontend/test/browser.mjs` now saves it before each `goto`, `reload`, `goBack`, `goForward` and `setContent`. Checks that reloaded had reported only their last page: the combined report moves from 90.3% to 94.0% of lines, and the Members screen from 3% to 88%.
+
 ## 0.2.20 - 2026-10-08
 
 ### Fixed

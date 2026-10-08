@@ -58,6 +58,19 @@ function instrument(browser) {
     guard(page.context());
     await page.coverage.startJSCoverage({ resetOnNavigation: false });
     pages.add(page);
+    // Chromium drops a document's coverage when the page loads another one. Save it first.
+    for (const method of ['goto', 'reload', 'goBack', 'goForward', 'setContent']) {
+      const navigate = page[method].bind(page);
+      page[method] = async (...args) => {
+        if (pages.has(page)) {
+          await save(await page.coverage.stopJSCoverage());
+          await page.coverage.startJSCoverage({ resetOnNavigation: false });
+        }
+
+        return navigate(...args);
+      };
+    }
+
     const close = page.close.bind(page);
     page.close = async (options) => {
       await collect(page);
