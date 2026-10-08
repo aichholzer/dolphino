@@ -1,4 +1,6 @@
-# dolphino
+![Altiplano](https://raw.githubusercontent.com/aichholzer/altiplano/a045975ddd6b59f7c690fa5507a4f55a893c5ab8/banner.png)
+
+# Dolphino
 
 A self-hosted personal finance app for your household. Bank feeds bring your transactions in, rules and an optional AI sort them into categories, and budgets, alerts and a read-only assistant show you where the money goes.
 
