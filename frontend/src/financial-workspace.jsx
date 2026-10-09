@@ -296,7 +296,7 @@ export function FinancialWorkspace({ session, onSession }) {
         {session?.demo && (
           <div className="demo-notice">
             <Info size={15} />
-            <span>You're exploring dolphino with fictional demo data. No bank connection is active.</span>
+            <span>You're exploring Dolphino with fictional demo data. No bank connection is active.</span>
             <button onClick={() => navigate('Settings')}>
               Connection setup <ArrowRight size={14} />
             </button>
@@ -418,7 +418,7 @@ export function FinancialWorkspace({ session, onSession }) {
         )}
         <footer className="page-footer">
           <span>
-            dolphino<span className="brand-dot">.</span>{' '}
+            Dolphino<span className="brand-dot">.</span>{' '}
             <span className="footer-copy">A little more clarity. A little less worry.</span>
           </span>
           <span>

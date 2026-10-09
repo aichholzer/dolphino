@@ -13,7 +13,7 @@ import {
   X
 } from 'lucide-react';
 import { GlobalSearch } from './global-search';
-import { BrandMark } from './brand';
+import { BrandLogo } from './brand';
 import { AssistantPanel } from './assistant-panel';
 import { api } from '../lib/api.mjs';
 
@@ -97,7 +97,7 @@ export function AppShell({
                 navigate('Overview');
               }}
             >
-              <BrandMark />
+              <BrandLogo />
             </a>
             <button className="drawer-close" aria-label="Close menu" onClick={() => setMenu(false)}>
               <X size={20} />

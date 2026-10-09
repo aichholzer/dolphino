@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import '@fontsource-variable/faustina';
+import '@fontsource-variable/geom';
 import '@fontsource-variable/hanken-grotesk';
 import { App } from './app';
 import './style.css';

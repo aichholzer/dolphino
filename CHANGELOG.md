@@ -2,6 +2,18 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.25 - 2026-10-09
+
+### Changed
+
+- The sidebar and the sign-in screens show the Dolphino logo, centred, in place of the small dolphin and the text name. The browser tab and home-screen icons come from the new dolphin icon.
+- Page headings, the sign-in heading and the empty assistant panel use Geom at weight 500, self-hosted through Fontsource like the interface font. Amounts and balances use Geom too. Its digits are proportional, so amounts in a column do not line up digit by digit.
+- The name reads "Dolphino" everywhere in the app, including the tab title, the footer and the assistant.
+
+### Removed
+
+- The Faustina heading font.
+
 ## 0.2.24 - 2026-10-08
 
 ### Removed

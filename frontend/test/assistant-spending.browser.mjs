@@ -39,7 +39,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   const noStorage = await installBrowserStorageGuard(page);
   await page.goto(f.url);
-  await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const question = page.getByLabel('Ask a financial question', { exact: true });
   await question.fill(spendingQuestion);
@@ -90,7 +90,7 @@ try {
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Ask dolphino', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Ask Dolphino', exact: true })).toBeFocused();
   await noStorage();
   assert.ok(assets.size > 0);
   assert.deepEqual(external, []);

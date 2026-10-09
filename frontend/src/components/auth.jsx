@@ -1,6 +1,6 @@
 import { useSettingsDirty } from '../features/settings/settings-dirty';
 import { useState } from 'react';
-import { BrandMark } from './brand';
+import { BrandLogo } from './brand';
 import { Button } from './ui/button';
 
 export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
@@ -62,7 +62,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
         }}
       >
         <div className="brand">
-          <BrandMark />
+          <BrandLogo />
         </div>
         <h1>
           {mode === 'bootstrap'
@@ -78,7 +78,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
             ? 'Create the first administrator using the bootstrap token from your server.'
             : mode === 'activate'
               ? resetting
-                ? 'Reset access to your dolphino account.'
+                ? 'Reset access to your Dolphino account.'
                 : 'Accept your invitation and set your own password.'
               : 'Sign in to your private financial workspace.'}
         </p>
@@ -167,7 +167,7 @@ export function AuthScreen({ api, session, onAuthenticated, activationToken }) {
             ? 'Your server administrator supplies the bootstrap token. There is no default password.'
             : mode === 'activate'
               ? 'Invitations expire and can be used only once. Request a new invitation if this link no longer works.'
-              : 'Your account belongs to this dolphino installation. Contact your administrator if you need access.'}
+              : 'Your account belongs to this Dolphino installation. Contact your administrator if you need access.'}
         </p>
       </form>
     </div>
@@ -266,7 +266,7 @@ export function AccessPending({ api, session, onSession }) {
     <div className="login-screen">
       <section className="card login-card integration-settings">
         <div className="brand">
-          <BrandMark />
+          <BrandLogo />
         </div>
         <h1>Your account is ready.</h1>
         <p className="muted">

@@ -286,7 +286,7 @@ export function IntegrationSettings({ api, demo, onUpdated, status }) {
         <h2>Redbark thin-event notifications</h2>
         <p className="muted">
           Register signed thin-event notifications that trigger account reconciliation, not a live bank-feed
-          subscription. Subscribed events: sync_run.succeeded and connection.refreshed. dolphino does not create a
+          subscription. Subscribed events: sync_run.succeeded and connection.refreshed. Dolphino does not create a
           Redbark sync.
         </p>
         <dl>

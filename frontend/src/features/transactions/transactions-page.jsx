@@ -24,7 +24,7 @@ export function TransactionsPage({
   return (
     <section className="card transactions-card">
       <p className="footnote" style={{ padding: '16px 20px 0' }}>
-        History includes records already imported into dolphino. For older provider records, use{' '}
+        History includes records already imported into Dolphino. For older provider records, use{' '}
         <button type="button" onClick={() => navigate('Settings', 'data')}>
           {isAdmin
             ? 'Settings → Data → Import health & history → backfill'

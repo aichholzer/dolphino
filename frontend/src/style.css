@@ -46,7 +46,7 @@
   --ocean-selected-line: #8fbfcf;
 
   --font-ui: 'Hanken Grotesk Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'Faustina Variable', Georgia, 'Times New Roman', serif;
+  --font-display: 'Geom Variable', var(--font-ui);
 
   font-family: var(--font-ui);
   color: var(--ink);
@@ -157,9 +157,6 @@ button {
 }
 .brand-dot {
   color: var(--ocean);
-}
-.brand > .brand-dot {
-  margin-left: -9px;
 }
 .workspace {
   border: 1px solid var(--line);
@@ -819,6 +816,19 @@ td {
   font-weight: 550;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+/* Amounts and balances use the heading face. Geom has no tabular figures, so digits are proportional. */
+.amount,
+.account-balance,
+.budget-amount,
+.balance-totals strong,
+.metric > strong,
+.total-drill,
+.monthly-comparison-scroll td:not(:first-child),
+.chart-axis span,
+.category-line strong,
+.pending-card > strong {
+  font-family: var(--font-display);
 }
 .positive {
   color: var(--sea-green);
@@ -2199,19 +2209,9 @@ label select {
     animation: none;
   }
 }
-.brand-dolphin {
-  display: block;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-}
 .brand {
   font-size: 30px;
   letter-spacing: -1.4px;
-}
-.login-card .brand-dolphin {
-  width: 40px;
-  height: 40px;
 }
 
 /* Crafted ocean surfaces. Geometry and responsive behavior stay shared. */
@@ -2234,9 +2234,9 @@ h3 {
 }
 h1 {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 500;
   font-size: 34px;
-  letter-spacing: -0.6px;
+  letter-spacing: -0.8px;
   line-height: 1.2;
 }
 h2 {
@@ -2287,19 +2287,12 @@ button:disabled:hover {
 }
 .sidebar .brand {
   color: var(--ink);
-  gap: 8px;
-  font-size: 29px;
+  justify-content: center;
 }
-.sidebar .brand-dolphin {
-  padding: 0;
-  width: 40px;
-  height: 40px;
-}
-.brand-dot {
-  color: var(--ocean);
-}
-.sidebar .brand-dot {
-  color: var(--ocean);
+.brand-logo {
+  display: block;
+  width: min(100%, 172px);
+  height: auto;
 }
 .workspace {
   border-color: var(--line);
@@ -2727,6 +2720,7 @@ label {
 }
 .login-card .brand {
   color: var(--ocean-deep);
+  justify-content: center;
 }
 .login-card h1 {
   font-family: var(--font-display);
@@ -2773,7 +2767,8 @@ label {
   color: var(--ink);
   font-family: var(--font-display);
   font-size: 24px;
-  font-weight: 400;
+  font-weight: 500;
+  letter-spacing: -0.5px;
   line-height: 1.3;
 }
 .assistant-message {
@@ -2808,14 +2803,6 @@ label {
   color: var(--muted);
 }
 @media (max-width: 1200px) {
-  .sidebar .brand {
-    font-size: 25px;
-    gap: 5px;
-  }
-  .sidebar .brand-dolphin {
-    width: 35px;
-    height: 35px;
-  }
   .page-heading h1 {
     font-size: 30px;
   }
@@ -2836,13 +2823,6 @@ label {
   }
 }
 @media (max-width: 950px) {
-  .sidebar .brand {
-    font-size: 23px;
-  }
-  .sidebar .brand-dolphin {
-    width: 32px;
-    height: 32px;
-  }
   .metric > strong {
     font-size: 24px;
   }
@@ -2884,13 +2864,6 @@ label {
   }
   .metric-bottom {
     flex-wrap: nowrap;
-  }
-  .sidebar .brand {
-    font-size: 28px;
-  }
-  .sidebar .brand-dolphin {
-    width: 38px;
-    height: 38px;
   }
   .workspace strong {
     font-size: 12px;
@@ -3574,9 +3547,17 @@ details[open] > summary::before {
   .drawer-close:hover {
     background: var(--surface-soft);
   }
+  /* The close button sits in the right column; the name stays centred. */
   .sidebar .brand-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 36px 1fr 36px;
     align-items: center;
+  }
+  .sidebar .brand {
+    grid-column: 2;
+  }
+  .sidebar .drawer-close {
+    grid-column: 3;
   }
 
   /* Transactions read as two lines: what and how much, then when, where and why. */

@@ -121,7 +121,7 @@ await page.route('**/api/**', async (route) => {
 });
 try {
   await page.goto(base);
-  await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'Your assistant is not enabled yet' }).waitFor();
   assert(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled());
   await page.keyboard.press('Escape');
@@ -129,12 +129,12 @@ try {
   assert.equal(await page.getByRole('dialog').count(), 0);
   assert.equal(
     await page
-      .getByRole('button', { name: 'Ask dolphino', exact: true })
+      .getByRole('button', { name: 'Ask Dolphino', exact: true })
       .evaluate((el) => el === document.activeElement),
     true
   );
   configured = true;
-  await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'A little help making sense of it.' }).waitFor();
   await page.getByLabel('Ask a financial question', { exact: true }).fill('Compare my authorized spending');
   assert.equal(await page.locator('.assistant-composer input[type="checkbox"]').count(), 0);
@@ -193,7 +193,7 @@ try {
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
-  await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'A little help making sense of it.' }).waitFor();
   await page
     .getByLabel('Ask a financial question', { exact: true })

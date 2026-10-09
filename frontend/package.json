@@ -1,6 +1,6 @@
 {
   "name": "@dolphino/frontend",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "build:coverage": "vite build --mode coverage"
   },
   "dependencies": {
-    "@fontsource-variable/faustina": "^5.3.0",
+    "@fontsource-variable/geom": "^5.3.0",
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.3",

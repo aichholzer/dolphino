@@ -91,7 +91,7 @@ try {
     await page.getByRole('button', { name: 'Test connection', exact: true }).isDisabled(),
     'Demo connection stays disabled'
   );
-  await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
   await page.getByRole('heading', { name: 'Your assistant is not enabled yet' }).waitFor();
   assert(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled());
   await screenshot('dolphino-assistant-unconfigured');
@@ -99,7 +99,7 @@ try {
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
   // The dialog restores focus to its trigger once its close has unmounted the content.
   await expect(
-    page.getByRole('button', { name: 'Ask dolphino', exact: true }),
+    page.getByRole('button', { name: 'Ask Dolphino', exact: true }),
     'Assistant restores focus'
   ).toBeFocused();
   await page.route('**/api/accounts', (r) =>
@@ -165,7 +165,7 @@ try {
     }
 
     await navigate('Overview');
-    await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
     await page.getByRole('heading', { name: 'Your assistant is not enabled yet' }).waitFor();
     await fits(`${width}px assistant`);
     if (width === 390) {

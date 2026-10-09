@@ -9,7 +9,7 @@ function Message({ message, onViewTransaction }) {
     typeof message.content === 'string' ? message.content : typeof message.text === 'string' ? message.text : '';
   return (
     <article className={`assistant-message assistant-message-${message.role === 'user' ? 'user' : 'assistant'}`}>
-      <strong>{message.role === 'user' ? 'You' : 'dolphino assistant'}</strong>
+      <strong>{message.role === 'user' ? 'You' : 'Dolphino assistant'}</strong>
       {message.role === 'assistant' ? <AssistantMarkdown text={text} /> : <p>{text}</p>}
       {message.citations?.length > 0 && (
         <div className="assistant-citations">
@@ -251,7 +251,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
       <Dialog.Trigger asChild>
         <Button variant="outline" className="assistant-trigger">
           <Sparkles size={16} />
-          <span>Ask dolphino</span>
+          <span>Ask Dolphino</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -261,7 +261,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
             <div>
               <Dialog.Title>
                 <Sparkles size={19} />
-                Your dolphino assistant
+                Your Dolphino assistant
               </Dialog.Title>
               <Dialog.Description>
                 Private to your account · temporary history expires after 30 minutes or a server restart.
@@ -331,7 +331,7 @@ export function AssistantPanel({ api, session, onViewTransaction }) {
                   {status?.disabledReason ||
                     'An administrator must configure the shared AI connection and enable the assistant and financial data sharing in Settings → AI features.'}
                 </p>
-                <p>You can keep using dolphino without an assistant.</p>
+                <p>You can keep using Dolphino without an assistant.</p>
                 <Button variant="outline" onClick={refresh}>
                   Refresh assistant status
                 </Button>

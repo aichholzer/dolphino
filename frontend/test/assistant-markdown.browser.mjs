@@ -106,7 +106,7 @@ await context.route('**/*', async (route) => {
 });
 try {
   await page.goto(base);
-  await page.getByRole('button', { name: 'Ask dolphino', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Dolphino', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const question = dialog.getByLabel('Ask a financial question', { exact: true });
   const rendered = dialog.locator('.assistant-markdown');
@@ -195,7 +195,7 @@ try {
   await expect(rendered.locator('strong')).toHaveText('real bold');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Ask dolphino', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Ask Dolphino', exact: true })).toBeFocused();
   await noStorage();
   assert.deepEqual(unexpected, []);
   assert.deepEqual(errors, []);

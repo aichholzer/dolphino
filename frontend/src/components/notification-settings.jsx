@@ -271,7 +271,7 @@ export function NotificationSettings({ api, demo }) {
           <p className="footnote">
             Create a dedicated private group and add your household members. After saving the bot token, use Pair
             Telegram group to choose that group in Telegram. Keep bot privacy mode on; no administrator permissions are
-            needed. dolphino does not manage membership.
+            needed. Dolphino does not manage membership.
           </p>
           <p className="footnote">
             {telegram.paired ? `Paired group: ${telegram.chatTitle || 'confirmed household'}. ` : 'No group paired. '}
