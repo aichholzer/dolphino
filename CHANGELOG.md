@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.27 - 2026-10-14
+
+### Added
+
+- The sidebar shows the running version, centred at the bottom. The build takes it from `frontend/package.json`.
+
 ## 0.2.26 - 2026-10-14
 
 ### Fixed

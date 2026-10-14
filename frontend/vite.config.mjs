@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import pkg from './package.json' with { type: 'json' };
 // vite build --mode coverage keeps the bundle readable and inlines source maps with absolute
 // source paths. Browser coverage maps through them; production builds use the default mode.
 const coverage = {
@@ -11,6 +12,8 @@ const coverage = {
 };
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  // The sidebar shows the release version; only this field reaches the bundle.
+  define: { 'import.meta.env.DOLPHINO_VERSION': JSON.stringify(pkg.version) },
   server: {
     host: '0.0.0.0',
     port: 5173,

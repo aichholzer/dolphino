@@ -138,6 +138,7 @@ export function AppShell({
                 </button>
               )}
             </div>
+            <p className="app-version">Version {import.meta.env.DOLPHINO_VERSION}</p>
           </div>
         </div>
       </aside>
