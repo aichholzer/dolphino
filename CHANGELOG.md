@@ -2,6 +2,12 @@
 
 All notable changes to dolphino are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com).
 
+## 0.2.26 - 2026-10-14
+
+### Fixed
+
+- Long transaction descriptions, account names and category names stay on one line and end in an ellipsis, with the full text on hover. The transactions table no longer scrolls sideways: as the window narrows, the row actions move to a line of their own, then the Account and Category columns are hidden. Phones keep their own layout.
+
 ## 0.2.25 - 2026-10-09
 
 ### Changed

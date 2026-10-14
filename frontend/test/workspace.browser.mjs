@@ -358,6 +358,68 @@ try {
       await page.close();
     }
   }
+
+  {
+    const { page, state } = await fixturePage();
+    const description =
+      '0.000% interest rate per annum applied on loan balance equal, to amount held in any linked Everyday Offset Account(s)';
+    const accountName = 'Complete Freedom Offset Account · Synthetic Mutual Bank of the Southern Coast';
+    state.onRequest = async (route, path) => {
+      if (path !== '/api/transactions') {
+        return false;
+      }
+
+      const transaction = { date: '2026-10-25', currency: 'AUD', kind: 'income', category: 'Income', canEdit: true };
+      await route.fulfill({
+        json: {
+          transactions: [
+            { ...transaction, id: 'long-description', description, accountName, amountMinor: '45000' },
+            { ...transaction, id: 'long-token', description: `REF-${'8842019937465510'.repeat(6)}`, amountMinor: '100' }
+          ],
+          total: 2,
+          hasMore: false
+        }
+      });
+      return true;
+    };
+
+    try {
+      await page.goto(base);
+      await page.getByText('Total income', { exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+      await page.getByTitle(description, { exact: true }).waitFor();
+      for (const width of [1440, 1100, 820, 700]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await settleRender(page);
+        const layout = await page.evaluate(() => {
+          const wrap = document.querySelector('.transactions-card .table-wrap');
+          const visibleLines = (selector) =>
+            [...wrap.querySelectorAll(selector)]
+              .filter((element) => element.offsetParent !== null)
+              .map(
+                (element) => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)
+              );
+          return {
+            overflow: wrap.scrollWidth - wrap.clientWidth,
+            lines: [...visibleLines('.transaction-name strong'), ...visibleLines('.transaction-account')]
+          };
+        });
+        assert.equal(layout.overflow, 0, `no sideways scroll at ${width}px`);
+        assert.ok(
+          layout.lines.every((lines) => lines <= 1.05),
+          `descriptions and account names stay on one line at ${width}px: ${layout.lines}`
+        );
+      }
+
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await expect(page.getByTitle(accountName, { exact: true })).toHaveText(accountName);
+      await state.assertNoStorageAccess();
+      assert.deepEqual(state.errors, []);
+      console.log('Passed long transaction text: descriptions and account names stay inside the table card');
+    } finally {
+      await page.close();
+    }
+  }
 } finally {
   await browser.close();
   await server.close();

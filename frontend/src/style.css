@@ -794,6 +794,41 @@ td {
   font-weight: 550;
   color: var(--ink);
 }
+/* Long text in a transaction row stays on one line and ends in an ellipsis. */
+.transaction-icon {
+  flex: none;
+}
+.transaction-name > div {
+  min-width: 0;
+}
+.transaction-name strong,
+.transaction-name small,
+.transaction-account {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transaction-name .tag-list {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.transaction-name .tag-list .category-tag {
+  flex: none;
+  white-space: nowrap;
+}
+.transactions-card td:nth-child(3) :is(.category-tag, small) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.transactions-card td:nth-child(3) small {
+  display: block;
+  margin-top: 4px;
+}
 .transaction-name small {
   display: block;
   margin-top: 5px;
@@ -3586,6 +3621,7 @@ details[open] > summary::before {
   .transactions-card td:nth-child(1) {
     grid-column: 1 / 4;
     grid-row: 1;
+    min-width: 0;
   }
   .transactions-card td:nth-child(5) {
     grid-column: 4;
@@ -3602,9 +3638,19 @@ details[open] > summary::before {
   }
   .transactions-card td:nth-child(4) {
     grid-column: 3 / -1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .transactions-card .transaction-account {
+    display: inline;
+  }
+  .transactions-card td:nth-child(3) {
+    min-width: 0;
+  }
+  .transactions-card td:nth-child(3) .category-tag {
+    max-width: min(100%, 140px);
   }
   .transactions-card td:nth-child(6) {
     grid-column: 1 / -1;
@@ -3836,6 +3882,64 @@ input[type='checkbox']:focus-visible {
 }
 .transactions-card td:last-child {
   text-align: right;
+}
+
+/* Above the phone layout the table is a grid sized to the card, so no row scrolls sideways. As the card narrows,
+   the row actions move to a second line, then Account and then Category are hidden. */
+@media (min-width: 681px) {
+  .transactions-card .table-wrap {
+    container: transactions / inline-size;
+  }
+  .transactions-card table {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) auto fit-content(190px) fit-content(240px) auto auto;
+  }
+  .transactions-card :is(thead, tbody, tr) {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+  .transactions-card tbody tr {
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .transactions-card td {
+    border-bottom: 0;
+  }
+  .transactions-card td:is(:first-child, :nth-child(3), :nth-child(4)) {
+    min-width: 0;
+  }
+
+  @container transactions (max-width: 900px) {
+    .transactions-card table {
+      grid-template-columns: minmax(240px, 1fr) auto fit-content(190px) fit-content(240px) auto;
+    }
+    .transactions-card th:last-child,
+    .transactions-card td:last-child:empty {
+      display: none;
+    }
+    .transactions-card td:last-child {
+      grid-column: 1 / -1;
+      padding-top: 0;
+      text-align: left;
+    }
+  }
+  @container transactions (max-width: 700px) {
+    .transactions-card table {
+      grid-template-columns: minmax(200px, 1fr) auto fit-content(190px) auto;
+    }
+    .transactions-card :is(th, td):nth-child(4) {
+      display: none;
+    }
+  }
+  @container transactions (max-width: 560px) {
+    .transactions-card table {
+      grid-template-columns: minmax(140px, 1fr) auto auto;
+    }
+    .transactions-card :is(th, td):nth-child(3) {
+      display: none;
+    }
+  }
 }
 
 /* Selects: one chevron, 8px in from the right border. The native arrow ignores padding. */

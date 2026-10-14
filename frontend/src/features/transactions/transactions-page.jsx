@@ -6,6 +6,12 @@ import { CategorySelect } from '../../components/category-select';
 import { useCategoryOptions } from '../../hooks/use-category-options.mjs';
 import { kindLabel } from '../../lib/labels.mjs';
 
+const unresolvedCategoryNote = 'Category name unavailable; saved references need a category choice.';
+
+function categoryLabel(t) {
+  return t.splits?.length > 1 ? 'Split transaction' : t.categoryDisplayLabel || t.category || 'Uncategorized';
+}
+
 export function TransactionsPage({
   data,
   currency,
@@ -162,7 +168,7 @@ export function TransactionsPage({
                       {BigInt(t.amountMinor || 0) > 0n ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}
                     </div>
                     <div>
-                      <strong>{t.description}</strong>
+                      <strong title={t.description}>{t.description}</strong>
                       <small>
                         {t.voided
                           ? 'Voided · excluded from balances and reports'
@@ -183,16 +189,18 @@ export function TransactionsPage({
                 </td>
                 <td>{String(t.date || '').slice(0, 10)}</td>
                 <td>
-                  <span className="category-tag">
-                    {t.splits?.length > 1
-                      ? 'Split transaction'
-                      : t.categoryDisplayLabel || t.category || 'Uncategorized'}
+                  <span className="category-tag" title={categoryLabel(t)}>
+                    {categoryLabel(t)}
                   </span>
                   {t.categoryDisplayLabel === 'Unresolved category' && (
-                    <small>Category name unavailable; saved references need a category choice.</small>
+                    <small title={unresolvedCategoryNote}>{unresolvedCategoryNote}</small>
                   )}
                 </td>
-                <td className="muted">{t.accountName || '—'}</td>
+                <td className="muted">
+                  <span className="transaction-account" title={t.accountName || undefined}>
+                    {t.accountName || '—'}
+                  </span>
+                </td>
                 <td className={`align-right amount ${BigInt(t.amountMinor || 0) > 0n ? 'positive' : ''}`}>
                   {money(t.amountMinor, t.currency)}
                 </td>
